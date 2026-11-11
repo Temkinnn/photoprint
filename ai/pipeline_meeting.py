@@ -3,11 +3,11 @@ import sys
 import time
 import json
 
-# Перенаправляем все загрузки моделей HuggingFace / Whisper строго на диск D:
+# Перенаправляем кэш моделей на диск D:
 os.environ["HF_HOME"] = "D:\\huggingface"
 WHISPER_DOWNLOAD_ROOT = "D:\\whisper_models"
 
-# Автоматическое подключение CUDA DLL (если установлены пакеты nvidia-*-cu12)
+# Автоподключение CUDA DLL (если есть nvidia-*-cu12)
 try:
     site_packages = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "Lib", "site-packages")
     for nvd in ["cublas", "cudnn"]:
@@ -32,39 +32,57 @@ client = OpenAI(
 )
 MODEL_NAME = "qwen2.5:7b"
 
-# Корпоративный контекстный словарь для Whisper (исправляет фонетические ошибки)
+# Корпоративный контекстный словарь (включает оба сценария: производство и клиентский сервис picPac.by)
 CORPORATE_PROMPT = (
-    "Оперативное производственное совещание руководства компании ООО «Фотопринт» (сервис picPac.by). "
-    "Участники: Генеральный директор Смирнов, начальник производства Иванов, служба снабжения Петрова, служба поддержки Ковалева. "
-    "Термины и оборудование: линия УФ-лакировки, ламинатор Foliant Vega 400, перенастройка станка, "
-    "матовая бумага 200 грамм, поставщик, предоплата 50%, регламент 30%, лимит, ночная смена на резке, "
-    "запасной комплект нагревательных элементов, срыв сроков клиентских заказов, SLA."
+    "Оперативное совещание руководства компании ООО «Фотопринт» (сервис picPac.by). "
+    "Участники: Генеральный директор Смирнов, начальник производства Иванов, руководитель клиентского сервиса Ковалева, "
+    "служба снабжения Петрова, техлид Соколов. "
+    "Термины и оборудование: служба заботы picPac.by, цветовой профиль sRGB, Айфоны, App Store, хотфикс, "
+    "перепечатка 45 фотокниг за счет резерва цеха, промокоды, калибровка мониторов дизайнеров верстки, "
+    "линия УФ-лакировки, ламинатор Foliant Vega 400, перенастройка станка, матовая бумага 200 грамм, "
+    "поставщик, предоплата 50%, регламент 30%, лимит, ночная смена на резке, нагревательные элементы, SLA."
 )
 
 
 # ==========================================
-# 0. УТИЛИТА ЗАГРУЗКИ АУДИО (БЕЗ PyAV ОШИБОК)
+# 0. УНИВЕРСАЛЬНАЯ ЗАГРУЗКА АУДИО (.OGG, .MP3, .WAV)
 # ==========================================
 def load_audio_as_numpy(audio_path, target_sr=16000):
-    sr, data = wavfile.read(audio_path)
-    if len(data.shape) > 1:
-        data = data.mean(axis=1)
+    """
+    Универсально загружает любые форматы (.ogg, .mp3, .wav, .m4a) в numpy float32 16kHz.
+    """
+    if audio_path.lower().endswith(".wav"):
+        try:
+            sr, data = wavfile.read(audio_path)
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
 
-    if data.dtype == np.int16:
-        data = data.astype(np.float32) / 32768.0
-    elif data.dtype == np.int32:
-        data = data.astype(np.float32) / 2147483648.0
-    elif data.dtype == np.uint8:
-        data = (data.astype(np.float32) - 128.0) / 128.0
-    else:
-        data = data.astype(np.float32)
+            if data.dtype == np.int16:
+                data = data.astype(np.float32) / 32768.0
+            elif data.dtype == np.int32:
+                data = data.astype(np.float32) / 2147483648.0
+            elif data.dtype == np.uint8:
+                data = (data.astype(np.float32) - 128.0) / 128.0
+            else:
+                data = data.astype(np.float32)
 
-    if sr != target_sr:
-        from scipy import signal
-        num_samples = int(len(data) * target_sr / sr)
-        data = signal.resample(data, num_samples)
+            if sr != target_sr:
+                from scipy import signal
+                num_samples = int(len(data) * target_sr / sr)
+                data = signal.resample(data, num_samples)
+            return data
+        except Exception:
+            pass
 
-    return data
+    # Универсальный декодер через PyAV для .ogg, .mp3, .m4a
+    import av
+    with av.open(audio_path, mode="r") as container:
+        resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono", rate=target_sr)
+        frames = [resampler.resample(f) for f in container.decode(audio=0)]
+        flat_frames = [f for sub in frames for f in (sub if isinstance(sub, list) else [sub]) if f is not None]
+        raw = b"".join([f.to_ndarray().tobytes() for f in flat_frames])
+        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        return audio
 
 
 # ==========================================
@@ -115,12 +133,11 @@ def transcribe_audio(audio_path="meeting.wav", model_size="medium"):
     if not os.path.isabs(audio_path):
         audio_path = os.path.join(BASE_DIR, audio_path)
 
-    print(f"\n[*] Загрузка аудио: '{audio_path}'...")
+    print(f"\n[*] Загрузка аудиофайла: '{audio_path}'...")
     audio_numpy = load_audio_as_numpy(audio_path, target_sr=16000)
 
     def try_decode(m_size, device, compute_type):
         m = WhisperModel(m_size, device=device, compute_type=compute_type, download_root=WHISPER_DOWNLOAD_ROOT)
-        # Передаем initial_prompt со словарем типографии для идеальной точности!
         segs, _ = m.transcribe(
             audio_numpy,
             beam_size=5,
@@ -133,8 +150,6 @@ def transcribe_audio(audio_path="meeting.wav", model_size="medium"):
 
     print(f"[*] Инициализация faster-whisper (модель: {model_size})...")
     segments = None
-    
-    # Сначала пробуем medium на GPU -> потом medium на CPU -> при нехватке памяти small
     for current_model in [model_size, "small"]:
         try:
             segments = try_decode(current_model, "cuda", "float16")
@@ -147,9 +162,8 @@ def transcribe_audio(audio_path="meeting.wav", model_size="medium"):
                 break
             except Exception as e_cpu:
                 if current_model == "small":
-                    print(f"[!] Критическая ошибка транскрибации: {e_cpu}")
+                    print(f"[!] Ошибка распознавания: {e_cpu}")
                     sys.exit(1)
-                print(f"[!] Не удалось загрузить модель {current_model}, пробуем облегченную small...")
 
     formatted_transcript = []
     print("\n" + "-"*50)
@@ -176,33 +190,34 @@ def analyze_and_diarize_with_llm(transcript_text: str):
 
     system_prompt = """
     Ты — ведущий AI-ассистент генерального директора производственной компании ООО «Фотопринт».
-    Перед тобой сырая текстовая стенограмма совещания с таймкодами.
+    Перед тобой стенограмма совещания с таймкодами.
 
     Твоя задача — выполнить ДВА действия:
 
     ДЕЙСТВИЕ 1: РАЗДЕЛЕНИЕ ПО СПИКЕРАМ (Diarization)
-    По смыслу реплик и обращениям определи говорящего для КАЖДОЙ строки:
-    - «Директор (Смирнов)» — открывает встречу, раздает поручения («Принято», «Пусть Петрова...», «Что по готовности?»).
-    - «Иванов (Нач. производства)» — отвечает по оборудованию («Я закончу перенастройку...», «не хватит людей на резке»).
-    - «Петрова / Иванов (Снабжение)» — говорит про поставщиков и лимиты предоплаты бумаги.
-    Запиши список diarized_lines: для каждой строки верни: timestamp, speaker, text (исправь опечатки распознавания, если смысл очевиден: например, "фотопринц" -> "Фотопринт", "старшик" -> "поставщик", "предокладка" -> "предоплата").
+    По контексту фраз определи говорящего для КАЖДОЙ строки:
+    - «Директор (Смирнов)» — задает вопросы («Коллеги, экстренное включение...», «Ковалева, сколько обращений...»), утверждает решения («Отлично. Фиксируем решение...», «согласен, разберемся»).
+    - «Ковалева (Рук. клиентского сервиса)» — докладывает о жалобах клиентов picPac.by, говорит о рисках рейтинга App Store и калибровке мониторов.
+    - «Иванов (Нач. производства)» — отвечает по цеху и станкам УФ-лакировки.
+    - «Техлид Соколов / Снабжение» — технические детали и поставщики.
+    Верни список diarized_lines: timestamp, speaker, text (сгладь явные опечатки STT, например "webstore" -> "App Store", "Ковалёв выгрузил" -> "Ковалева, выгрузи").
 
     ДЕЙСТВИЕ 2: ИЗВЛЕЧЕНИЕ ЗАДАЧ И РЕШЕНИЙ ПО ТЗ
     1. decisions (Список решений):
        - category: строго одно из: "решено", "предложено", "обсуждалось", "требует уточнения"
        - text: формулировка решения
-       - speaker: кто озвучил/утвердил
+       - speaker: кто утвердил/предложил
        - timestamp: таймкод
     2. tasks (Реестр поручений / Action Items):
        - temp_id: порядковый номер (t1, t2...)
-       - title: действие с глаголом в инфинитиве (например: "Перенастроить линию УФ-лакировки")
+       - title: действие с глаголом в инфинитиве (например: "Выкатить хотфикс в App Store")
        - assignee: ФИО или должность. ПРАВИЛО AI-05: Если исполнитель не назван явно — строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
        - deadline: конкретный срок. ПРАВИЛО AI-05: Если срок не назван — строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
        - source_quote: точная цитата фразы
        - timestamp: таймкод фразы
        - status: "pending_approval"
-    3. identified_risks: обнаруженные производственные/бизнес риски.
-    4. open_questions: темы или вопросы, отложенные на будущее.
+    3. identified_risks: производственные и репутационные риски.
+    4. open_questions: вопросы, отложенные на будущее.
 
     Ответ верни СТРОГО в виде JSON:
     {
@@ -215,7 +230,7 @@ def analyze_and_diarize_with_llm(transcript_text: str):
     Никаких комментариев до и после JSON.
     """
 
-    user_prompt = f"Сырая стенограмма совещания:\n{transcript_text}"
+    user_prompt = f"Стенограмма совещания:\n{transcript_text}"
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -234,7 +249,10 @@ def analyze_and_diarize_with_llm(transcript_text: str):
 # ==========================================
 # 4. ГЕНЕРАЦИЯ WORD-ДОКУМЕНТА С ДИАРИЗАЦИЕЙ
 # ==========================================
-def create_word_protocol(analysis: dict, output_docx="Протокол_совещания_Фотопринт.docx"):
+def create_word_protocol(analysis: dict, output_docx=None):
+    if not output_docx:
+        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+        output_docx = f"Протокол_совещания_Фотопринт_{timestamp_str}.docx"
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
@@ -250,15 +268,12 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
     print(f"\n[*] Формируем официальный Word-документ: {full_docx_path}...")
     doc = Document()
 
-    # Поля страницы 2 см
-    sections = doc.sections
-    for section in sections:
+    for section in doc.sections:
         section.top_margin = Inches(0.8)
         section.bottom_margin = Inches(0.8)
         section.left_margin = Inches(0.8)
         section.right_margin = Inches(0.8)
 
-    # 1. Шапка документа
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_title = title.add_run("ООО «ФОТОПРИНТ» (picPac.by)")
@@ -293,7 +308,7 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
         r.font.bold = True
         r.font.color.rgb = RGBColor(31, 78, 121)
 
-    # 2. РЕЕСТР ПОРУЧЕНИЙ И ЗАДАЧ (AI-04, AI-05)
+    # 1. РЕЕСТР ПОРУЧЕНИЙ И ЗАДАЧ
     add_section_header("1. РЕЕСТР ПОРУЧЕНИЙ И ДЕЛЕГИРОВАННЫХ ЗАДАЧ")
     tasks = analysis.get("tasks", [])
     
@@ -317,19 +332,16 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
             row_cells[0].text = str(idx)
             row_cells[1].text = t.get("title", "")
             
-            # Ответственный (с проверкой AI-05)
             assignee = t.get("assignee", "требует уточнения")
             row_cells[2].text = assignee
             if "требует уточнения" in assignee.lower():
                 row_cells[2].paragraphs[0].runs[0].font.highlight_color = WD_COLOR_INDEX.YELLOW
 
-            # Срок (с проверкой AI-05)
             deadline = t.get("deadline", "требует уточнения")
             row_cells[3].text = deadline
             if "требует уточнения" in deadline.lower():
                 row_cells[3].paragraphs[0].runs[0].font.highlight_color = WD_COLOR_INDEX.YELLOW
 
-            # Основание и таймкод
             quote = t.get("source_quote", "")
             time_tag = t.get("timestamp", "")
             row_cells[4].text = f"{time_tag} «{quote}»"
@@ -342,7 +354,7 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
     else:
         doc.add_paragraph("Явных задач в ходе совещания зафиксировано не было.")
 
-    # 3. КЛЮЧЕВЫЕ РЕШЕНИЯ (4 СТАТУСА)
+    # 2. КЛЮЧЕВЫЕ РЕШЕНИЯ
     add_section_header("2. КЛЮЧЕВЫЕ РЕШЕНИЯ И ХОД ОБСУЖДЕНИЯ (4 СТАТУСА)")
     decisions = analysis.get("decisions", [])
     if decisions:
@@ -372,7 +384,7 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
                 r_cat.font.color.rgb = RGBColor(80, 80, 80)
                 p.add_run(f"{text}{speaker_str}")
 
-    # 4. РИСКИ И ОТКРЫТЫЕ ВОПРОСЫ
+    # 3. РИСКИ И ОТКРЫТЫЕ ВОПРОСЫ
     add_section_header("3. ОБНАРУЖЕННЫЕ РИСКИ И ПРЕДУПРЕЖДЕНИЯ")
     risks = analysis.get("identified_risks", [])
     if risks:
@@ -394,7 +406,7 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
     else:
         doc.add_paragraph("Открытых вопросов не зафиксировано.")
 
-    # 5. СТЕНОГРАММА С РАЗМЕТКОЙ СПИКЕРОВ (ДИАРИЗАЦИЯ)
+    # 5. СТЕНОГРАММА С ДИАРИЗАЦИЕЙ
     add_section_header("5. ПОЛНАЯ СТЕНОГРАММА ВСТРЕЧИ (РАЗМЕТКА СПИКЕРОВ)")
     quotes_to_highlight = [t.get("source_quote", "").strip().lower() for t in tasks if t.get("source_quote")]
     diarized_lines = analysis.get("diarized_lines", [])
@@ -408,20 +420,17 @@ def create_word_protocol(analysis: dict, output_docx="Протокол_сове�
             speaker = item.get("speaker", "Участник")
             line_text = item.get("text", "")
 
-            # Таймкод
             r_ts = p.add_run(f"{ts} ")
             r_ts.font.name = "Consolas"
             r_ts.font.size = Pt(8.5)
             r_ts.font.color.rgb = RGBColor(120, 120, 120)
 
-            # Имя говорящего (синим жирным шрифтом)
             r_spk = p.add_run(f"{speaker}: ")
             r_spk.font.name = "Arial"
             r_spk.font.size = Pt(9)
             r_spk.font.bold = True
             r_spk.font.color.rgb = RGBColor(31, 78, 121)
 
-            # Текст реплики с жёлтой подсветкой цитаты задачи
             r_txt = p.add_run(line_text)
             r_txt.font.name = "Arial"
             r_txt.font.size = Pt(9)
@@ -445,37 +454,57 @@ def main():
     print("        ООО «ФОТОПРИНТ» (Апгрейд: Точность + Диаризация)")
     print("=" * 60)
 
-    audio_file = "meeting.wav"
-    full_audio_path = os.path.join(BASE_DIR, audio_file)
-    has_recorded_file = os.path.exists(full_audio_path)
+    # Ищем все доступные аудиофайлы в папке ai/
+    audio_candidates = []
+    for f in ["2dialog.ogg", "meeting.wav", "meeting.mp3", "meeting.m4a"]:
+        p = os.path.join(BASE_DIR, f)
+        if os.path.exists(p):
+            audio_candidates.append(f)
 
     print("\nВыберите способ ввода диалога:")
-    if has_recorded_file:
-        print(f"  [1] Использовать УЖЕ ЗАПИСАННЫЙ ранее голос ({audio_file})")
-        print("  [2] Записать живой диалог с микрофона ЗАНОВО")
-        print("  [3] Использовать тестовую текстовую стенограмму (без аудио)")
-        choice = input("\nВаш выбор [1, 2 или 3] (по умолчанию 1): ").strip() or "1"
-    else:
-        print("  [1] Записать живой диалог с микрофона")
-        print("  [2] Использовать готовый аудиофайл")
-        print("  [3] Использовать тестовую текстовую стенограмму")
-        choice = input("\nВаш выбор [1, 2 или 3] (по умолчанию 1): ").strip() or "1"
+    idx = 1
+    file_map = {}
+    for f in audio_candidates:
+        print(f"  [{idx}] Использовать найденный файл: {f}")
+        file_map[str(idx)] = os.path.join(BASE_DIR, f)
+        idx += 1
 
+    custom_idx = idx
+    print(f"  [{custom_idx}] Выбрать другой файл с диска (перетащить файл сюда)")
+    idx += 1
+
+    mic_idx = idx
+    print(f"  [{mic_idx}] Записать живой голос с микрофона")
+    idx += 1
+
+    demo_idx = idx
+    print(f"  [{demo_idx}] Использовать тестовую текстовую стенограмму")
+
+    choice = input(f"\nВаш выбор (1-{demo_idx}, по умолчанию 1): ").strip() or "1"
+
+    full_audio_path = None
     transcript_text = ""
-    if (has_recorded_file and choice == "1") or (not has_recorded_file and choice == "2"):
+
+    if choice in file_map:
+        full_audio_path = file_map[choice]
         transcript_text = transcribe_audio(audio_path=full_audio_path, model_size="medium")
-    elif (has_recorded_file and choice == "2") or (not has_recorded_file and choice == "1"):
-        full_audio_path = record_audio(output_filename=audio_file)
+    elif choice == str(custom_idx):
+        user_path = input("\nПеретащите аудиофайл мышкой в окно терминала (или введите путь): ").strip().strip("\"'")
+        if not os.path.exists(user_path):
+            print(f"[!] Файл '{user_path}' не найден!")
+            return
+        full_audio_path = user_path
+        transcript_text = transcribe_audio(audio_path=full_audio_path, model_size="medium")
+    elif choice == str(mic_idx):
+        full_audio_path = record_audio(output_filename="meeting.wav")
         transcript_text = transcribe_audio(audio_path=full_audio_path, model_size="medium")
     else:
         print("\n[*] Используем тестовую стенограмму планерки...")
-        transcript_text = """[00:01] Директор: Коллеги, начинаем планерку по запуску фотокниг 20х20.
-[00:12] Иванов (Нач. производства): Линию УФ-лакировки нужно перенастроить. Я лично закончу перенастройку до пятницы, 15 ноября.
-[00:28] Директор: Отлично, фиксируем. Что со снабжением матовой бумагой?
-[00:40] Петрова: Поставщик требует предоплату 50%, а у нас лимит 30%. Договор пока не подписан.
-[00:55] Директор: Петрова, проведи повторные переговоры до четверга и согласуй лимит 30%.
-[01:10] Иванов: При двукратном росте заказов возникнет дефицит людей в ночную смену на резке. Это серьезный риск срыва SLA.
-[01:30] Директор: Вопрос ночной смены пока отложим, вернемся в понедельник после отчета маркетинга."""
+        transcript_text = """[00:01] Директор: Коллеги, экстренное совещание. В службе заботы picPac.by всплеск жалоб по цветопередаче.
+[00:13] Ковалева: Уже 45 обращений. Техлид Соколов выкатит хотфикс в App Store до среды, 13 ноября.
+[00:28] Директор: Все 45 фотокниг перепечатать бесплатно за счет резерва цеха. Ковалева, разошли промокоды клиентам до завтра 14:00.
+[00:42] Ковалева: Сделаю. Есть риск падения рейтинга в App Store ниже 4 звезд. Надо бы проверить калибровку мониторов дизайнеров.
+[00:52] Директор: С мониторами разберемся. Вопрос денежных компенсаций отложим до пятницы."""
 
     # Анализ и диаризация через локальный Qwen 2.5
     analysis = analyze_and_diarize_with_llm(transcript_text)
