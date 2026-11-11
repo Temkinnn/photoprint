@@ -693,7 +693,7 @@ export const MeetingsView: React.FC = () => {
             <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530] flex-wrap gap-3">
               <div>
                 <div className="text-xs text-neutral-400 font-mono">
-                  Календарные события · Синхронизировано с базой PostgreSQL
+                  Календарные события компании
                 </div>
                 <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5 tracking-tight">
                   Реестр согласованных совещаний

@@ -594,10 +594,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       await apiClient.resetDemo();
       await syncWithBackend();
-      showToast('Демо сброшено', 'База данных PostgreSQL сброшена к эталонному состоянию', 'info');
+      showToast('Демо сброшено', 'Данные сброшены к эталонному состоянию', 'info');
     } catch (err) {
       console.error('Reset demo failed:', err);
-      showToast('Ошибка сброса', 'Не удалось связаться с сервером базы данных', 'error');
+      showToast('Ошибка сброса', 'Не удалось связаться с сервером', 'error');
     }
   };
 
