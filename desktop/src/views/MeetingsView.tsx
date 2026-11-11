@@ -15,7 +15,9 @@ import {
   X,
   Check,
   ShieldCheck,
-  Bookmark
+  Bookmark,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 export const MeetingsView: React.FC = () => {
@@ -231,46 +233,24 @@ export const MeetingsView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-hidden transition-colors">
-      {/* Top Header */}
+      {/* Top Header - Spacious & Clean */}
       <div className="h-16 px-8 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between bg-white dark:bg-neutral-900/40 shrink-0">
-        <div>
-          <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
-            Совещания и протоколы
-          </h1>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Стенограмма, ключевые решения, риски и утверждение поручений
-          </p>
-        </div>
+            <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              Совещания
+            </h1>
+          </div>
 
-        {/* Meeting Dropdown Selector & Action Buttons */}
-        <div className="flex items-center gap-3">
-          {/* Scenario 1 & 2: Preparation Button */}
-          <button
-            onClick={() => setIsPrepModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm"
-            title="Сформировать проект повестки и предложить свободные слоты календаря"
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>+ Подготовка встречи</span>
-          </button>
+          <span className="text-neutral-300 dark:text-neutral-700">|</span>
 
-          {/* Scenario 3: Save Protocol with link anchor */}
-          <button
-            onClick={handleSaveProtocol}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shadow-sm"
-            title="Сохранить протокол встречи с ссылкой на исходную расшифровку"
-          >
-            <Bookmark className="w-3.5 h-3.5 text-neutral-500" />
-            <span>Сохранить протокол</span>
-          </button>
-
-          <label className="text-xs text-neutral-600 dark:text-neutral-400">Стенограмма:</label>
+          {/* Meeting Selector in header */}
           <div className="relative">
             <select
               value={selectedTranscriptId}
               onChange={(e) => handleSelectMeeting(e.target.value)}
-              className="bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:border-neutral-500 font-medium appearance-none cursor-pointer"
+              className="bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:border-neutral-500 font-medium appearance-none cursor-pointer"
             >
               {MOCK_TRANSCRIPTS.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -280,38 +260,37 @@ export const MeetingsView: React.FC = () => {
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
           </div>
-
-          <button
-            onClick={() => setShowTranscript(!showTranscript)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-              showTranscript
-                ? 'bg-neutral-200 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200'
-                : 'bg-transparent border-neutral-300 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-            }`}
-          >
-            {showTranscript ? 'Скрыть текст' : 'Показать текст'}
-          </button>
-
-          <button
-            onClick={handleRunAiAnalysis}
-            disabled={isAnalyzing}
-            title={backendOnline ? 'Запустить анализ стенограммы на FastAPI бэкенде' : 'AI-анализ стенограммы'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm disabled:opacity-50"
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-            <span>{isAnalyzing ? 'Анализ...' : 'AI Анализ'}</span>
-          </button>
         </div>
+
+        {/* Right side of Top Bar: ONLY One Primary Action */}
+        <button
+          onClick={() => setIsPrepModalOpen(true)}
+          className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm"
+          title="Сформировать проект повестки и предложить свободные слоты календаря (Сценарии 1 и 2)"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Подготовка встречи</span>
+        </button>
       </div>
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Transcript */}
-        {showTranscript && (
-          <div className="w-[440px] border-r border-neutral-200 dark:border-neutral-800/80 flex flex-col bg-neutral-100/50 dark:bg-neutral-900/20">
-            <div className="p-4 border-b border-neutral-200 dark:border-neutral-800/60 flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
-              <span className="font-semibold text-neutral-800 dark:text-neutral-300">Стенограмма встречи</span>
-              <span className="font-mono text-[11px]">{currentTranscript.date}</span>
+        {showTranscript ? (
+          <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800/80 flex flex-col bg-neutral-100/40 dark:bg-neutral-900/20 shrink-0 transition-all">
+            <div className="p-3.5 px-4 border-b border-neutral-200 dark:border-neutral-800/60 flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
+              <div className="flex items-center gap-2 font-medium">
+                <FileText className="w-3.5 h-3.5 text-neutral-500" />
+                <span className="font-semibold text-neutral-800 dark:text-neutral-200">Стенограмма</span>
+                <span className="text-[11px] font-mono text-neutral-400">({currentTranscript.date})</span>
+              </div>
+              <button
+                onClick={() => setShowTranscript(false)}
+                title="Скрыть панель стенограммы"
+                className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 rounded transition-colors"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
             </div>
 
             <div
@@ -340,21 +319,68 @@ export const MeetingsView: React.FC = () => {
               })}
             </div>
           </div>
+        ) : (
+          <div className="w-12 border-r border-neutral-200 dark:border-neutral-800/80 bg-neutral-100/40 dark:bg-neutral-900/20 flex flex-col items-center py-4 shrink-0">
+            <button
+              onClick={() => setShowTranscript(true)}
+              title="Показать стенограмму встречи"
+              className="p-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200/60 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+            <span className="text-[10px] font-medium text-neutral-400 [writing-mode:vertical-rl] rotate-180 mt-4 tracking-wider uppercase select-none">
+              Стенограмма
+            </span>
+          </div>
         )}
 
         {/* Right Pane: Summary, Decisions, Risks & Staged Tasks */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-8 space-y-6">
-          {/* Summary Card */}
-          <div className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-2 shadow-sm">
-            <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
-              <span>Краткий итог (Summary)</span>
-            </div>
-            <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{currentTranscript.summary}</p>
-          </div>
+        <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
+          <div className="max-w-5xl mx-auto w-full space-y-6">
+            {/* Context Header for Protocol */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div>
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
+                  Протокол встречи · #{currentTranscript.id}
+                </div>
+                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mt-0.5">
+                  {currentTranscript.title}
+                </h2>
+              </div>
 
-          {/* Decisions & Risks Cards Grid (Scenario 3 Requirement) */}
-          <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRunAiAnalysis}
+                  disabled={isAnalyzing}
+                  title={backendOnline ? 'Запустить AI анализ стенограммы на бэкенде' : 'AI-анализ стенограммы'}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm disabled:opacity-50"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                  <span>{isAnalyzing ? 'Анализ...' : 'AI Анализ'}</span>
+                </button>
+
+                <button
+                  onClick={handleSaveProtocol}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shadow-sm"
+                  title="Сохранить протокол со ссылкой на исходную расшифровку"
+                >
+                  <Bookmark className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Сохранить протокол</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Summary Card */}
+            <div className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-2 shadow-sm">
+              <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                <span>Краткий итог (Summary)</span>
+              </div>
+              <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{currentTranscript.summary}</p>
+            </div>
+
+            {/* Decisions & Risks Cards Grid (Scenario 3 Requirement) */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Decisions Card */}
             <div className="bg-white dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3 shadow-sm">
               <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -541,6 +567,7 @@ export const MeetingsView: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
 
       {/* ========================================================================= */}
       {/* SCENARIO 1 & 2: MODAL ДЛЯ ПОДГОТОВКИ ВСТРЕЧИ И КАЛЕНДАРЯ                  */}

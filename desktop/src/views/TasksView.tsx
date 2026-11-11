@@ -65,104 +65,108 @@ export const TasksView: React.FC = () => {
       </div>
 
       {/* Filter and Search */}
-      <div className="p-6 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between gap-4 bg-white/50 dark:bg-neutral-900/10">
-        <div className="flex items-center gap-2">
-          {[
-            { id: 'all', label: 'Все' },
-            { id: 'active', label: 'В работе' },
-            { id: 'overdue', label: 'Просроченные' },
-            { id: 'completed', label: 'Завершенные' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterStatus(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                filterStatus === tab.id
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-800 dark:text-white font-semibold shadow-sm'
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-900'
-              }`}
-            >
-              {tab.label}
-              {tab.id === 'overdue' && tasks.filter(t => t.status === 'overdue').length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
-                  {tasks.filter(t => t.status === 'overdue').length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+      <div className="p-4 px-6 lg:px-8 border-b border-neutral-200 dark:border-neutral-800/80 bg-white/50 dark:bg-neutral-900/10 shrink-0">
+        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            {[
+              { id: 'all', label: 'Все' },
+              { id: 'active', label: 'В работе' },
+              { id: 'overdue', label: 'Просроченные' },
+              { id: 'completed', label: 'Завершенные' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterStatus(tab.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  filterStatus === tab.id
+                    ? 'bg-neutral-900 text-white dark:bg-neutral-800 dark:text-white font-semibold shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-900'
+                }`}
+              >
+                {tab.label}
+                {tab.id === 'overdue' && tasks.filter(t => t.status === 'overdue').length > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
+                    {tasks.filter(t => t.status === 'overdue').length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
 
-        <div className="w-72 relative">
-          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск по поручениям..."
-            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500 shadow-sm"
-          />
+          <div className="w-72 relative">
+            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по поручениям..."
+              className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500 shadow-sm"
+            />
+          </div>
         </div>
       </div>
 
       {/* Tasks List */}
-      <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full space-y-2.5">
-        {filteredTasks.length === 0 ? (
-          <div className="py-12 text-center text-xs text-neutral-500 dark:text-neutral-400">Нет поручений в этой категории</div>
-        ) : (
-          filteredTasks.map((task) => {
-            const isDone = task.status === 'completed';
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <div className="max-w-5xl mx-auto w-full space-y-2.5">
+          {filteredTasks.length === 0 ? (
+            <div className="py-12 text-center text-xs text-neutral-500 dark:text-neutral-400">Нет поручений в этой категории</div>
+          ) : (
+            filteredTasks.map((task) => {
+              const isDone = task.status === 'completed';
 
-            return (
-              <div
-                key={task.id}
-                className={`p-4 rounded-xl border flex items-start gap-3.5 transition-colors shadow-sm ${
-                  isDone
-                    ? 'bg-neutral-100/50 dark:bg-neutral-950/40 border-neutral-200 dark:border-neutral-800/60 opacity-60'
-                    : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                }`}
-              >
-                <button
-                  onClick={() => toggleTaskStatus(task.id)}
-                  className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+              return (
+                <div
+                  key={task.id}
+                  className={`p-4 rounded-xl border flex items-start gap-3.5 transition-colors shadow-sm ${
                     isDone
-                      ? 'bg-emerald-600 border-emerald-600 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-950'
-                      : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 hover:border-neutral-500'
+                      ? 'bg-neutral-100/50 dark:bg-neutral-950/40 border-neutral-200 dark:border-neutral-800/60 opacity-60'
+                      : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
                   }`}
                 >
-                  {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
-                </button>
+                  <button
+                    onClick={() => toggleTaskStatus(task.id)}
+                    className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      isDone
+                        ? 'bg-emerald-600 border-emerald-600 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-950'
+                        : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 hover:border-neutral-500'
+                    }`}
+                  >
+                    {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
+                  </button>
 
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`text-sm font-medium ${
-                        isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-neutral-200'
-                      }`}
-                    >
-                      {task.title}
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`text-sm font-medium ${
+                          isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-neutral-200'
+                        }`}
+                      >
+                        {task.title}
+                      </div>
+                      {task.status === 'overdue' && !isDone && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono uppercase">
+                          Просрочено
+                        </span>
+                      )}
                     </div>
-                    {task.status === 'overdue' && !isDone && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono uppercase">
-                        Просрочено
-                      </span>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-                    <span className="text-neutral-700 dark:text-neutral-300 font-medium">👤 {task.assigneeName}</span>
-                    <span className={`flex items-center gap-1 ${task.status === 'overdue' && !isDone ? 'text-rose-600 dark:text-rose-400 font-semibold font-mono' : ''}`}>
-                      <Calendar className="w-3 h-3 text-neutral-400" />
-                      Срок: {task.deadline}
-                    </span>
-                    {task.meetingTitle && (
-                      <span className="text-neutral-500 dark:text-neutral-400">Совещание: {task.meetingTitle}</span>
-                    )}
+                    <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+                      <span className="text-neutral-700 dark:text-neutral-300 font-medium">👤 {task.assigneeName}</span>
+                      <span className={`flex items-center gap-1 ${task.status === 'overdue' && !isDone ? 'text-rose-600 dark:text-rose-400 font-semibold font-mono' : ''}`}>
+                        <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                        Срок: {task.deadline}
+                      </span>
+                      {task.meetingTitle && (
+                        <span className="text-neutral-500 dark:text-neutral-400">Совещание: {task.meetingTitle}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
       </div>
 
       {/* Modal */}

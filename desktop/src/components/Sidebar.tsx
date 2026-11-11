@@ -61,7 +61,7 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="w-60 bg-white dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800/80 flex flex-col justify-between select-none transition-colors">
+    <aside className="w-60 shrink-0 bg-white dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800/80 flex flex-col justify-between select-none transition-colors">
       {/* Top Header */}
       <div>
         <div className="h-16 px-5 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between">
