@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     
-    # Database (PostgreSQL 16)
+    # Database (PostgreSQL 16 / 18)
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword ")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "photoprint")
@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         env_url = os.getenv("DATABASE_URL")
         if env_url:
             return env_url
+            
+        # If unix socket exists in /tmp, prefer connecting via socket
+        if os.path.exists("/tmp/.s.PGSQL.5432") and self.POSTGRES_SERVER in ("localhost", "127.0.0.1", ""):
+            return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@/{self.POSTGRES_DB}?host=/tmp"
+
         from sqlalchemy.engine import URL
         url_obj = URL.create(
             drivername="postgresql+psycopg2",

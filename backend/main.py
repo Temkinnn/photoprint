@@ -42,7 +42,9 @@ async def root():
         "status": "online",
         "service": settings.PROJECT_NAME,
         "docs_url": "/docs",
-        "database": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "local",
+        "database_type": "PostgreSQL",
+        "database": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "postgresql",
+        "python_version": "3.12.10",
         "version": "1.0.0"
     }
 

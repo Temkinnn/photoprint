@@ -1,0 +1,1 @@
+/usr/bin/postgres "-D" "/hdd/IT/hackathon/photo/backend/pgdata" "-h" "" "-k" "/tmp"

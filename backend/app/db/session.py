@@ -6,7 +6,7 @@ from app.db.models import Base
 
 logger = logging.getLogger(__name__)
 
-# Попытка подключиться к PostgreSQL
+# Строгое подключение к PostgreSQL (SQLite полностью исключена)
 try:
     engine = create_engine(
         settings.DATABASE_URL,
@@ -15,13 +15,13 @@ try:
         max_overflow=20
     )
     with engine.connect() as conn:
-        print(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
+        logger.info(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
+        print(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
 except Exception as e:
-    print(f"PostgreSQL недоступен ({e}). Использование резервной локальной базы SQLite.")
-    engine = create_engine(
-        "sqlite:///./photoprint.db",
-        connect_args={"check_same_thread": False}
-    )
+    err_msg = f"КРИТИЧЕСКАЯ ОШИБКА: PostgreSQL недоступен ({e}). Работа без PostgreSQL запрещена!"
+    logger.error(err_msg)
+    print(err_msg)
+    raise RuntimeError(err_msg) from e
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -33,5 +33,5 @@ def get_db():
         db.close()
 
 def init_tables():
-    """Создание всех таблиц в БД"""
+    """Создание всех таблиц в PostgreSQL"""
     Base.metadata.create_all(bind=engine)

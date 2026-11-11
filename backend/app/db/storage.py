@@ -562,24 +562,273 @@ INITIAL_OVERVIEW_BRIEF = OverviewBriefResponse(
     ]
 )
 
-class MemoryStorage:
-    def __init__(self):
-        self.reset_to_default()
+from app.db.session import SessionLocal, init_tables
+from app.db.models import (
+    DBUser, DBDocument, DBMeeting, DBTask,
+    DBCalendarSlot, DBAuditLog, DBKPIMetric,
+    DBTranscript, DBOverviewBrief
+)
 
-    def reset_to_default(self):
+class PersistentList(list):
+    def __init__(self, iterable, on_insert=None, on_remove=None):
+        super().__init__(iterable)
+        self.on_insert = on_insert
+        self.on_remove = on_remove
+
+    def insert(self, index, item):
+        super().insert(index, item)
+        if self.on_insert:
+            self.on_insert(item)
+
+    def append(self, item):
+        super().append(item)
+        if self.on_insert:
+            self.on_insert(item)
+
+    def remove(self, item):
+        super().remove(item)
+        if self.on_remove:
+            self.on_remove(item)
+
+class PostgresStorage:
+    def __init__(self):
         self.current_role: UserRole = "ROLE_DIRECTOR"
-        self.users: Dict[str, UserProfile] = copy.deepcopy(INITIAL_USERS)
-        self.documents: List[DocumentItem] = copy.deepcopy(INITIAL_DOCUMENTS)
-        self.metrics: List[KPIMetric] = copy.deepcopy(INITIAL_METRICS)
-        self.slots: List[CalendarSlot] = copy.deepcopy(INITIAL_SLOTS)
-        self.tasks: List[TaskItem] = copy.deepcopy(INITIAL_TASKS)
-        self.meetings: List[MeetingItem] = copy.deepcopy(INITIAL_MEETINGS)
-        self.audit_logs: List[AuditLogEntry] = copy.deepcopy(INITIAL_AUDIT)
-        self.transcripts: List[TranscriptItem] = copy.deepcopy(INITIAL_TRANSCRIPTS)
-        self.overview_brief: OverviewBriefResponse = copy.deepcopy(INITIAL_OVERVIEW_BRIEF)
+        self._init_and_load()
+
+    def _init_and_load(self):
+        init_tables()
+        self.reload_from_db()
+
+    def reload_from_db(self):
+        with SessionLocal() as db:
+            # Users
+            db_users = db.query(DBUser).all()
+            self.users = {
+                u.role: UserProfile(
+                    id=u.id,
+                    name=u.name,
+                    role=u.role,
+                    roleTitle=u.role_title,
+                    department=u.department,
+                    avatarInitials=u.avatar_initials,
+                    clearance=u.clearance,
+                    description=u.description
+                )
+                for u in db_users
+            }
+            if not self.users:
+                self.users = copy.deepcopy(INITIAL_USERS)
+
+            # Documents
+            db_docs = db.query(DBDocument).all()
+            self.documents = [
+                DocumentItem(
+                    id=d.id,
+                    title=d.title,
+                    category=d.category,
+                    date=d.date,
+                    minClearance=d.min_clearance,
+                    summary=d.summary,
+                    content=d.content
+                )
+                for d in db_docs
+            ]
+
+            # Metrics
+            db_metrics = db.query(DBKPIMetric).all()
+            self.metrics = [
+                KPIMetric(
+                    id=m.id,
+                    name=m.name,
+                    value=m.value,
+                    target=m.target,
+                    status=m.status,
+                    sourceSystem=m.source_system,
+                    updatedAt=m.updated_at,
+                    trend=m.trend
+                )
+                for m in db_metrics
+            ]
+
+            # Slots
+            db_slots = db.query(DBCalendarSlot).all()
+            self.slots = [
+                CalendarSlot(
+                    id=s.id,
+                    startTime=s.start_time,
+                    endTime=s.end_time,
+                    date=s.date,
+                    isAvailable=s.is_available,
+                    participantsFree=s.participants_free or []
+                )
+                for s in db_slots
+            ]
+
+            # Tasks
+            db_tasks = db.query(DBTask).all()
+            task_items = [
+                TaskItem(
+                    id=t.id,
+                    title=t.title,
+                    assigneeName=t.assignee_name,
+                    deadline=t.deadline,
+                    sourceQuote=t.source_quote,
+                    timestamp=t.timestamp,
+                    status=t.status,
+                    meetingTitle=t.meeting_title,
+                    protocolId=t.protocol_id
+                )
+                for t in db_tasks
+            ]
+            self._tasks = PersistentList(task_items, on_insert=self._on_task_insert)
+
+            # Meetings
+            db_meetings = db.query(DBMeeting).all()
+            meeting_items = [
+                MeetingItem(
+                    id=mt.id,
+                    title=mt.title,
+                    date=mt.date,
+                    time=mt.time,
+                    durationMinutes=mt.duration_minutes,
+                    participants=mt.participants or [],
+                    status=mt.status,
+                    agenda=mt.agenda or [],
+                    openQuestions=mt.open_questions or [],
+                    protocolId=mt.protocol_id
+                )
+                for mt in db_meetings
+            ]
+            self._meetings = PersistentList(meeting_items, on_insert=self._on_meeting_insert)
+
+            # Audit Logs
+            db_logs = db.query(DBAuditLog).order_by(DBAuditLog.timestamp.desc()).all()
+            log_items = [
+                AuditLogEntry(
+                    id=a.id,
+                    timestamp=a.timestamp,
+                    userId=a.user_id,
+                    userName=a.user_name,
+                    userRole=a.user_role,
+                    action=a.action,
+                    targetObject=a.target_object,
+                    status=a.status,
+                    details=a.details
+                )
+                for a in db_logs
+            ]
+            self._audit_logs = PersistentList(log_items, on_insert=self._on_audit_insert)
+
+            # Transcripts
+            db_transcripts = db.query(DBTranscript).all()
+            self.transcripts = [
+                TranscriptItem(
+                    id=tr.id,
+                    title=tr.title,
+                    date=tr.date,
+                    type=tr.type,
+                    content=tr.content,
+                    summary=tr.summary,
+                    stagedTasks=[TaskItem(**st) for st in (tr.staged_tasks or [])],
+                    decisions=[DecisionItem(**d) for d in (tr.decisions or [])],
+                    risks=[RiskItem(**r) for r in (tr.risks or [])]
+                )
+                for tr in db_transcripts
+            ]
+
+            # Overview Brief
+            db_brief = db.query(DBOverviewBrief).filter_by(id="default").first()
+            if db_brief:
+                self.overview_brief = OverviewBriefResponse(
+                    situationBrief=db_brief.situation_brief,
+                    dataFreshness=db_brief.data_freshness,
+                    criticalIssues=[CriticalIssueItem(**ci) for ci in (db_brief.critical_issues or [])]
+                )
+            else:
+                self.overview_brief = copy.deepcopy(INITIAL_OVERVIEW_BRIEF)
+
+    @property
+    def tasks(self) -> PersistentList:
+        return self._tasks
+
+    @tasks.setter
+    def tasks(self, new_tasks):
+        with SessionLocal() as db:
+            current_ids = {t.id for t in new_tasks}
+            db.query(DBTask).filter(~DBTask.id.in_(current_ids)).delete(synchronize_session=False)
+            db.commit()
+        self._tasks = PersistentList(list(new_tasks), on_insert=self._on_task_insert)
+
+    @property
+    def meetings(self) -> PersistentList:
+        return self._meetings
+
+    @meetings.setter
+    def meetings(self, new_meetings):
+        self._meetings = PersistentList(list(new_meetings), on_insert=self._on_meeting_insert)
+
+    @property
+    def audit_logs(self) -> PersistentList:
+        return self._audit_logs
+
+    @audit_logs.setter
+    def audit_logs(self, new_logs):
+        self._audit_logs = PersistentList(list(new_logs), on_insert=self._on_audit_insert)
+
+    def _on_task_insert(self, item: TaskItem):
+        with SessionLocal() as db:
+            db_task = DBTask(
+                id=item.id,
+                title=item.title,
+                assignee_name=item.assigneeName,
+                deadline=item.deadline,
+                source_quote=item.sourceQuote,
+                timestamp=item.timestamp,
+                status=item.status,
+                meeting_title=item.meetingTitle,
+                protocol_id=item.protocolId
+            )
+            db.merge(db_task)
+            db.commit()
+
+    def _on_meeting_insert(self, item: MeetingItem):
+        with SessionLocal() as db:
+            db_meeting = DBMeeting(
+                id=item.id,
+                title=item.title,
+                date=item.date,
+                time=item.time,
+                duration_minutes=item.durationMinutes,
+                participants=item.participants,
+                status=item.status,
+                agenda=item.agenda,
+                open_questions=item.openQuestions,
+                protocol_id=item.protocolId
+            )
+            db.merge(db_meeting)
+            db.commit()
+
+    def _on_audit_insert(self, item: AuditLogEntry):
+        with SessionLocal() as db:
+            db_log = DBAuditLog(
+                id=item.id,
+                timestamp=item.timestamp,
+                user_id=item.userId,
+                user_name=item.userName,
+                user_role=item.userRole,
+                action=item.action,
+                target_object=item.targetObject,
+                status=item.status,
+                details=item.details
+            )
+            db.merge(db_log)
+            db.commit()
+
+    def save_task(self, item: TaskItem):
+        self._on_task_insert(item)
 
     def get_current_user(self) -> UserProfile:
-        return self.users.get(self.current_role, self.users["ROLE_DIRECTOR"])
+        return self.users.get(self.current_role, self.users.get("ROLE_DIRECTOR", list(self.users.values())[0]))
 
     def switch_role(self, role: UserRole) -> UserProfile:
         if role in self.users:
@@ -589,7 +838,7 @@ class MemoryStorage:
     def add_audit_log(self, action: str, target: str, status: str, details: str):
         user = self.get_current_user()
         entry = AuditLogEntry(
-            id=f"aud-{len(self.audit_logs) + 1}",
+            id=f"aud-{len(self._audit_logs) + 1}",
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             userId=user.id,
             userName=user.name,
@@ -599,7 +848,17 @@ class MemoryStorage:
             status=status,
             details=details
         )
-        self.audit_logs.insert(0, entry)
+        self._audit_logs.insert(0, entry)
         return entry
 
-storage = MemoryStorage()
+    def reset_to_default(self):
+        from app.db.seed import seed_database
+        with SessionLocal() as db:
+            from app.db.models import Base
+            Base.metadata.drop_all(db.bind)
+            Base.metadata.create_all(db.bind)
+        seed_database()
+        self.current_role = "ROLE_DIRECTOR"
+        self.reload_from_db()
+
+storage = PostgresStorage()
