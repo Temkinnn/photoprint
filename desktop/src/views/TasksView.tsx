@@ -139,15 +139,13 @@ export const TasksView: React.FC = () => {
       <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-              Сценарий 7.2.4
-            </span>
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
             <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-              4. Реестр задач и поручений
+              Реестр поручений и задач
             </h1>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Предложение ответственного и срока, обнаружение задач без владельца/срока, запись в реестр после подтверждения
+            Контроль исполнения решений, предложение ответственного и срока, закрытие обязательств
           </p>
         </div>
 
@@ -164,13 +162,13 @@ export const TasksView: React.FC = () => {
             onClick={() => setActiveTab('knowledge_base')}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
           >
-            <span>К шагу 5: База знаний</span>
+            <span>Перейти к базе знаний</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Scenario 4 Assistant Banner: Detection of Tasks without Owner or Deadline */}
+      {/* Assistant Banner: Detection of Tasks without Owner or Deadline */}
       {unassignedTasks.length > 0 && (
         <div className="px-6 py-3 bg-amber-500/[0.08] border-b border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex items-center gap-2.5">

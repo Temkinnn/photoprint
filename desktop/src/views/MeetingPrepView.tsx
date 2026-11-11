@@ -188,7 +188,7 @@ export const MeetingPrepView: React.FC = () => {
     }));
     setActiveTab('meeting_schedule');
     showToast(
-      'Переход к сценарию 2',
+      'Повестка подготовлена',
       'Проект повестки передан в модуль согласования слота календаря',
       'info'
     );
@@ -201,16 +201,14 @@ export const MeetingPrepView: React.FC = () => {
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
         {/* ========================================================================= */}
-        {/* HEADER & SCENARIO IDENTIFIER                                              */}
+        {/* HEADER                                                                    */}
         {/* ========================================================================= */}
         <div className="pb-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-                Сценарий 7.2.1
-              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
               <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                1. Подготовка встречи
+                Подготовка встречи
               </h1>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
@@ -222,7 +220,7 @@ export const MeetingPrepView: React.FC = () => {
             onClick={handleProceedToScheduling}
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
           >
-            <span>Перейти к созданию встречи (Сценарий 2)</span>
+            <span>Перейти к созданию встречи</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -233,7 +231,7 @@ export const MeetingPrepView: React.FC = () => {
         <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-neutral-600 dark:text-neutral-300">
             <Sliders className="w-3.5 h-3.5 text-sky-500" />
-            <span>Быстрые сценарии совещаний дирекции:</span>
+            <span>Типовые темы совещаний дирекции:</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {PRESET_TOPICS.map((preset, idx) => (
@@ -379,13 +377,13 @@ export const MeetingPrepView: React.FC = () => {
 
           {/* RIGHT COLUMN: AI-GENERATED OUTPUT (7 COLS) */}
           <div className="lg:col-span-7 space-y-5">
-            {/* 1. AGENDA BLOCK */}
+            {/* AGENDA BLOCK */}
             <div className="p-5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#202430]">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-sky-500" />
                   <h3 className="text-xs font-bold text-neutral-950 dark:text-white uppercase tracking-wider font-mono">
-                    1. Проект повестки совещания
+                    Проект повестки совещания
                   </h3>
                 </div>
                 <span className="text-[11px] font-mono text-neutral-400">
@@ -439,13 +437,13 @@ export const MeetingPrepView: React.FC = () => {
               </div>
             </div>
 
-            {/* 2. OPEN QUESTIONS BLOCK */}
+            {/* OPEN QUESTIONS BLOCK */}
             <div className="p-5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#202430]">
                 <div className="flex items-center gap-2">
                   <HelpCircle className="w-4 h-4 text-amber-500" />
                   <h3 className="text-xs font-bold text-neutral-950 dark:text-white uppercase tracking-wider font-mono">
-                    2. Список открытых вопросов к обсуждению
+                    Список открытых вопросов к обсуждению
                   </h3>
                 </div>
                 <span className="text-[11px] font-mono text-neutral-400">
@@ -466,13 +464,13 @@ export const MeetingPrepView: React.FC = () => {
               </div>
             </div>
 
-            {/* 3. OPEN TASKS BLOCK */}
+            {/* OPEN TASKS BLOCK */}
             <div className="p-5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#202430]">
                 <div className="flex items-center gap-2">
                   <CheckSquare className="w-4 h-4 text-emerald-500" />
                   <h3 className="text-xs font-bold text-neutral-950 dark:text-white uppercase tracking-wider font-mono">
-                    3. Список открытых задач по документам
+                    Список открытых задач по документам
                   </h3>
                 </div>
                 <span className="text-[11px] font-mono text-neutral-400">
@@ -493,14 +491,14 @@ export const MeetingPrepView: React.FC = () => {
               </div>
             </div>
 
-            {/* ACTION BANNER TO STEP 2 */}
+            {/* ACTION BANNER */}
             <div className="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/40 flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-bold text-sky-950 dark:text-sky-200">
                   Повестка, вопросы и задачи готовы к согласованию
                 </div>
                 <div className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
-                  Следующий шаг: подобрать свободный слот в тестовом календаре и подтвердить создание встречи.
+                  Подберите свободное время в календаре и подтвердите создание встречи.
                 </div>
               </div>
 
@@ -508,7 +506,7 @@ export const MeetingPrepView: React.FC = () => {
                 onClick={handleProceedToScheduling}
                 className="px-4 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
               >
-                <span>К шагу 2: Создание встречи</span>
+                <span>Перейти к созданию встречи</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>

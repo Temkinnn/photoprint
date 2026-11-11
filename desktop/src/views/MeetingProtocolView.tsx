@@ -156,16 +156,14 @@ export const MeetingProtocolView: React.FC = () => {
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
         {/* ========================================================================= */}
-        {/* HEADER & SCENARIO IDENTIFIER                                              */}
+        {/* HEADER                                                                    */}
         {/* ========================================================================= */}
         <div className="pb-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-                Сценарий 7.2.3
-              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
               <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                3. Протокол и summary
+                Протокол и summary встречи
               </h1>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
@@ -185,7 +183,7 @@ export const MeetingProtocolView: React.FC = () => {
               onClick={() => setActiveTab('tasks')}
               className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
             >
-              <span>К шагу 4: Реестр задач</span>
+              <span>Перейти к реестру задач</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -272,15 +270,15 @@ export const MeetingProtocolView: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* 4 SUMMARY SECTIONS: DECISIONS, QUESTIONS, RISKS, TASKS                    */}
+        {/* SUMMARY SECTIONS: DECISIONS, QUESTIONS, RISKS, TASKS                    */}
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* 1. KEY DECISIONS */}
+          {/* KEY DECISIONS */}
           <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-t-2 border-t-emerald-500 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span>1. Ключевые решения</span>
+                <span>Ключевые решения</span>
               </span>
               <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
                 {(currentTranscript.decisions || []).length} принято
@@ -296,12 +294,12 @@ export const MeetingProtocolView: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. OPEN QUESTIONS */}
+          {/* OPEN QUESTIONS */}
           <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-t-2 border-t-sky-500 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                 <HelpCircle className="w-4 h-4 text-sky-500" />
-                <span>2. Открытые вопросы</span>
+                <span>Открытые вопросы</span>
               </span>
               <span className="text-[10px] font-mono font-bold text-sky-600 dark:text-sky-400">
                 {(currentTranscript.questions || []).length} открыто
@@ -317,12 +315,12 @@ export const MeetingProtocolView: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. RISKS & MITIGATIONS */}
+          {/* RISKS & MITIGATIONS */}
           <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-t-2 border-t-amber-500 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
-                <span>3. Производственные риски</span>
+                <span>Производственные риски</span>
               </span>
               <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
                 {(currentTranscript.risks || []).length} риска
@@ -350,13 +348,13 @@ export const MeetingProtocolView: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* 4. EXTRACTED ACTION ITEMS / TASKS TABLE                                   */}
+        {/* EXTRACTED ACTION ITEMS / TASKS TABLE                                      */}
         {/* ========================================================================= */}
         <div className="p-5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#202430]">
             <div>
               <h3 className="text-xs font-bold text-neutral-950 dark:text-white uppercase tracking-wider font-mono">
-                4. Выявленные поручения по итогам встречи
+                Выявленные поручения по итогам встречи
               </h3>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
                 Поручения, извлеченные AI из реплик спикеров с привязкой к таймкодам

@@ -32,49 +32,43 @@ export const Sidebar: React.FC = () => {
 
   const activeTasksCount = tasks.filter((t) => t.status === 'active' || t.status === 'overdue').length;
 
-  // 7.2. Обязательные сценарии в точном порядке выполнения
+  // Основные процессы в естественном порядке выполнения
   const scenarioNavigation = [
     {
       id: 'meeting_prep',
-      number: '1',
-      label: '1. Подготовка встречи',
+      label: 'Подготовка встречи',
       desc: 'Повестка, вопросы, задачи',
       icon: FileSpreadsheet,
     },
     {
       id: 'meeting_schedule',
-      number: '2',
-      label: '2. Создание встречи',
+      label: 'Создание встречи',
       desc: 'Тестовый календарь и слоты',
       icon: Calendar,
     },
     {
       id: 'meeting_protocol',
-      number: '3',
-      label: '3. Протокол и summary',
+      label: 'Протокол и summary',
       desc: 'Решения, риски и поручения',
       icon: FileText,
     },
     {
       id: 'tasks',
-      number: '4',
-      label: '4. Задачи',
-      desc: 'Исполнители, сроки, реестр',
+      label: 'Реестр задач',
+      desc: 'Исполнители, сроки, контроль',
       icon: CheckSquare,
       badge: activeTasksCount > 0 ? activeTasksCount : undefined,
     },
     {
       id: 'knowledge_base',
-      number: '5',
-      label: '5. Работа с документами',
-      desc: 'RAG, цитирование, RBAC',
+      label: 'База знаний',
+      desc: 'RAG, цитирование, регламенты',
       icon: Search,
     },
     {
       id: 'overview',
-      number: '6',
-      label: '6. Управленческий обзор',
-      desc: 'Сводка KPI и просрочка',
+      label: 'Пульс компании',
+      desc: 'Сводка KPI и аналитика',
       icon: Activity,
     },
   ];
@@ -148,10 +142,9 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Section Label: 7.2 Обязательные сценарии */}
-        <div className="px-4 pt-4 pb-1.5 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-wider uppercase font-mono flex items-center justify-between">
-          <span>7.2. Обязательные сценарии</span>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-[#1b1f29] text-neutral-500">1–6</span>
+        {/* Section Label: Операционное управление */}
+        <div className="px-4 pt-4 pb-1.5 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-wider uppercase font-mono">
+          Операционные процессы
         </div>
 
         {/* Scenario Navigation Menu */}

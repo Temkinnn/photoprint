@@ -72,20 +72,18 @@ export const MeetingScheduleView: React.FC = () => {
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
         {/* ========================================================================= */}
-        {/* HEADER & SCENARIO IDENTIFIER                                              */}
+        {/* HEADER                                                                    */}
         {/* ========================================================================= */}
         <div className="pb-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-                Сценарий 7.2.2
-              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
               <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                2. Создание встречи
+                Создание встречи в календаре
               </h1>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              Предложение свободного времени на тестовом календаре, создание события и приглашений только после подтверждения
+              Подбор свободного времени в календаре, создание события и отправка приглашений
             </p>
           </div>
 
@@ -101,23 +99,23 @@ export const MeetingScheduleView: React.FC = () => {
               onClick={() => setActiveTab('meeting_protocol')}
               className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
             >
-              <span>К шагу 3: Протокол и summary</span>
+              <span>Перейти к протоколу и summary</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
         {/* ========================================================================= */}
-        {/* MANDATORY COMPLIANCE CALLOUT (ПОДТВЕРЖДЕНИЕ ПОЛЬЗОВАТЕЛЯ)                */}
+        {/* COMPLIANCE CALLOUT                                                        */}
         {/* ========================================================================= */}
         <div className="p-4 rounded-lg bg-amber-500/[0.07] dark:bg-amber-500/[0.1] border border-amber-500/30 text-xs flex items-start gap-3">
           <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-semibold text-amber-950 dark:text-amber-200">
-              Гарантия сценария 7.2.2: Контроль пользователя перед отправкой приглашений
+              Контроль перед отправкой приглашений
             </div>
             <div className="text-neutral-600 dark:text-neutral-300 text-[11px] leading-relaxed">
-              Система автоматически находит свободные окна всех участников на тестовом календаре, но событие в календаре и приглашения создаются <strong>исключительно после вашего прямого нажатия кнопки «Подтвердить создание встречи»</strong>.
+              Система автоматически находит свободные окна всех участников в календаре, но событие в календаре и приглашения создаются <strong>исключительно после вашего прямого нажатия кнопки «Подтвердить создание встречи»</strong>.
             </div>
           </div>
         </div>

@@ -86,15 +86,13 @@ export const KnowledgeBaseView: React.FC = () => {
       <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
-              Сценарий 7.2.5
-            </span>
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
             <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-              5. Работа с документами
+              База знаний и регламенты
             </h1>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Ответ на вопрос по базе знаний, цитирование документов и фрагментов; при отсутствии основания честное сообщение
+            Семантический поиск по регламентам, цитирование документов и фрагментов; проверка требований
           </p>
         </div>
 
@@ -111,7 +109,7 @@ export const KnowledgeBaseView: React.FC = () => {
             onClick={() => setActiveTab('overview')}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
           >
-            <span>К шагу 6: Управленческий обзор</span>
+            <span>Перейти к пульсу компании</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
