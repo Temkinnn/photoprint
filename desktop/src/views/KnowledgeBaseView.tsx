@@ -6,11 +6,13 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  BookOpen
+  BookOpen,
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents } = useApp();
+  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents, setActiveTab } = useApp();
   const [showDocsList, setShowDocsList] = useState(false);
 
   const [inputQuery, setInputQuery] = useState('');
@@ -19,7 +21,7 @@ export const KnowledgeBaseView: React.FC = () => {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по внутренним регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
+      text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
       timestamp: '14:00',
     },
   ]);
@@ -32,12 +34,16 @@ export const KnowledgeBaseView: React.FC = () => {
       text: 'Какое допустимое оптическое отклонение Delta-E установлено для цифровой печати на ЦПМ HP Indigo 7900?',
     },
     {
-      label: 'Финансы (Тест RBAC): План выручки на Q4',
+      label: 'Клиенты: Перепечатка брака в picPac.by',
+      text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
+    },
+    {
+      label: 'Финансы (RBAC): План выручки на Q4',
       text: 'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
     },
     {
-      label: 'Клиенты: Перепечатка брака в picPac.by',
-      text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
+      label: 'Тест отсутствия основания: Нормативы вертолетов',
+      text: 'Каковы нормативы посадки вертолетов на крышу полиграфического комплекса ООО Фотопринт?',
     },
   ];
 
@@ -79,21 +85,34 @@ export const KnowledgeBaseView: React.FC = () => {
       {/* Top Header */}
       <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div>
-          <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-            Технологические регламенты и стандарты
-          </h1>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Корпоративный справочник допусков оборудования, нормативов брака и регламентов сервиса
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
+              Сценарий 7.2.5
+            </span>
+            <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
+              5. Работа с документами
+            </h1>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            Ответ на вопрос по базе знаний, цитирование документов и фрагментов; при отсутствии основания честное сообщение
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowDocsList((prev) => !prev)}
-            className="text-xs font-mono text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
+            className="text-xs font-mono text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1.5 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
           >
             <BookOpen className="w-3.5 h-3.5 text-sky-500" />
-            <span>{documents.length} регламентов с сервера</span>
+            <span>{documents.length} регламентов</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('overview')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
+          >
+            <span>К шагу 6: Управленческий обзор</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

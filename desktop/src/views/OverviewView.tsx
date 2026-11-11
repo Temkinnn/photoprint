@@ -122,13 +122,15 @@ export const OverviewView: React.FC = () => {
         <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530] flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
+                Сценарий 7.2.6
+              </span>
               <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                Пульс компании: Производство, Сервис и Финансы
+                6. Управленческий обзор
               </h1>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              Оперативный контроль ключевых витрин выработки, брака и согласованных решений директора
+              Краткая сводка KPI и просроченных решений с указанием источника и времени актуальности данных
             </p>
           </div>
 

@@ -91,6 +91,15 @@ export interface MeetingItem {
   protocolId?: string;
 }
 
+export interface MeetingDraft {
+  topic: string;
+  participants: string[];
+  documents: string[];
+  agenda: string[];
+  openQuestions: string[];
+  openTasks: string[];
+}
+
 export interface KPIMetric {
   id: string;
   name: string;
@@ -123,6 +132,8 @@ export interface TranscriptItem {
   summary: string;
   decisions: DecisionItem[];
   risks: RiskItem[];
+  duration?: string;
+  questions?: string[];
 }
 
 export interface CriticalIssueItem {
