@@ -203,6 +203,27 @@ export const MeetingProtocolView: React.FC = () => {
     showToast('Задачи внесены в реестр', 'Поручения записаны в базу данных', 'success');
   };
 
+  const handleApproveSingleTask = async (taskIndex: number) => {
+    const task = tasksToReview[taskIndex];
+    if (!task) return;
+    await batchApproveTasks([task], currentTranscript.title);
+    setTasksToReview((prev) => prev.filter((_, i) => i !== taskIndex));
+  };
+
+  const getCategoryBadge = (category: string) => {
+    switch (category) {
+      case 'resolved':
+        return <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold">Решено</span>;
+      case 'proposed':
+        return <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20 font-semibold">Предложено</span>;
+      case 'discussed':
+        return <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-semibold">Обсуждалось</span>;
+      case 'needs_clarification':
+      default:
+        return <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-semibold">Уточнить</span>;
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
@@ -358,10 +379,26 @@ export const MeetingProtocolView: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2 text-xs max-h-72 overflow-y-auto pr-1">
               {(currentTranscript.decisions || []).map((d) => (
-                <div key={d.id} className="p-2.5 rounded bg-emerald-50/50 dark:bg-emerald-950/15 border border-emerald-200/50 dark:border-emerald-900/30 text-emerald-950 dark:text-emerald-200 leading-snug">
-                  <div className="font-medium">{d.text}</div>
+                <div key={d.id} className="p-2.5 rounded bg-neutral-50 dark:bg-[#161822] border border-neutral-200 dark:border-[#232734] space-y-1.5">
+                  <div className="flex items-center justify-between gap-1.5">
+                    {getCategoryBadge(d.category)}
+                    {d.timestamp && (
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        {d.timestamp}
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-medium text-neutral-900 dark:text-neutral-100 text-xs leading-snug">
+                    {d.text}
+                  </div>
+                  {d.speaker && (
+                    <div className="text-[10px] text-neutral-400 flex items-center gap-1 font-mono">
+                      <User className="w-2.5 h-2.5" />
+                      <span>{d.speaker}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -477,9 +514,19 @@ export const MeetingProtocolView: React.FC = () => {
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shrink-0">
-                    Ожидает утверждения
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleApproveSingleTask(idx)}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-800 rounded transition-colors shadow-sm"
+                      title="Утвердить поручение и внести в реестр задач"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      <span>Утвердить</span>
+                    </button>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                      Ожидает
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

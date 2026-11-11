@@ -259,10 +259,28 @@ INITIAL_METRICS: List[KPIMetric] = [
 ]
 
 INITIAL_SLOTS: List[CalendarSlot] = [
-    CalendarSlot(id="slot-1", date="2026-11-12", startTime="10:00", endTime="11:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
-    CalendarSlot(id="slot-2", date="2026-11-12", startTime="14:30", endTime="15:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С."]),
-    CalendarSlot(id="slot-3", date="2026-11-13", startTime="11:00", endTime="12:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
-    CalendarSlot(id="slot-4", date="2026-11-13", startTime="16:00", endTime="17:00", isAvailable=False, participantsFree=["Ковалева Е.Д."]),
+    # 12 ноября 2026 (Среда)
+    CalendarSlot(id="slot-12-1", date="2026-11-12", startTime="09:30", endTime="10:30", isAvailable=False, participantsFree=["Смирнов А.В."]),
+    CalendarSlot(id="slot-12-2", date="2026-11-12", startTime="11:30", endTime="12:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-12-3", date="2026-11-12", startTime="14:00", endTime="15:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-12-4", date="2026-11-12", startTime="15:30", endTime="16:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С."]),
+    CalendarSlot(id="slot-12-5", date="2026-11-12", startTime="17:00", endTime="18:00", isAvailable=False, participantsFree=["Ковалева Е.Д."]),
+
+    # 13 ноября 2026 (Четверг)
+    CalendarSlot(id="slot-13-1", date="2026-11-13", startTime="10:00", endTime="11:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-13-2", date="2026-11-13", startTime="12:00", endTime="13:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-13-3", date="2026-11-13", startTime="14:30", endTime="15:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-13-4", date="2026-11-13", startTime="16:00", endTime="17:00", isAvailable=False, participantsFree=["Ковалева Е.Д."]),
+
+    # 14 ноября 2026 (Пятница)
+    CalendarSlot(id="slot-14-1", date="2026-11-14", startTime="10:00", endTime="11:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С."]),
+    CalendarSlot(id="slot-14-2", date="2026-11-14", startTime="11:30", endTime="12:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-14-3", date="2026-11-14", startTime="15:00", endTime="16:00", isAvailable=False, participantsFree=["Смирнов А.В."]),
+
+    # 17 ноября 2026 (Понедельник)
+    CalendarSlot(id="slot-17-1", date="2026-11-17", startTime="10:30", endTime="11:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-17-2", date="2026-11-17", startTime="14:00", endTime="15:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+    CalendarSlot(id="slot-17-3", date="2026-11-17", startTime="16:30", endTime="17:30", isAvailable=True, participantsFree=["Иванов И.С.", "Ковалева Е.Д."]),
 ]
 
 INITIAL_TASKS: List[TaskItem] = [
@@ -826,6 +844,25 @@ class PostgresStorage:
 
     def save_task(self, item: TaskItem):
         self._on_task_insert(item)
+
+    def delete_meeting(self, meeting_id: str) -> bool:
+        with SessionLocal() as db:
+            db.query(DBMeeting).filter_by(id=meeting_id).delete()
+            db.commit()
+        initial_len = len(self._meetings)
+        self._meetings = PersistentList([m for m in self._meetings if m.id != meeting_id], on_insert=self._on_meeting_insert)
+        return len(self._meetings) < initial_len
+
+    def update_meeting(self, meeting_id: str, updates: dict) -> Optional[MeetingItem]:
+        for idx, m in enumerate(self._meetings):
+            if m.id == meeting_id:
+                data = m.model_dump()
+                data.update(updates)
+                updated_item = MeetingItem(**data)
+                self._meetings[idx] = updated_item
+                self._on_meeting_insert(updated_item)
+                return updated_item
+        return None
 
     def add_transcript(self, transcript: TranscriptItem):
         with SessionLocal() as db:

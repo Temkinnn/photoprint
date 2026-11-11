@@ -110,5 +110,29 @@ class TestServerPostgres(unittest.TestCase):
         self.assertIn("summary", data)
         self.assertIn("transcriptId", data)
 
+    def test_create_and_delete_meeting(self):
+        """Проверка создания и отмены встречи с динамической проверкой слотов календаря"""
+        create_res = self.client.post("/api/v1/meetings/create", json={
+            "title": "Тест календаря",
+            "date": "2026-11-13",
+            "time": "10:00 - 11:00",
+            "durationMinutes": 60,
+            "participants": ["Смирнов А.В."],
+            "agenda": ["Пункт 1"]
+        })
+        self.assertEqual(create_res.status_code, 200)
+        meeting_id = create_res.json()["id"]
+
+        # Проверка слота: должен стать занятым
+        slots_res = self.client.get("/api/v1/meetings/calendar/slots?date=2026-11-13")
+        self.assertEqual(slots_res.status_code, 200)
+        slot_10 = next((s for s in slots_res.json() if s["startTime"] == "10:00"), None)
+        self.assertIsNotNone(slot_10)
+        self.assertFalse(slot_10["isAvailable"])
+
+        # Удаление встречи
+        del_res = self.client.delete(f"/api/v1/meetings/{meeting_id}")
+        self.assertEqual(del_res.status_code, 200)
+
 if __name__ == "__main__":
     unittest.main()

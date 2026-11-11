@@ -74,6 +74,8 @@ interface AppContextType {
     participants: string[];
     agenda: string[];
   }) => Promise<void>;
+  cancelMeeting: (meetingId: string) => Promise<void>;
+  fetchSlotsForDate: (date: string) => Promise<CalendarSlot[]>;
   meetingDraft: MeetingDraft;
   setMeetingDraft: React.Dispatch<React.SetStateAction<MeetingDraft>>;
 }
@@ -496,6 +498,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setScheduledMeetings((prev) =>
           prev.map((m) => (m.id === newMeeting.id ? liveMeeting : m))
         );
+        const freshSlots = await apiClient.getCalendarSlots(params.date);
+        if (freshSlots && freshSlots.length > 0) setCalendarSlots(freshSlots);
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
       } catch {
@@ -510,6 +514,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       `Пользователь подтвердил создание встречи на ${params.date} ${params.time}`
     );
     showToast('Встреча запланирована', `Событие создано на ${params.date} в ${params.time}`, 'success');
+  };
+
+  const cancelMeeting = async (meetingId: string) => {
+    const meeting = scheduledMeetings.find((m) => m.id === meetingId);
+    setScheduledMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+
+    if (backendOnline) {
+      try {
+        await apiClient.deleteMeeting(meetingId);
+        if (meeting?.date) {
+          const freshSlots = await apiClient.getCalendarSlots(meeting.date);
+          if (freshSlots && freshSlots.length > 0) setCalendarSlots(freshSlots);
+        }
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
+    logAudit(
+      'CANCEL_MEETING',
+      `Meeting: ${meeting?.title || meetingId}`,
+      'SUCCESS',
+      `Встреча отменена, слот в календаре освобожден`
+    );
+    showToast('Встреча отменена', `Событие удалено из календаря`, 'info');
+  };
+
+  const fetchSlotsForDate = async (date: string): Promise<CalendarSlot[]> => {
+    if (backendOnline) {
+      try {
+        const slots = await apiClient.getCalendarSlots(date);
+        if (slots && slots.length > 0) {
+          setCalendarSlots(slots);
+          return slots;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return calendarSlots;
   };
 
   const analyzeMeetingTranscript = async (
@@ -688,6 +734,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         calendarSlots,
         scheduledMeetings,
         scheduleMeeting,
+        cancelMeeting,
+        fetchSlotsForDate,
         transcripts,
         users,
         overviewBrief,

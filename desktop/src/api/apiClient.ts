@@ -138,10 +138,20 @@ export const apiClient = {
     return res.json();
   },
 
-  async getCalendarSlots(): Promise<CalendarSlot[]> {
-    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/calendar/slots`);
+  async getCalendarSlots(date?: string): Promise<CalendarSlot[]> {
+    const url = date
+      ? `${API_BASE_URL}/api/v1/meetings/calendar/slots?date=${encodeURIComponent(date)}`
+      : `${API_BASE_URL}/api/v1/meetings/calendar/slots`;
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  },
+
+  async deleteMeeting(meetingId: string): Promise<void> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/${meetingId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   },
 
   async createMeeting(params: {

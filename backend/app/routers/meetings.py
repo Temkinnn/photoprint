@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from typing import List
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from typing import List, Optional
 from app.db.storage import storage
 from app.schemas import (
     MeetingItem, CalendarSlot, CreateMeetingRequest,
@@ -39,8 +39,69 @@ async def api_generate_agenda(req: AgendaGenerationRequest):
     return await generate_meeting_agenda(req.topic, req.participants, req.documents)
 
 @router.get("/calendar/slots", response_model=List[CalendarSlot])
-async def get_calendar_slots():
-    return storage.slots
+async def get_calendar_slots(date: Optional[str] = None, participants: Optional[str] = None):
+    """
+    Получение слотов календаря с динамической проверкой занятости и коллизий с существующими встречами.
+    """
+    all_slots = list(storage.slots)
+    if date:
+        date_slots = [s for s in all_slots if s.date == date]
+        if not date_slots:
+            date_slots = [
+                CalendarSlot(id=f"slot-{date}-1", date=date, startTime="10:00", endTime="11:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+                CalendarSlot(id=f"slot-{date}-2", date=date, startTime="11:30", endTime="12:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+                CalendarSlot(id=f"slot-{date}-3", date=date, startTime="14:00", endTime="15:00", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
+                CalendarSlot(id=f"slot-{date}-4", date=date, startTime="15:30", endTime="16:30", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С."]),
+                CalendarSlot(id=f"slot-{date}-5", date=date, startTime="17:00", endTime="18:00", isAvailable=False, participantsFree=["Ковалева Е.Д."]),
+            ]
+
+        # Проверка коллизий с запланированными встречами
+        existing_for_date = [m for m in storage.meetings if m.date == date and m.status == "scheduled"]
+        result_slots = []
+        for slot in date_slots:
+            has_collision = False
+            for m in existing_for_date:
+                if m.time and (slot.startTime in m.time or slot.endTime in m.time or m.time.startswith(slot.startTime)):
+                    has_collision = True
+                    break
+
+            if has_collision:
+                result_slots.append(CalendarSlot(
+                    id=slot.id,
+                    date=slot.date,
+                    startTime=slot.startTime,
+                    endTime=slot.endTime,
+                    isAvailable=False,
+                    participantsFree=[]
+                ))
+            else:
+                result_slots.append(slot)
+        return result_slots
+
+    return all_slots
+
+@router.delete("/{meeting_id}")
+async def delete_meeting(meeting_id: str):
+    """
+    Отмена и удаление встречи из календаря с освобождением слота.
+    """
+    meeting_title = meeting_id
+    for m in storage.meetings:
+        if m.id == meeting_id:
+            meeting_title = m.title
+            break
+
+    success = storage.delete_meeting(meeting_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+
+    storage.add_audit_log(
+        action="CANCEL_MEETING_ACTION",
+        target=f"{meeting_id} ({meeting_title})",
+        status="success",
+        details=f"Пользователь отменил встречу «{meeting_title}». Слот в календаре освобожден."
+    )
+    return {"status": "success", "message": f"Встреча {meeting_id} успешно отменена"}
 
 @router.post("/create", response_model=MeetingItem)
 async def create_meeting(req: CreateMeetingRequest):
