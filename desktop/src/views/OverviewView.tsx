@@ -65,9 +65,9 @@ export const OverviewView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-transparent overflow-y-auto p-8 space-y-6 transition-colors">
+    <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-y-auto p-8 space-y-6 transition-colors">
       {/* Header & Freshness Banner */}
-      <div className="flex items-center justify-between pb-4 border-b border-black/[0.06] dark:border-white/[0.08]">
+      <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-800/80">
         <div>
           <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
             <Activity className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
@@ -92,7 +92,7 @@ export const OverviewView: React.FC = () => {
           <button
             onClick={handleRefresh}
             disabled={isSyncing}
-            className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-white/70 dark:bg-white/[0.05] hover:bg-white dark:hover:bg-white/[0.1] backdrop-blur-md border border-black/[0.07] dark:border-white/[0.08] rounded-xl transition-all shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Синхронизация...' : 'Синхронизировать'}</span>
@@ -122,7 +122,7 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {overdueTasks.length === 0 ? (
-          <div className="p-4 rounded-2xl glass-card border-emerald-500/30 dark:border-emerald-500/20 bg-emerald-500/[0.04] text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5 shadow-sm">
+          <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5 shadow-sm">
             <CheckCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
               <strong>Все поручения в графике:</strong> Просроченных решений не зафиксировано. Все обязательства выполняются в установленные сроки.
@@ -133,7 +133,7 @@ export const OverviewView: React.FC = () => {
             {overdueTasks.map((task) => (
               <div
                 key={task.id}
-                className="p-4 rounded-2xl glass-card border-rose-300/80 dark:border-rose-900/60 bg-white/80 dark:bg-rose-950/[0.15] shadow-sm flex items-start justify-between gap-4 hover:border-rose-400 dark:hover:border-rose-800 transition-all duration-200"
+                className="p-4 rounded-2xl bg-white dark:bg-neutral-900/80 border border-rose-300 dark:border-rose-900/60 shadow-sm flex items-start justify-between gap-4 hover:border-rose-400 transition-colors"
               >
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ export const OverviewView: React.FC = () => {
                 <button
                   onClick={() => handleResolveOverdue(task)}
                   title="Закрыть задачу прямо из управленческого дашборда"
-                  className="px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25 border border-emerald-500/30 rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0"
+                  className="px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0"
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>Закрыть задачу на месте</span>
@@ -201,7 +201,7 @@ export const OverviewView: React.FC = () => {
             return (
               <div
                 key={kpi.id}
-                className="p-5 rounded-2xl glass-card flex flex-col justify-between gap-3 shadow-sm hover:border-black/15 dark:hover:border-white/20 transition-all duration-200 hover:-translate-y-0.5"
+                className="p-5 rounded-2xl bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 flex flex-col justify-between gap-3 shadow-sm hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-xs text-neutral-600 dark:text-neutral-300 font-medium leading-snug">
@@ -210,10 +210,10 @@ export const OverviewView: React.FC = () => {
                   <span
                     className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
                       isNormal
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         : isCritical
-                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/20'
-                        : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold'
+                        : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                     }`}
                   >
                     {isNormal ? 'Норма' : isCritical ? 'Критично' : 'Отклонение'}
@@ -222,7 +222,7 @@ export const OverviewView: React.FC = () => {
 
                 <div className="flex items-baseline justify-between pt-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight font-mono">
+                    <span className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
                       {kpi.value}
                     </span>
                     {kpi.trend === 'up' ? (
@@ -239,7 +239,7 @@ export const OverviewView: React.FC = () => {
                 </div>
 
                 {/* Source & Freshness Metadata (Scenario 6 requirement) */}
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pt-2.5 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between font-mono">
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pt-2.5 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between font-mono">
                   <span className="truncate pr-2 font-sans text-neutral-500">Источник: {kpi.sourceSystem}</span>
                   <span className="shrink-0 text-neutral-400">Срез: {kpi.updatedAt.split(' ')[1]}</span>
                 </div>
@@ -252,12 +252,12 @@ export const OverviewView: React.FC = () => {
       {/* ========================================================================= */}
       {/* AI SITUATION SUMMARY                                                      */}
       {/* ========================================================================= */}
-      <div className="glass-panel rounded-2xl p-6 space-y-2.5 shadow-sm">
+      <div className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 space-y-2 shadow-sm">
         <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-neutral-700 dark:text-neutral-300" />
           Сводка по ситуации от AI-Ассистента руководителя
         </div>
-        <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">
+        <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed">
           Главное внимание требуется участку послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил{' '}
           <strong className="font-semibold text-neutral-900 dark:text-neutral-100">3.2%</strong> (выше планового порога 2.5%), сдача в срок упала до{' '}
           <strong className="font-semibold text-neutral-900 dark:text-neutral-100">96.4%</strong>. Служба поддержки PicPac справляется со всплеском обращений с показателем SLA{' '}
@@ -274,7 +274,7 @@ export const OverviewView: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-xl glass-card text-xs space-y-1.5 shadow-sm hover:border-black/15 dark:hover:border-white/20 transition-all duration-200">
+          <div className="p-4 rounded-xl bg-white dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 text-xs space-y-1.5 shadow-sm">
             <div className="font-semibold text-neutral-900 dark:text-neutral-200">
               Закупка запасного комплекта датчиков вязкости для УФ-линии
             </div>
@@ -283,12 +283,12 @@ export const OverviewView: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-4 rounded-xl glass-card text-xs space-y-1.5 shadow-sm hover:border-black/15 dark:hover:border-white/20 transition-all duration-200">
+          <div className="p-4 rounded-xl bg-white dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 text-xs space-y-1.5 shadow-sm">
             <div className="font-semibold text-neutral-900 dark:text-neutral-200">
               Согласование ставки субаренды упаковочного склада
             </div>
             <div className="text-neutral-500 dark:text-neutral-400 leading-relaxed">
-              Ответственный: Смирнов А.В. · Срок: 16.11.2026 · Переговоры с арендодателем технопарка
+              Ответственный: Смирнов А.В. · Срок: 15.11.2026 · Риск дефицита площади упаковки в декабре
             </div>
           </div>
         </div>
