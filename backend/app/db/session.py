@@ -1,4 +1,5 @@
 import logging
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
@@ -17,9 +18,11 @@ try:
     with engine.connect() as conn:
         print(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
 except Exception as e:
-    print(f"PostgreSQL недоступен ({e}). Использование резервной локальной базы SQLite.")
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    db_file = os.path.join(backend_dir, "photoprint.db")
+    print(f"PostgreSQL недоступен. Использование резервной локальной базы SQLite: {db_file}")
     engine = create_engine(
-        "sqlite:///./photoprint.db",
+        f"sqlite:///{db_file}",
         connect_args={"check_same_thread": False}
     )
 

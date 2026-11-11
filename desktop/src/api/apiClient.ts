@@ -139,7 +139,7 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       },
-      8000
+      60000
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
@@ -196,11 +196,15 @@ export const apiClient = {
   },
 
   async queryKnowledgeBase(query: string, userRole: UserRole): Promise<RAGMessage> {
-    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/rag/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, userRole }),
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/rag/query`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, userRole }),
+      },
+      35000
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return {

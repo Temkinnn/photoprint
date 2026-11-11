@@ -4,23 +4,22 @@ echo ========================================================
 echo  Запуск Backend API: ООО «Фотопринт» AI-Ассистент
 echo ========================================================
 
-where py >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    set PY_CMD=py -3.12
+cd /d "%~dp0"
+
+if exist "..\.venv\Scripts\activate.bat" (
+    call "..\.venv\Scripts\activate.bat"
+) else if exist ".venv\Scripts\activate.bat" (
+    call ".venv\Scripts\activate.bat"
 ) else (
-    set PY_CMD=python
+    echo [!] Виртуальное окружение не найдено в корне! Запуск системным python...
 )
 
-if not exist .venv (
-    echo [1/3] Создание виртуального окружения .venv...
-    %PY_CMD% -m venv .venv
-)
+set PYTHONPATH=.
+echo [i] База данных: SQLite fallback (photoprint.db) / PostgreSQL 16
+echo [i] Ollama URL: http://localhost:11434 (qwen2.5:7b)
+echo [i] Сервер FastAPI запускается на http://127.0.0.1:8000
+echo [i] Swagger Docs: http://127.0.0.1:8000/docs
+echo --------------------------------------------------------
 
-echo [2/3] Активация окружения и проверка зависимостей...
-call .venv\Scripts\activate
-pip install -r requirements.txt --quiet
-
-echo [3/3] Старт сервера FastAPI на http://localhost:8000...
-echo Интерактивная документация Swagger: http://localhost:8000/docs
 python main.py
 pause
