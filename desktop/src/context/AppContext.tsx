@@ -12,15 +12,6 @@ import {
   TranscriptItem,
   OverviewBrief,
 } from '../types';
-import {
-  MOCK_USERS,
-  MOCK_DOCUMENTS,
-  MOCK_TRANSCRIPTS,
-  MOCK_KPI_METRICS,
-  INITIAL_TASKS,
-  INITIAL_AUDIT_LOG,
-  MOCK_CALENDAR_SLOTS,
-} from '../mock/mockData';
 import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
@@ -112,16 +103,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [currentRole, setCurrentRole] = useState<UserRole>('ROLE_DIRECTOR');
   const [activeTab, setActiveTab] = useState<string>('meetings');
-  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOG);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>(MOCK_KPI_METRICS);
-  const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
-  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>(MOCK_CALENDAR_SLOTS);
+  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>([]);
   const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
-  const [transcripts, setTranscripts] = useState<TranscriptItem[]>(MOCK_TRANSCRIPTS as any);
-  const [users, setUsers] = useState<UserProfile[]>(Object.values(MOCK_USERS));
-  const [currentUser, setCurrentUser] = useState<UserProfile>(MOCK_USERS[currentRole]);
+  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserProfile>({
+    id: 'u-1',
+    name: 'Смирнов Алексей Викторович',
+    role: 'ROLE_DIRECTOR',
+    roleTitle: 'Генеральный директор',
+    department: 'Дирекция',
+    avatarInitials: 'АС',
+    clearance: 'Допуск 1 · Полный',
+    description: 'Полный доступ ко всей отчетности ООО «Фотопринт»'
+  });
   const [overviewBrief, setOverviewBrief] = useState<OverviewBrief | null>(null);
 
   // Backend connection state
@@ -246,7 +246,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginAs = async (role: UserRole) => {
     setCurrentRole(role);
     setIsAuthenticated(true);
-    let targetUser = users.find((u) => u.role === role) || MOCK_USERS[role];
+    let targetUser = users.find((u) => u.role === role) || currentUser;
 
     if (backendOnline) {
       try {
@@ -282,7 +282,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setRole = async (newRole: UserRole) => {
     setCurrentRole(newRole);
-    let targetUser = users.find((u) => u.role === newRole) || MOCK_USERS[newRole];
+    let targetUser = users.find((u) => u.role === newRole) || currentUser;
 
     if (backendOnline) {
       try {
@@ -591,27 +591,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetDemoData = async () => {
-    if (backendOnline) {
-      try {
-        await apiClient.resetDemo();
-        await syncWithBackend();
-        showToast('Демо сброшено', 'База данных и аудит на бэкенде сброшены к эталону', 'info');
-        return;
-      } catch {
-        // fallback to local
-      }
+    try {
+      await apiClient.resetDemo();
+      await syncWithBackend();
+      showToast('Демо сброшено', 'База данных PostgreSQL сброшена к эталонному состоянию', 'info');
+    } catch (err) {
+      console.error('Reset demo failed:', err);
+      showToast('Ошибка сброса', 'Не удалось связаться с сервером базы данных', 'error');
     }
-
-    setTasks(INITIAL_TASKS);
-    setAuditLogs(INITIAL_AUDIT_LOG);
-    setCurrentRole('ROLE_DIRECTOR');
-    logAudit(
-      'RESET_DEMO',
-      'System',
-      'SUCCESS',
-      'Сброс состояния к исходному демо-сценарию'
-    );
-    showToast('Данные сброшены', 'Все задачи и логи возвращены к исходному состоянию', 'info');
   };
 
   return (

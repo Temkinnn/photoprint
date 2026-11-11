@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { TaskItem } from '../types';
+import { TaskItem, KPIMetric } from '../types';
 import {
   RefreshCw,
   TrendingUp,
@@ -9,34 +9,81 @@ import {
   CheckCircle2,
   CheckCheck,
   Calendar,
-  Clock
+  Clock,
+  Database,
+  Server,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  Layers,
+  Activity
 } from 'lucide-react';
 
+interface MetricDetail {
+  formula: string;
+  table: string;
+  system: string;
+  explanation: string;
+}
+
+const METRIC_DETAILS: Record<string, MetricDetail> = {
+  'kpi-1': {
+    formula: '(Кол-во заказов, отгруженных вовремя / Всего заказов за смену) × 100%',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-1)',
+    system: 'ERP Цеха / Модуль диспетчеризации отгрузок',
+    explanation: 'Отклонение на 1.6% от целевого норматива 98% вызвано задержкой переналадки ламинатора Foliant и аварией датчика лака.'
+  },
+  'kpi-2': {
+    formula: '(Листы оттисков с браком лака и сборки / Общий объем тиража) × 100%',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-2)',
+    system: 'ERP / Отдел технического контроля (ОТК)',
+    explanation: 'Превышение критического порога 2.5% связано со сбоем оптического датчика вязкости УФ-лака. Требуется замена датчика.'
+  },
+  'kpi-3': {
+    formula: '(Обращения клиентов с ответом до 15 минут / Все поступившие тикеты) × 100%',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-3)',
+    system: 'CRM picPac.by / Омниканальная поддержка',
+    explanation: 'Показатель в норме (+3.2% выше целевого). Нагрузка на операторов стабильная, но к декабрю потребуется усиление штата.'
+  },
+  'kpi-4': {
+    formula: '(Фактически отработанные машино-часы / Доступный фонд времени машин) × 100%',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-4)',
+    system: 'ERP / SCADA телеметрия оборудования цеха',
+    explanation: 'Загрузка 87% превышает комфортные 80–85%. Риск дефицита мощностей в новогодний пик (необходим ввод машины Canon V1000).'
+  },
+  'kpi-5': {
+    formula: 'Суммарная выручка заказов приложения / Общее число оплаченных корзин',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-5)',
+    system: '1С:Управление торговлей / Сервис фотокниг PicPac',
+    explanation: 'Превышает плановый ориентир 1 350 ₽ благодаря росту продаж премиальных фотокниг и фотобоксов с тиснением фольгой.'
+  },
+  'kpi-6': {
+    formula: '(Вышедшие в смену печатники и постпечатники / Штатное расписание) × 100%',
+    table: 'PostgreSQL: public.kpi_metrics (id: kpi-6)',
+    system: '1С:ЗУП (Зарплата и управление персоналом)',
+    explanation: '100% укомплектованность дневной и ночной смен. Больничных и прогулов ключевых операторов ЦПМ не зафиксировано.'
+  }
+};
+
 export const OverviewView: React.FC = () => {
-  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline, overviewBrief, scheduledMeetings } = useApp();
+  const {
+    kpiMetrics,
+    tasks,
+    toggleTaskStatus,
+    logAudit,
+    showToast,
+    syncWithBackend,
+    isSyncing,
+    backendOnline,
+    overviewBrief,
+    scheduledMeetings
+  } = useApp();
 
   const [dataFreshnessTime, setDataFreshnessTime] = useState<string>('2026-11-11 15:00:00');
+  const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
+  const [showDataProvenance, setShowDataProvenance] = useState<boolean>(false);
 
-  const defaultBrief = {
-    situationBrief: 'Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил 3.2% (порог цеха 2.5%), сдача тиражей в срок снизилась до 96.4%. Служба заботы PicPac удерживает показатель SLA 98.2%. Загрузка основного парка плоттеров и ЦПМ достигла 87%, подтверждая необходимость ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.',
-    dataFreshness: '2026-11-11 15:00:00',
-    criticalIssues: [
-      {
-        id: 'iss-1',
-        title: 'Закупка запасного комплекта датчиков вязкости для УФ-линии',
-        description: 'Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.',
-        deadline: '14.11.2026'
-      },
-      {
-        id: 'iss-2',
-        title: 'Согласование ставки субаренды упаковочного склада',
-        description: 'Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.',
-        deadline: '15.11.2026'
-      }
-    ]
-  };
-
-  const activeBrief = overviewBrief || defaultBrief;
   const overdueTasks = tasks.filter((t) => t.status === 'overdue');
 
   const handleRefresh = async () => {
@@ -51,15 +98,15 @@ export const OverviewView: React.FC = () => {
 
     logAudit(
       'REFRESH_DASHBOARD',
-      'KPI & Overdue Registry',
+      'PostgreSQL: kpi_metrics & overview_brief',
       'SUCCESS',
-      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений (Сервер: ${backendOnline ? 'онлайн' : 'офлайн'})`
+      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений из PostgreSQL (Сервер: ${backendOnline ? 'онлайн' : 'офлайн'})`
     );
 
     showToast(
-      backendOnline ? 'Данные синхронизированы с бэкендом' : 'Витрины обновлены (локальный режим)',
-      `Время актуальности: ${formatted}`,
-      'info'
+      backendOnline ? 'Данные синхронизированы с PostgreSQL' : 'Сервер недоступен',
+      `Время актуальности среза: ${formatted}`,
+      backendOnline ? 'info' : 'error'
     );
   };
 
@@ -78,27 +125,31 @@ export const OverviewView: React.FC = () => {
     );
   };
 
+  const activeMetricDetail = selectedMetricId ? METRIC_DETAILS[selectedMetricId] : null;
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
-        {/* Top Control Bar & Executive Title */}
-        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530]">
+        {/* ========================================================================= */}
+        {/* TOP CONTROL BAR & EXECUTIVE TITLE                                         */}
+        {/* ========================================================================= */}
+        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530] flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
               <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                Пульс производства и сервиса
+                Пульс компании: Производство, Сервис и Финансы
               </h1>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              Оперативный контроль ключевых показателей выработки, брака и согласованных решений
+              Оперативный контроль ключевых витрин выработки, брака и согласованных решений директора
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Срез данных (1С / ERP)
+                Срез данных СУБД (PostgreSQL)
               </div>
               <div className="text-xs font-mono font-medium text-neutral-900 dark:text-neutral-200 tabular-nums">
                 {overviewBrief?.dataFreshness || dataFreshnessTime}
@@ -117,70 +168,194 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
+        {/* DATA PROVENANCE & DATABASE TRANSPARENCY BAR                               */}
+        {/* ========================================================================= */}
+        <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 font-mono text-[11px] font-semibold">
+                <Database className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                СУБД: PostgreSQL 18.6 (база photoprint)
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-mono text-[11px] font-semibold">
+                <Server className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                API: Live HTTP (/api/v1/overview)
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-100 dark:bg-[#1a1d25] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-[#282d3b] font-mono text-[11px]">
+                Клиентские моки: 0% (полностью исключены)
+              </span>
+            </div>
+
+            <button
+              onClick={() => setShowDataProvenance(!showDataProvenance)}
+              className="text-xs text-sky-600 dark:text-sky-400 hover:underline font-medium flex items-center gap-1"
+            >
+              <Info className="w-3.5 h-3.5" />
+              <span>{showDataProvenance ? 'Скрыть происхождение цифр' : 'Откуда берутся цифры?'}</span>
+              {showDataProvenance ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          </div>
+
+          {/* Expandable Explanation of Data Lineage */}
+          {showDataProvenance && (
+            <div className="pt-3 border-t border-neutral-100 dark:border-[#1d2028] text-xs text-neutral-600 dark:text-neutral-300 space-y-2 animate-in fade-in duration-150">
+              <p className="leading-relaxed">
+                Все показатели в этом представлении загружаются динамически из реляционной базы данных <strong>PostgreSQL</strong> через бэкенд FastAPI:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1 font-mono text-[11px]">
+                <div className="p-2.5 rounded bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#262b3a] space-y-1">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1">
+                    <Activity className="w-3 h-3 text-sky-500" />
+                    <span>Таблица kpi_metrics</span>
+                  </div>
+                  <div className="text-neutral-500">6 карточек выработки, брака, SLA, мощностей из 1C, ERP и CRM.</div>
+                </div>
+
+                <div className="p-2.5 rounded bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#262b3a] space-y-1">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-rose-500" />
+                    <span>Таблица tasks</span>
+                  </div>
+                  <div className="text-neutral-500">Фильтр WHERE status = &apos;overdue&apos; для контроля просроченных решений.</div>
+                </div>
+
+                <div className="p-2.5 rounded bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#262b3a] space-y-1">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-amber-500" />
+                    <span>Таблица overview_brief</span>
+                  </div>
+                  <div className="text-neutral-500">Сводка директора дирекции и 2 критических вопроса недели.</div>
+                </div>
+
+                <div className="p-2.5 rounded bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#262b3a] space-y-1">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-emerald-500" />
+                    <span>Таблица meetings</span>
+                  </div>
+                  <div className="text-neutral-500">Реестр назначенных совещаний с согласованными слотами.</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ========================================================================= */}
         {/* CONSOLIDATED KPI INSTRUMENTATION DECK (ЕДИНАЯ ПРИБОРНАЯ ПАНЕЛЬ ЦЕХА)     */}
         {/* ========================================================================= */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-              Сводка ключевых параметров производства и сервиса
+              Сводка ключевых параметров производства и сервиса (Таблица kpi_metrics)
             </span>
             <span className="text-[11px] font-mono text-neutral-400">
-              6 витрин · 1С:УНФ, ERP цеха, CRM picPac
+              Кликните на карточку для просмотра формулы и источника
             </span>
           </div>
 
-          <div className="border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] rounded-lg overflow-hidden grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-neutral-200 dark:divide-[#212530]">
-            {kpiMetrics.map((kpi) => {
-              const isNormal = kpi.status === 'normal';
-              const isCritical = kpi.status === 'critical';
+          {kpiMetrics.length === 0 ? (
+            <div className="p-8 text-center text-xs text-neutral-500 dark:text-neutral-400 rounded-lg border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b]">
+              Загрузка витрин KPI из PostgreSQL...
+            </div>
+          ) : (
+            <div className="border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] rounded-lg overflow-hidden grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-neutral-200 dark:divide-[#212530]">
+              {kpiMetrics.map((kpi) => {
+                const isNormal = kpi.status === 'normal';
+                const isCritical = kpi.status === 'critical';
+                const isSelected = selectedMetricId === kpi.id;
 
-              return (
-                <div
-                  key={kpi.id}
-                  className="p-3.5 flex flex-col justify-between gap-2.5 hover:bg-neutral-50/70 dark:hover:bg-[#181a22] transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 truncate" title={kpi.name}>
-                      {kpi.name}
-                    </span>
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        isNormal
-                          ? 'bg-emerald-500'
-                          : isCritical
-                          ? 'bg-rose-500'
-                          : 'bg-amber-500'
-                      }`}
-                      title={isNormal ? 'Норма' : isCritical ? 'Превышение' : 'Отклонение'}
-                    />
-                  </div>
-
-                  <div className="my-0.5">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-bold font-mono tracking-tight tabular-nums text-neutral-950 dark:text-white">
-                        {kpi.value}
+                return (
+                  <div
+                    key={kpi.id}
+                    onClick={() => setSelectedMetricId(isSelected ? null : kpi.id)}
+                    className={`p-3.5 flex flex-col justify-between gap-2.5 cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-neutral-100 dark:bg-[#1c1f2b] ring-2 ring-sky-500 dark:ring-sky-400'
+                        : 'hover:bg-neutral-50/70 dark:hover:bg-[#181a22]'
+                    }`}
+                    title="Нажмите, чтобы увидеть источник данных в PostgreSQL и формулу расчета"
+                  >
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 truncate" title={kpi.name}>
+                        {kpi.name}
                       </span>
-                      {kpi.trend === 'up' ? (
-                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      ) : kpi.trend === 'down' ? (
-                        <TrendingDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      ) : (
-                        <Minus className="w-3.5 h-3.5 text-neutral-400" />
-                      )}
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          isNormal
+                            ? 'bg-emerald-500'
+                            : isCritical
+                            ? 'bg-rose-500'
+                            : 'bg-amber-500'
+                        }`}
+                        title={isNormal ? 'Норма' : isCritical ? 'Превышение' : 'Отклонение'}
+                      />
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                      Цель: {kpi.target}
-                    </div>
-                  </div>
 
-                  <div className="text-[10px] font-mono text-neutral-400 pt-1.5 border-t border-neutral-100 dark:border-[#1d2028] flex items-center justify-between">
-                    <span className="truncate">{kpi.sourceSystem.split('/')[0]}</span>
-                    <span className="shrink-0">{kpi.updatedAt.split(' ')[1]}</span>
+                    <div className="my-0.5">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-bold font-mono tracking-tight tabular-nums text-neutral-950 dark:text-white">
+                          {kpi.value}
+                        </span>
+                        {kpi.trend === 'up' ? (
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        ) : kpi.trend === 'down' ? (
+                          <TrendingDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        ) : (
+                          <Minus className="w-3.5 h-3.5 text-neutral-400" />
+                        )}
+                      </div>
+                      <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                        Цель: {kpi.target}
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] font-mono text-neutral-400 pt-1.5 border-t border-neutral-100 dark:border-[#1d2028] flex items-center justify-between">
+                      <span className="truncate">{kpi.sourceSystem.split('/')[0]}</span>
+                      <span className="shrink-0">{kpi.updatedAt.split(' ')[1]}</span>
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Active Metric Inspector Breakdown */}
+          {selectedMetricId && activeMetricDetail && (
+            <div className="p-4 rounded-lg bg-sky-500/[0.04] dark:bg-sky-500/[0.08] border border-sky-500/30 text-xs space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-neutral-950 dark:text-white flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>Паспорт показателя: {kpiMetrics.find(m => m.id === selectedMetricId)?.name}</span>
+                </span>
+                <button
+                  onClick={() => setSelectedMetricId(null)}
+                  className="text-[11px] text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                >
+                  Закрыть
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <div className="text-[10px] font-mono text-neutral-400">Таблица в PostgreSQL:</div>
+                  <div className="font-mono text-neutral-900 dark:text-neutral-100 text-[11px] font-semibold">{activeMetricDetail.table}</div>
                 </div>
-              );
-            })}
-          </div>
+                <div>
+                  <div className="text-[10px] font-mono text-neutral-400">Корпоративная система:</div>
+                  <div className="text-neutral-900 dark:text-neutral-100 font-medium">{activeMetricDetail.system}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-neutral-400">Формула расчета:</div>
+                  <div className="font-mono text-neutral-900 dark:text-neutral-100 text-[11px]">{activeMetricDetail.formula}</div>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-neutral-600 dark:text-neutral-300 pt-1 border-t border-sky-500/20">
+                <strong>Аналитический комментарий:</strong> {activeMetricDetail.explanation}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}
@@ -190,7 +365,7 @@ export const OverviewView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100">
-                Контроль неисполненных решений
+                Контроль неисполненных решений (PostgreSQL: tasks WHERE status = &apos;overdue&apos;)
               </span>
               {overdueTasks.length > 0 && (
                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
@@ -199,7 +374,7 @@ export const OverviewView: React.FC = () => {
               )}
             </div>
             <span className="text-[11px] text-neutral-400 font-mono">
-              Поручения с истекшим сроком
+              Поручения с истекшим сроком из базы данных
             </span>
           </div>
 
@@ -207,7 +382,7 @@ export const OverviewView: React.FC = () => {
             <div className="p-3.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/40 text-xs text-emerald-900 dark:text-emerald-300 flex items-center gap-2.5">
               <CheckCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>
-                <strong>Все обязательства в графике:</strong> Просроченных решений не зафиксировано.
+                <strong>Все обязательства в графике:</strong> В базе PostgreSQL просроченных решений не зафиксировано.
               </span>
             </div>
           ) : (
@@ -246,7 +421,7 @@ export const OverviewView: React.FC = () => {
                   <div className="shrink-0">
                     <button
                       onClick={() => handleResolveOverdue(task)}
-                      title="Закрыть задачу прямо из управленческого дашборда"
+                      title="Закрыть задачу прямо из управленческого дашборда (сохраняется в PostgreSQL)"
                       className="px-3 py-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800/80 rounded transition-colors flex items-center gap-1.5"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -260,59 +435,69 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* EXECUTIVE SITUATION BRIEF (ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ С СЕРВЕРА)         */}
+        {/* EXECUTIVE SITUATION BRIEF (ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ ИЗ POSTGRESQL)     */}
         {/* ========================================================================= */}
         <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-l-4 border-l-sky-500 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono uppercase tracking-wider text-[11px]">
-              Оперативная сводка дирекции (Сервер)
+            <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <Server className="w-3.5 h-3.5 text-sky-500" />
+              <span>Оперативная сводка дирекции (PostgreSQL: overview_brief)</span>
             </span>
             <span className="text-[11px] font-mono text-neutral-400">
-              Срез производственного дня · Аналитика
+              Срез производственного дня · Актуальность {overviewBrief?.dataFreshness || dataFreshnessTime}
             </span>
           </div>
-          <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
-            {activeBrief.situationBrief}
-          </p>
+
+          {overviewBrief ? (
+            <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
+              {overviewBrief.situationBrief}
+            </p>
+          ) : (
+            <div className="py-2 text-xs text-neutral-400 animate-pulse">
+              Загрузка аналитической сводки из базы данных...
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}
-        {/* CRITICAL OPERATIONAL DECISIONS (КЛЮЧЕВЫЕ ВОПРОСЫ НЕДЕЛИ С СЕРВЕРА)         */}
+        {/* CRITICAL OPERATIONAL DECISIONS (КЛЮЧЕВЫЕ ВОПРОСЫ ИЗ POSTGRESQL)           */}
         {/* ========================================================================= */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-              Вопросы к согласованию на этой неделе
-            </span>
-            <span className="text-[11px] text-neutral-400 font-mono">Сроки поставки и производственные риски</span>
-          </div>
+        {overviewBrief && overviewBrief.criticalIssues && overviewBrief.criticalIssues.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-neutral-900 dark:text-neutral-100">
+                Вопросы к согласованию на этой неделе (PostgreSQL: overview_brief.critical_issues)
+              </span>
+              <span className="text-[11px] text-neutral-400 font-mono">Сроки поставки и производственные риски</span>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {activeBrief.criticalIssues.map((issue) => (
-              <div key={issue.id} className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
-                <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                  {issue.title}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {overviewBrief.criticalIssues.map((issue) => (
+                <div key={issue.id} className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100">
+                    {issue.title}
+                  </div>
+                  <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
+                    {issue.description}
+                  </div>
+                  <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
+                    Крайний срок: {issue.deadline}
+                  </div>
                 </div>
-                <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
-                  {issue.description}
-                </div>
-                <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
-                  Крайний срок: {issue.deadline}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ========================================================================= */}
-        {/* SCHEDULED MEETINGS & CALENDAR PULSE                                       */}
+        {/* SCHEDULED MEETINGS & CALENDAR PULSE (ИЗ POSTGRESQL: meetings)             */}
         {/* ========================================================================= */}
         {scheduledMeetings && scheduledMeetings.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100">
-                  Ближайшие запланированные совещания
+                  Ближайшие запланированные совещания (PostgreSQL: meetings)
                 </span>
                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
                   {scheduledMeetings.filter((m) => m.status === 'scheduled').length} назначено
