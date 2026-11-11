@@ -10,6 +10,8 @@ import {
   RAGMessage,
   DecisionItem,
   RiskItem,
+  TranscriptItem,
+  OverviewBrief,
 } from '../types';
 
 export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -78,6 +80,12 @@ export const apiClient = {
   },
 
   // 1. Auth & Roles
+  async getUsers(): Promise<UserProfile[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/users`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
   async getMe(): Promise<UserProfile> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/me`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -97,6 +105,32 @@ export const apiClient = {
   // 2. Meetings & Calendar
   async getMeetings(): Promise<MeetingItem[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async getTranscripts(): Promise<TranscriptItem[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/transcripts`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async getTranscript(id: string): Promise<TranscriptItem> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/transcripts/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async generateAgenda(params: {
+    topic: string;
+    participants: string[];
+    documents: string[];
+  }): Promise<{ agenda: string[]; openQuestions: string[] }> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/generate-agenda`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
@@ -216,6 +250,12 @@ export const apiClient = {
   // 5. Overview & Audit
   async getMetrics(): Promise<KPIMetric[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/overview/metrics`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async getOverviewBrief(): Promise<OverviewBrief> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/overview/brief`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },

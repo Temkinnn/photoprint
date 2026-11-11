@@ -7,6 +7,8 @@ export interface UserProfile {
   roleTitle: string;
   department: string;
   avatarInitials: string;
+  clearance?: string;
+  description?: string;
 }
 
 export type DecisionCategory = 'resolved' | 'proposed' | 'discussed' | 'needs_clarification';
@@ -109,4 +111,29 @@ export interface AuditLogEntry {
   targetEntity: string;
   status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING';
   details: string;
+}
+
+export interface TranscriptItem {
+  id: string;
+  title: string;
+  date: string;
+  type: string;
+  content: string;
+  stagedTasks: TaskItem[];
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+}
+
+export interface CriticalIssueItem {
+  id: string;
+  title: string;
+  description: string;
+  deadline: string;
+}
+
+export interface OverviewBrief {
+  situationBrief: string;
+  dataFreshness: string;
+  criticalIssues: CriticalIssueItem[];
 }

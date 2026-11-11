@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { CheckSquare, Search, Plus, CheckCircle2, Calendar } from 'lucide-react';
+import { CheckSquare, Search, Plus, CheckCircle2, Calendar, Trash2 } from 'lucide-react';
 
 export const TasksView: React.FC = () => {
-  const { tasks, toggleTaskStatus, addTask, showToast } = useApp();
+  const { tasks, toggleTaskStatus, addTask, deleteTask, showToast } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -169,6 +169,14 @@ export const TasksView: React.FC = () => {
                       )}
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => deleteTask(task.id)}
+                    title="Удалить поручение из реестра"
+                    className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-rose-500 p-1.5 transition-all rounded hover:bg-neutral-100 dark:hover:bg-[#1a1d25] shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               );
             })

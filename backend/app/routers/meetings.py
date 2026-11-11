@@ -4,15 +4,37 @@ from app.db.storage import storage
 from app.schemas import (
     MeetingItem, CalendarSlot, CreateMeetingRequest,
     ProtocolAnalysisRequest, ProtocolAnalysisResponse,
-    ConfirmTasksRequest, TaskItem
+    ConfirmTasksRequest, TaskItem, TranscriptItem,
+    AgendaGenerationRequest, AgendaGenerationResponse
 )
-from app.services.meeting_analyzer import analyze_meeting_transcript
+from app.services.meeting_analyzer import analyze_meeting_transcript, generate_meeting_agenda
 
 router = APIRouter(prefix="/meetings", tags=["Встречи и Протоколы"])
 
 @router.get("/", response_model=List[MeetingItem])
 async def get_meetings():
     return storage.meetings
+
+@router.get("/transcripts", response_model=List[TranscriptItem])
+async def get_transcripts():
+    return storage.transcripts
+
+@router.get("/transcripts/{transcript_id}", response_model=TranscriptItem)
+async def get_transcript(transcript_id: str):
+    for t in storage.transcripts:
+        if t.id == transcript_id:
+            return t
+    raise HTTPException(status_code=404, detail="Стенограмма не найдена")
+
+@router.post("/generate-agenda", response_model=AgendaGenerationResponse)
+async def api_generate_agenda(req: AgendaGenerationRequest):
+    storage.add_audit_log(
+        action="GENERATE_AGENDA",
+        target=f"Тема: {req.topic}",
+        status="success",
+        details="Генерация проекта повестки и вопросов локальным AI-модулем на основе регламентов"
+    )
+    return await generate_meeting_agenda(req.topic, req.participants, req.documents)
 
 @router.get("/calendar/slots", response_model=List[CalendarSlot])
 async def get_calendar_slots():

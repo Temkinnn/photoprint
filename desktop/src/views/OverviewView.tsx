@@ -11,10 +11,30 @@ import {
 } from 'lucide-react';
 
 export const OverviewView: React.FC = () => {
-  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline } = useApp();
+  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline, overviewBrief } = useApp();
 
   const [dataFreshnessTime, setDataFreshnessTime] = useState<string>('2026-11-11 15:00:00');
 
+  const defaultBrief = {
+    situationBrief: 'Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил 3.2% (порог цеха 2.5%), сдача тиражей в срок снизилась до 96.4%. Служба заботы PicPac удерживает показатель SLA 98.2%. Загрузка основного парка плоттеров и ЦПМ достигла 87%, подтверждая необходимость ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.',
+    dataFreshness: '2026-11-11 15:00:00',
+    criticalIssues: [
+      {
+        id: 'iss-1',
+        title: 'Закупка запасного комплекта датчиков вязкости для УФ-линии',
+        description: 'Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.',
+        deadline: '14.11.2026'
+      },
+      {
+        id: 'iss-2',
+        title: 'Согласование ставки субаренды упаковочного склада',
+        description: 'Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.',
+        deadline: '15.11.2026'
+      }
+    ]
+  };
+
+  const activeBrief = overviewBrief || defaultBrief;
   const overdueTasks = tasks.filter((t) => t.status === 'overdue');
 
   const handleRefresh = async () => {
@@ -79,7 +99,7 @@ export const OverviewView: React.FC = () => {
                 Срез данных (1С / ERP)
               </div>
               <div className="text-xs font-mono font-medium text-neutral-900 dark:text-neutral-200 tabular-nums">
-                {dataFreshnessTime}
+                {overviewBrief?.dataFreshness || dataFreshnessTime}
               </div>
             </div>
 
@@ -238,28 +258,24 @@ export const OverviewView: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* EXECUTIVE SITUATION BRIEF (ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ)                    */}
+        {/* EXECUTIVE SITUATION BRIEF (ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ С СЕРВЕРА)         */}
         {/* ========================================================================= */}
         <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-l-4 border-l-sky-500 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono uppercase tracking-wider text-[11px]">
-              Оперативная сводка дирекции
+              Оперативная сводка дирекции (Сервер)
             </span>
             <span className="text-[11px] font-mono text-neutral-400">
               Срез производственного дня · Аналитика
             </span>
           </div>
           <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
-            Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">3.2%</strong> (порог цеха 2.5%), сдача тиражей в срок снизилась до{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">96.4%</strong>. Служба заботы PicPac удерживает показатель SLA{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">98.2%</strong>. Загрузка основного парка плоттеров и ЦПМ достигла{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">87%</strong>, подтверждая необходимость ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.
+            {activeBrief.situationBrief}
           </p>
         </div>
 
         {/* ========================================================================= */}
-        {/* CRITICAL OPERATIONAL DECISIONS (КЛЮЧЕВЫЕ ВОПРОСЫ НЕДЕЛИ)                   */}
+        {/* CRITICAL OPERATIONAL DECISIONS (КЛЮЧЕВЫЕ ВОПРОСЫ НЕДЕЛИ С СЕРВЕРА)         */}
         {/* ========================================================================= */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
@@ -270,29 +286,19 @@ export const OverviewView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
-              <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                Закупка запасного комплекта датчиков вязкости для УФ-линии
+            {activeBrief.criticalIssues.map((issue) => (
+              <div key={issue.id} className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
+                <div className="font-semibold text-neutral-900 dark:text-neutral-100">
+                  {issue.title}
+                </div>
+                <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
+                  {issue.description}
+                </div>
+                <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
+                  Крайний срок: {issue.deadline}
+                </div>
               </div>
-              <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
-                Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.
-              </div>
-              <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
-                Крайний срок: 14.11.2026
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
-              <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                Согласование ставки субаренды упаковочного склада
-              </div>
-              <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
-                Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.
-              </div>
-              <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
-                Крайний срок: 15.11.2026
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>

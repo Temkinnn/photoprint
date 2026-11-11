@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { MOCK_DOCUMENTS } from '../mock/mockData';
 import { RAGMessage } from '../types';
 import {
   Send,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  FileText,
+  BookOpen
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG } = useApp();
+  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents } = useApp();
+  const [showDocsList, setShowDocsList] = useState(false);
 
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -85,10 +87,40 @@ export const KnowledgeBaseView: React.FC = () => {
           </p>
         </div>
 
-        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#1a1d25] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36]">
-          {MOCK_DOCUMENTS.length} регламентов в базе
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDocsList((prev) => !prev)}
+            className="text-xs font-mono text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-sky-500" />
+            <span>{documents.length} регламентов с сервера</span>
+          </button>
         </div>
       </div>
+
+      {/* Optional Documents Explorer Drawer */}
+      {showDocsList && (
+        <div className="bg-neutral-50 dark:bg-[#111319] border-b border-neutral-200 dark:border-[#212530] p-4 px-6 shrink-0 max-h-48 overflow-y-auto">
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 font-semibold uppercase">
+              Доступные регламенты ({documents.length}):
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {documents.map((doc) => (
+                <div key={doc.id} className="p-2 rounded bg-white dark:bg-[#161820] border border-neutral-200/80 dark:border-[#252a38] text-xs">
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100 truncate" title={doc.title}>
+                    {doc.title}
+                  </div>
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center justify-between mt-1 font-mono">
+                    <span>{doc.category}</span>
+                    <span>{doc.date}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl mx-auto w-full">

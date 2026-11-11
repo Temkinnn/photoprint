@@ -3,7 +3,8 @@ import httpx
 from typing import List, Dict, Any
 from app.config import settings
 from app.schemas import (
-    ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
+    ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem,
+    AgendaGenerationResponse
 )
 
 FALLBACK_MEETING_ANALYSIS = {
@@ -151,3 +152,55 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
         risks=FALLBACK_MEETING_ANALYSIS["risks"],
         tasks=FALLBACK_MEETING_ANALYSIS["tasks"]
     )
+
+async def generate_meeting_agenda(topic: str, participants: List[str], documents: List[str]) -> AgendaGenerationResponse:
+    """
+    Генерация проекта повестки и открытых вопросов встречи с помощью локальной модели или регламентных шаблонов.
+    """
+    docs_str = ", ".join(documents) if documents else "Внутренние регламенты производства"
+    prompt = f"""Ты — корпоративный AI-ассистент руководителя ООО «Фотопринт».
+Сформируй проект повестки и перечень открытых вопросов к совещанию.
+Тема: «{topic}»
+Участники: {", ".join(participants) if participants else "Руководящий состав"}
+Опорные регламенты: {docs_str}
+
+Выдели строго в формате JSON:
+1. "agenda": список пунктов повестки с таймингом в скобках (3-4 пункта).
+2. "openQuestions": список критических открытых вопросов для согласования (2-3 вопроса).
+
+Верни ТОЛЬКО валидный JSON без лишнего текста."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": settings.OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json"
+                }
+            )
+            if resp.status_code == 200:
+                raw_json = resp.json().get("response", "")
+                parsed = json.loads(raw_json)
+                agenda = parsed.get("agenda", [])
+                open_q = parsed.get("openQuestions", [])
+                if agenda:
+                    return AgendaGenerationResponse(agenda=agenda, openQuestions=open_q)
+    except Exception:
+        pass
+
+    # Интеллектуальный fallback на основе темы и регламентов
+    return AgendaGenerationResponse(
+        agenda=[
+            f"1. Анализ рисков и производственных целей по теме: «{topic}» (15 мин)",
+            f"2. Проверка требований стандартов и регламентов: {docs_str} (20 мин)",
+            "3. Согласование плана внедрения, бюджета и ответственных лиц (15 мин)",
+        ],
+        openQuestions=[
+            f"• Какие критические блокеры зафиксированы по направлению «{topic}»?",
+            "• Требуется ли согласование сметы или графика смен до даты проведения встречи?",
+        ]
+    )
+

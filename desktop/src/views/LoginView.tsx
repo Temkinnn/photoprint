@@ -1,48 +1,22 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
-import { Building2, HardHat, Headphones, ArrowRight, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Building2, HardHat, Headphones, ArrowRight, Sun, Moon } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { loginAs, theme, toggleTheme } = useApp();
+  const { loginAs, theme, toggleTheme, users } = useApp();
 
-  const users: {
-    role: UserRole;
-    name: string;
-    title: string;
-    clearance: string;
-    department: string;
-    description: string;
-    icon: React.ReactNode;
-  }[] = [
-    {
-      role: 'ROLE_DIRECTOR',
-      name: 'Смирнов Алексей Викторович',
-      title: 'Генеральный директор',
-      clearance: 'Допуск 1 · Полный',
-      department: 'Дирекция',
-      description: 'Полный доступ ко всей отчетности: финансовые планы, маржинальность, фонд окладов, цех и клиентский сервис.',
-      icon: <Building2 className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />,
-    },
-    {
-      role: 'ROLE_PRODUCTION_HEAD',
-      name: 'Иванов Игорь Сергеевич',
-      title: 'Начальник производства',
-      clearance: 'Допуск 2 · Цех',
-      department: 'Производственный цех',
-      description: 'Доступ к техкартам станков, нормативам брака, графикам смен и оборудованию. Финансовая тайна закрыта.',
-      icon: <HardHat className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />,
-    },
-    {
-      role: 'ROLE_SUPPORT_HEAD',
-      name: 'Ковалева Елена Дмитриевна',
-      title: 'Руководитель клиентского сервиса',
-      clearance: 'Допуск 3 · Сервис',
-      department: 'Служба заботы picPac.by',
-      description: 'Доступ к рекламациям, стандартам SLA, возвратам заказов и модерации фотопродуктов.',
-      icon: <Headphones className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />,
-    },
-  ];
+  const getRoleIcon = (role: UserRole) => {
+    switch (role) {
+      case 'ROLE_DIRECTOR':
+        return <Building2 className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />;
+      case 'ROLE_PRODUCTION_HEAD':
+        return <HardHat className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />;
+      case 'ROLE_SUPPORT_HEAD':
+      default:
+        return <Headphones className="w-5 h-5 text-neutral-800 dark:text-neutral-100" />;
+    }
+  };
 
   return (
     <div className="h-screen w-screen bg-[#f6f7f9] dark:bg-[#0c0d12] flex flex-col items-center justify-center p-6 select-none relative transition-colors">
@@ -89,10 +63,10 @@ export const LoginView: React.FC = () => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="w-8 h-8 rounded bg-neutral-100 dark:bg-[#1b1f29] border border-neutral-200 dark:border-[#292e3c] flex items-center justify-center">
-                    {u.icon}
+                    {getRoleIcon(u.role)}
                   </div>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-[#1b1f28] text-neutral-600 dark:text-neutral-400">
-                    {u.clearance}
+                    {u.clearance || 'Допуск'}
                   </span>
                 </div>
 
@@ -100,7 +74,7 @@ export const LoginView: React.FC = () => {
                   <h3 className="text-xs font-semibold text-neutral-950 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                     {u.name}
                   </h3>
-                  <div className="text-[11px] text-neutral-700 dark:text-neutral-300 font-medium mt-0.5">{u.title}</div>
+                  <div className="text-[11px] text-neutral-700 dark:text-neutral-300 font-medium mt-0.5">{u.roleTitle}</div>
                   <div className="text-[10px] text-neutral-500 font-mono">{u.department}</div>
                 </div>
 
