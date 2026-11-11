@@ -275,6 +275,33 @@ async def process_audio_meeting(file: UploadFile = File(...), title: str = Form(
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+class GenerateRequest(BaseModel):
+    prompt: str
+    system: Optional[str] = "Ты — корпоративный AI-ассистент ООО «Фотопринт»."
+    temperature: Optional[float] = 0.2
+
+@app.post("/api/v1/ai/generate")
+async def generate_text_endpoint(req: GenerateRequest):
+    """
+    Универсальный эндпоинт генерации текста (Qwen 2.5 7B) для RAG и чата с базой знаний.
+    """
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": req.system},
+                {"role": "user", "content": req.prompt}
+            ],
+            temperature=req.temperature or 0.2
+        )
+        return {
+            "status": "success",
+            "model": MODEL_NAME,
+            "response": resp.choices[0].message.content.strip()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации Ollama: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     # Запуск на 0.0.0.0 позволяет любому напарнику в локальной сети подключаться к серверу!
