@@ -42,9 +42,9 @@ export const TasksView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full bg-transparent overflow-hidden transition-colors">
       {/* Header */}
-      <div className="h-16 px-8 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between bg-white dark:bg-neutral-900/40">
+      <div className="h-16 px-8 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/60 dark:bg-[#0c1017]/60 backdrop-blur-xl shrink-0">
         <div>
           <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
             <CheckSquare className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
@@ -57,16 +57,16 @@ export const TasksView: React.FC = () => {
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-neutral-900 hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white rounded-lg transition-colors shadow-sm"
+          className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-white bg-neutral-900 hover:bg-black dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 rounded-xl transition-all shadow-sm"
         >
           <Plus className="w-4 h-4" />
-          Новое поручение
+          <span>Новое поручение</span>
         </button>
       </div>
 
       {/* Filter and Search */}
-      <div className="p-6 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between gap-4 bg-white/50 dark:bg-neutral-900/10">
-        <div className="flex items-center gap-2">
+      <div className="p-4 px-8 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-4 bg-white/40 dark:bg-black/[0.1] backdrop-blur-md shrink-0">
+        <div className="flex items-center gap-1.5">
           {[
             { id: 'all', label: 'Все' },
             { id: 'active', label: 'В работе' },
@@ -76,16 +76,16 @@ export const TasksView: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setFilterStatus(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
                 filterStatus === tab.id
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-800 dark:text-white font-semibold shadow-sm'
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-900'
+                  ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold shadow-sm'
+                  : 'glass-card text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
               }`}
             >
               {tab.label}
-              {tab.id === 'overdue' && tasks.filter(t => t.status === 'overdue').length > 0 && (
+              {tab.id === 'overdue' && tasks.filter((t) => t.status === 'overdue').length > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
-                  {tasks.filter(t => t.status === 'overdue').length}
+                  {tasks.filter((t) => t.status === 'overdue').length}
                 </span>
               )}
             </button>
@@ -99,7 +99,7 @@ export const TasksView: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Поиск по поручениям..."
-            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500 shadow-sm"
+            className="w-full glass-input rounded-xl pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-blue-500/50 shadow-sm"
           />
         </div>
       </div>
@@ -107,7 +107,9 @@ export const TasksView: React.FC = () => {
       {/* Tasks List */}
       <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full space-y-2.5">
         {filteredTasks.length === 0 ? (
-          <div className="py-12 text-center text-xs text-neutral-500 dark:text-neutral-400">Нет поручений в этой категории</div>
+          <div className="py-12 text-center text-xs text-neutral-500 dark:text-neutral-400 glass-card rounded-2xl">
+            Нет поручений в этой категории
+          </div>
         ) : (
           filteredTasks.map((task) => {
             const isDone = task.status === 'completed';
@@ -115,18 +117,18 @@ export const TasksView: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className={`p-4 rounded-xl border flex items-start gap-3.5 transition-colors shadow-sm ${
+                className={`p-4 rounded-xl flex items-start gap-3.5 transition-all duration-150 ${
                   isDone
-                    ? 'bg-neutral-100/50 dark:bg-neutral-950/40 border-neutral-200 dark:border-neutral-800/60 opacity-60'
-                    : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                    ? 'glass-card opacity-55'
+                    : 'glass-card hover:border-black/15 dark:hover:border-white/20 hover:-translate-y-0.5 shadow-sm'
                 }`}
               >
                 <button
                   onClick={() => toggleTaskStatus(task.id)}
-                  className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                  className={`mt-0.5 w-4 h-4 rounded-md border flex items-center justify-center transition-colors ${
                     isDone
-                      ? 'bg-emerald-600 border-emerald-600 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-950'
-                      : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 hover:border-neutral-500'
+                      ? 'bg-emerald-600 border-emerald-600 text-white dark:bg-white dark:border-white dark:text-neutral-950'
+                      : 'border-black/20 dark:border-white/20 bg-white/70 dark:bg-black/30 hover:border-black/40'
                   }`}
                 >
                   {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -167,58 +169,58 @@ export const TasksView: React.FC = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="glass-panel max-w-md w-full p-6 rounded-2xl space-y-4 shadow-2xl">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Новое поручение</h3>
 
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Формулировка задачи:</label>
+                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1 font-medium">Формулировка задачи:</label>
                 <input
                   type="text"
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Что необходимо сделать..."
-                  className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-700 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-neutral-500"
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-blue-500/50"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Ответственный:</label>
+                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1 font-medium">Ответственный:</label>
                 <input
                   type="text"
                   required
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                   placeholder="Иванов И.С. (Начальник производства)"
-                  className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-700 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-neutral-500"
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-blue-500/50"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Срок исполнения:</label>
+                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1 font-medium">Срок исполнения:</label>
                 <input
                   type="text"
                   required
                   value={newDeadline}
                   onChange={(e) => setNewDeadline(e.target.value)}
                   placeholder="2026-11-20"
-                  className="w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-700 rounded-lg p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-neutral-500"
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-blue-500/50"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-black/[0.05] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+                  className="px-3.5 py-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-950 rounded-lg text-xs font-semibold hover:bg-black dark:hover:bg-white transition-colors"
+                  className="px-4 py-1.5 bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 rounded-xl text-xs font-semibold hover:bg-black dark:hover:bg-neutral-100 transition-all shadow-sm"
                 >
                   Сохранить
                 </button>

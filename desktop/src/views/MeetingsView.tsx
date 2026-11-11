@@ -120,9 +120,9 @@ export const MeetingsView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full bg-transparent overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-8 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between bg-white dark:bg-neutral-900/40">
+      <div className="h-16 px-8 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/60 dark:bg-[#0c1017]/60 backdrop-blur-xl shrink-0">
         <div>
           <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">Совещания и протоколы</h1>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -132,12 +132,12 @@ export const MeetingsView: React.FC = () => {
 
         {/* Meeting Dropdown Selector */}
         <div className="flex items-center gap-3">
-          <label className="text-xs text-neutral-600 dark:text-neutral-400">Совещание:</label>
+          <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">Совещание:</label>
           <div className="relative">
             <select
               value={selectedTranscriptId}
               onChange={(e) => handleSelectMeeting(e.target.value)}
-              className="bg-neutral-100 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:border-neutral-500 font-medium appearance-none cursor-pointer"
+              className="bg-white/80 dark:bg-black/30 backdrop-blur-md border border-black/[0.08] dark:border-white/[0.1] text-neutral-800 dark:text-neutral-200 text-xs rounded-xl px-3 py-1.5 pr-8 focus:outline-none focus:border-neutral-500 font-medium appearance-none cursor-pointer shadow-sm"
             >
               {MOCK_TRANSCRIPTS.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -150,10 +150,10 @@ export const MeetingsView: React.FC = () => {
 
           <button
             onClick={() => setShowTranscript(!showTranscript)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
               showTranscript
-                ? 'bg-neutral-200 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200'
-                : 'bg-transparent border-neutral-300 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
+                ? 'bg-neutral-900 text-white dark:bg-white/[0.1] dark:text-white dark:border-white/10 shadow-sm'
+                : 'bg-white/60 dark:bg-white/[0.04] border-black/[0.06] dark:border-white/[0.08] text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
             }`}
           >
             {showTranscript ? 'Скрыть текст' : 'Показать текст'}
@@ -163,7 +163,7 @@ export const MeetingsView: React.FC = () => {
             onClick={handleRunAiAnalysis}
             disabled={isAnalyzing}
             title={backendOnline ? 'Запустить анализ стенограммы на FastAPI бэкенде' : 'AI-анализ стенограммы'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm disabled:opacity-50"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
             <span>{isAnalyzing ? 'Анализ...' : 'AI Анализ'}</span>
@@ -175,8 +175,8 @@ export const MeetingsView: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Transcript */}
         {showTranscript && (
-          <div className="w-[440px] border-r border-neutral-200 dark:border-neutral-800/80 flex flex-col bg-neutral-100/50 dark:bg-neutral-900/20">
-            <div className="p-4 border-b border-neutral-200 dark:border-neutral-800/60 flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
+          <div className="w-[440px] border-r border-black/[0.06] dark:border-white/[0.08] flex flex-col bg-white/30 dark:bg-black/[0.1] backdrop-blur-md">
+            <div className="p-4 border-b border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
               <span className="font-semibold text-neutral-800 dark:text-neutral-300">Стенограмма встречи</span>
               <span className="font-mono text-[11px]">{currentTranscript.date}</span>
             </div>
@@ -187,10 +187,10 @@ export const MeetingsView: React.FC = () => {
                 if (match) {
                   const [, time, speaker, text] = match;
                   return (
-                    <div key={idx} className="p-2.5 rounded-lg bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800/60 shadow-sm dark:shadow-none">
-                      <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+                    <div key={idx} className="p-3 rounded-xl glass-card space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
                         <span className="font-semibold text-neutral-900 dark:text-neutral-200 font-sans">{speaker}</span>
-                        <span>{time}</span>
+                        <span className="font-mono text-[10px]">{time}</span>
                       </div>
                       <div className="text-neutral-800 dark:text-neutral-300 font-sans leading-relaxed">{text}</div>
                     </div>
@@ -209,16 +209,16 @@ export const MeetingsView: React.FC = () => {
         {/* Right Pane: Summary, Decisions & Staged Tasks */}
         <div className="flex-1 flex flex-col overflow-y-auto p-8 space-y-6">
           {/* Summary Card */}
-          <div className="bg-white dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-2 shadow-sm">
+          <div className="glass-panel rounded-2xl p-5 space-y-2">
             <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
               Краткий итог
             </div>
-            <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed">{currentTranscript.summary}</p>
+            <p className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{currentTranscript.summary}</p>
           </div>
 
           {/* Decisions Card */}
-          <div className="bg-white dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3 shadow-sm">
+          <div className="glass-card rounded-2xl p-5 space-y-3">
             <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
               Принятые решения
             </div>
@@ -239,7 +239,7 @@ export const MeetingsView: React.FC = () => {
           </div>
 
           {/* Staged Tasks (Draft & Review) */}
-          <div className="bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 space-y-4 shadow-sm">
+          <div className="glass-panel rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
@@ -252,7 +252,7 @@ export const MeetingsView: React.FC = () => {
 
               <button
                 onClick={handleAddTask}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors border border-neutral-200 dark:border-neutral-700"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-white/70 dark:bg-white/[0.05] hover:bg-white dark:hover:bg-white/[0.1] rounded-xl transition-colors border border-black/[0.06] dark:border-white/[0.08] shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Добавить
@@ -260,7 +260,7 @@ export const MeetingsView: React.FC = () => {
             </div>
 
             {tasksToReview.length === 0 ? (
-              <div className="py-8 text-center text-sm text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl">
+              <div className="py-8 text-center text-sm text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-300 dark:border-neutral-800 rounded-xl">
                 Все поручения согласованы и записаны в реестр.
               </div>
             ) : (
@@ -272,7 +272,7 @@ export const MeetingsView: React.FC = () => {
                   return (
                     <div
                       key={idx}
-                      className="bg-neutral-50 dark:bg-neutral-950 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-3 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors"
+                      className="glass-card p-4 rounded-xl space-y-3 hover:border-black/15 dark:hover:border-white/20 transition-all duration-200"
                     >
                       {/* Title */}
                       <div className="flex items-start justify-between gap-3">
@@ -280,7 +280,7 @@ export const MeetingsView: React.FC = () => {
                           type="text"
                           value={task.title}
                           onChange={(e) => handleUpdateTask(idx, 'title', e.target.value)}
-                          className="flex-1 bg-transparent font-medium text-sm text-neutral-900 dark:text-neutral-100 border-b border-transparent hover:border-neutral-300 dark:hover:border-neutral-700 focus:border-neutral-500 focus:outline-none pb-0.5"
+                          className="flex-1 bg-transparent font-medium text-sm text-neutral-900 dark:text-neutral-100 border-b border-transparent hover:border-black/10 dark:hover:border-white/10 focus:border-blue-500 focus:outline-none pb-0.5"
                         />
                         <button
                           onClick={() => handleDeleteTask(idx)}
@@ -294,29 +294,29 @@ export const MeetingsView: React.FC = () => {
                       {/* Assignee & Deadline */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs text-neutral-500 dark:text-neutral-400 block mb-1">Ответственный:</label>
+                          <label className="text-xs text-neutral-500 dark:text-neutral-400 block mb-1 font-medium">Ответственный:</label>
                           <input
                             type="text"
                             value={task.assigneeName}
                             onChange={(e) => handleUpdateTask(idx, 'assigneeName', e.target.value)}
-                            className={`w-full bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 border focus:outline-none ${
+                            className={`w-full glass-input px-3 py-1.5 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none ${
                               isUnassigned
-                                ? 'border-amber-400 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200'
-                                : 'border-neutral-200 dark:border-neutral-800 focus:border-neutral-400 dark:focus:border-neutral-600'
+                                ? 'border-amber-400/80 dark:border-amber-500/50 bg-amber-500/[0.06] text-amber-800 dark:text-amber-200'
+                                : 'focus:border-blue-500/50'
                             }`}
                           />
                         </div>
 
                         <div>
-                          <label className="text-xs text-neutral-500 dark:text-neutral-400 block mb-1">Срок исполнения:</label>
+                          <label className="text-xs text-neutral-500 dark:text-neutral-400 block mb-1 font-medium">Срок исполнения:</label>
                           <input
                             type="text"
                             value={task.deadline}
                             onChange={(e) => handleUpdateTask(idx, 'deadline', e.target.value)}
-                            className={`w-full bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 border focus:outline-none ${
+                            className={`w-full glass-input px-3 py-1.5 rounded-lg text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none ${
                               isNoDeadline
-                                ? 'border-amber-400 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200'
-                                : 'border-neutral-200 dark:border-neutral-800 focus:border-neutral-400 dark:focus:border-neutral-600'
+                                ? 'border-amber-400/80 dark:border-amber-500/50 bg-amber-500/[0.06] text-amber-800 dark:text-amber-200'
+                                : 'focus:border-blue-500/50'
                             }`}
                           />
                         </div>
@@ -324,7 +324,7 @@ export const MeetingsView: React.FC = () => {
 
                       {/* Citation */}
                       {task.sourceQuote && (
-                        <div className="text-xs text-neutral-600 dark:text-neutral-400 bg-white dark:bg-neutral-900/40 p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800/40 flex items-center justify-between">
+                        <div className="text-xs text-neutral-600 dark:text-neutral-400 bg-black/[0.02] dark:bg-white/[0.02] p-2.5 rounded-lg border border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between">
                           <span>Основание: «{task.sourceQuote}»</span>
                           {task.timestamp && (
                             <span className="font-mono not-italic shrink-0 ml-2 text-neutral-500 dark:text-neutral-400">

@@ -23,16 +23,16 @@ export const ToastContainer: React.FC = () => {
         return (
           <div
             key={toast.id}
-            className="pointer-events-auto p-3.5 rounded-xl border border-neutral-700 bg-neutral-900/95 shadow-xl flex items-start gap-3 backdrop-blur-md transition-all animate-in fade-in slide-in-from-bottom-2"
+            className="pointer-events-auto p-3.5 rounded-2xl glass-panel shadow-2xl flex items-start gap-3 border border-black/[0.08] dark:border-white/[0.12] transition-all animate-in fade-in slide-in-from-bottom-2"
           >
             <div className="mt-0.5 shrink-0">{icon}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-neutral-100">{toast.title}</div>
-              <div className="text-xs text-neutral-400 mt-0.5 leading-snug">{toast.message}</div>
+              <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">{toast.title}</div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 leading-snug">{toast.message}</div>
             </div>
             <button
               onClick={() => removeToast(toast.id)}
-              className="text-neutral-500 hover:text-neutral-300 transition-colors p-0.5"
+              className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors p-0.5"
             >
               <X className="w-3.5 h-3.5" />
             </button>

@@ -127,9 +127,9 @@ export const AuditLogView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full bg-transparent overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-8 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between bg-white dark:bg-neutral-900/40 shrink-0">
+      <div className="h-16 px-8 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between bg-white/60 dark:bg-[#0c1017]/60 backdrop-blur-xl shrink-0">
         <div>
           <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
@@ -142,19 +142,19 @@ export const AuditLogView: React.FC = () => {
 
         <div className="flex items-center gap-3">
           {accessDeniedCount > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-300 dark:border-rose-900/40 text-xs font-medium text-rose-700 dark:text-rose-400">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-300/80 dark:border-rose-900/50 text-xs font-medium text-rose-700 dark:text-rose-400 shadow-sm backdrop-blur-md">
               <ShieldAlert className="w-3.5 h-3.5" />
               <span>{accessDeniedCount} нарушений доступа</span>
             </div>
           )}
-          <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-900 px-3 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 shadow-sm">
+          <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 glass-card px-3 py-1 rounded-xl shadow-sm">
             Записей в логе: {auditLogs.length}
           </span>
         </div>
       </div>
 
       {/* Control Bar: Filters & Search */}
-      <div className="p-4 px-8 border-b border-neutral-200 dark:border-neutral-800/80 bg-white/60 dark:bg-neutral-900/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="p-4 px-8 border-b border-black/[0.06] dark:border-white/[0.08] bg-white/40 dark:bg-black/[0.1] backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-1.5">
           {[
@@ -170,8 +170,8 @@ export const AuditLogView: React.FC = () => {
                 onClick={() => setFilterStatus(tab.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 shadow-sm ${
                   isActive
-                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-950 font-semibold'
-                    : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 border border-neutral-200 dark:border-neutral-800'
+                    ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold shadow-sm'
+                    : 'glass-card text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
                 }`}
               >
                 <span>{tab.label}</span>
@@ -181,7 +181,7 @@ export const AuditLogView: React.FC = () => {
                       ? 'bg-rose-500 text-white'
                       : isActive
                       ? 'bg-white/20 text-white dark:bg-neutral-900/20 dark:text-neutral-900'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                      : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-600 dark:text-neutral-400'
                   }`}
                 >
                   {tab.count}
@@ -197,7 +197,7 @@ export const AuditLogView: React.FC = () => {
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value)}
-            className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-neutral-400 shadow-sm cursor-pointer"
+            className="glass-input text-neutral-800 dark:text-neutral-200 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-blue-500/50 shadow-sm cursor-pointer"
           >
             <option value="all">Все роли</option>
             <option value="ROLE_DIRECTOR">Генеральный директор</option>
@@ -213,7 +213,7 @@ export const AuditLogView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Поиск по событиям и деталям..."
-              className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-400 shadow-sm"
+              className="w-full glass-input rounded-xl pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-blue-500/50 shadow-sm"
             />
           </div>
         </div>
@@ -222,7 +222,7 @@ export const AuditLogView: React.FC = () => {
       {/* Cards Stream / Feed */}
       <div className="flex-1 overflow-y-auto p-8 space-y-3.5">
         {filteredLogs.length === 0 ? (
-          <div className="p-12 text-center bg-white dark:bg-neutral-900/40 border border-dashed border-neutral-300 dark:border-neutral-800 rounded-2xl max-w-xl mx-auto space-y-3">
+          <div className="p-12 text-center glass-panel rounded-2xl max-w-xl mx-auto space-y-3">
             <ShieldCheck className="w-8 h-8 text-neutral-400 mx-auto" />
             <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Событий не найдено
@@ -236,7 +236,7 @@ export const AuditLogView: React.FC = () => {
                 setFilterRole('all');
                 setSearchQuery('');
               }}
-              className="px-3.5 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl transition-colors inline-block"
+              className="px-3.5 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 glass-card hover:bg-white dark:hover:bg-white/[0.1] rounded-xl transition-all shadow-sm inline-block"
             >
               Сбросить фильтры
             </button>
@@ -249,7 +249,7 @@ export const AuditLogView: React.FC = () => {
             return (
               <div
                 key={log.id}
-                className={`p-4 rounded-2xl bg-white dark:bg-neutral-900/60 border ${statusConfig.cardBorder} shadow-sm transition-all hover:shadow space-y-3`}
+                className={`p-4 rounded-2xl glass-card ${statusConfig.cardBorder} shadow-sm transition-all duration-200 hover:-translate-y-0.5 space-y-3`}
               >
                 {/* Card Top Row: Category, Action Badge, Target & Timestamp */}
                 <div className="flex items-center justify-between gap-3 text-xs">
@@ -263,7 +263,7 @@ export const AuditLogView: React.FC = () => {
                     </span>
 
                     {/* Action Code Tag */}
-                    <span className="font-mono text-[11px] font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700">
+                    <span className="font-mono text-[11px] font-semibold text-neutral-900 dark:text-neutral-100 bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 rounded-md border border-black/[0.06] dark:border-white/[0.08]">
                       {log.actionType}
                     </span>
 
@@ -285,18 +285,18 @@ export const AuditLogView: React.FC = () => {
                 <div className="space-y-1.5 pl-0.5">
                   <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                     <span className="text-neutral-400">Целевой объект:</span>
-                    <span className="font-semibold text-neutral-900 dark:text-neutral-100 font-mono bg-neutral-50 dark:bg-neutral-950 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-800">
+                    <span className="font-semibold text-neutral-900 dark:text-neutral-100 font-mono bg-black/[0.03] dark:bg-white/[0.04] px-2 py-0.5 rounded-md border border-black/[0.06] dark:border-white/[0.08]">
                       {log.targetEntity}
                     </span>
                   </div>
 
-                  <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans bg-neutral-50/70 dark:bg-neutral-950/40 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800/60">
+                  <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans bg-black/[0.02] dark:bg-white/[0.02] p-3 rounded-xl border border-black/[0.05] dark:border-white/[0.06]">
                     {log.details}
                   </p>
                 </div>
 
                 {/* Card Footer: Actor, Role, ID */}
-                <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 pt-1 border-t border-neutral-100 dark:border-neutral-800/60">
+                <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 pt-1 border-t border-black/[0.05] dark:border-white/[0.06]">
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1 text-neutral-900 dark:text-neutral-200 font-medium">
                       <User className="w-3 h-3 text-neutral-400" />
