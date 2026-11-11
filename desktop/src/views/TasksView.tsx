@@ -70,6 +70,7 @@ export const TasksView: React.FC = () => {
           {[
             { id: 'all', label: 'Все' },
             { id: 'active', label: 'В работе' },
+            { id: 'overdue', label: 'Просроченные' },
             { id: 'completed', label: 'Завершенные' },
           ].map((tab) => (
             <button
@@ -82,6 +83,11 @@ export const TasksView: React.FC = () => {
               }`}
             >
               {tab.label}
+              {tab.id === 'overdue' && tasks.filter(t => t.status === 'overdue').length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
+                  {tasks.filter(t => t.status === 'overdue').length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -127,17 +133,24 @@ export const TasksView: React.FC = () => {
                 </button>
 
                 <div className="flex-1 space-y-1">
-                  <div
-                    className={`text-sm font-medium ${
-                      isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-neutral-200'
-                    }`}
-                  >
-                    {task.title}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`text-sm font-medium ${
+                        isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-neutral-200'
+                      }`}
+                    >
+                      {task.title}
+                    </div>
+                    {task.status === 'overdue' && !isDone && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono uppercase">
+                        Просрочено
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
                     <span className="text-neutral-700 dark:text-neutral-300 font-medium">👤 {task.assigneeName}</span>
-                    <span className="flex items-center gap-1">
+                    <span className={`flex items-center gap-1 ${task.status === 'overdue' && !isDone ? 'text-rose-600 dark:text-rose-400 font-semibold font-mono' : ''}`}>
                       <Calendar className="w-3 h-3 text-neutral-400" />
                       Срок: {task.deadline}
                     </span>
