@@ -1,6 +1,24 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserRole, UserProfile, TaskItem, AuditLogEntry, KPIMetric, DocumentItem } from '../types';
-import { MOCK_USERS, MOCK_DOCUMENTS, MOCK_KPI_METRICS, INITIAL_TASKS, INITIAL_AUDIT_LOG } from '../mock/mockData';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import {
+  UserRole,
+  UserProfile,
+  TaskItem,
+  AuditLogEntry,
+  KPIMetric,
+  DocumentItem,
+  RAGMessage,
+  CalendarSlot,
+  MeetingItem,
+} from '../types';
+import {
+  MOCK_USERS,
+  MOCK_DOCUMENTS,
+  MOCK_KPI_METRICS,
+  INITIAL_TASKS,
+  INITIAL_AUDIT_LOG,
+  MOCK_CALENDAR_SLOTS,
+} from '../mock/mockData';
+import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -15,27 +33,47 @@ interface AppContextType {
   theme: ThemeMode;
   toggleTheme: () => void;
   isAuthenticated: boolean;
-  loginAs: (role: UserRole) => void;
+  loginAs: (role: UserRole) => Promise<void>;
   logout: () => void;
   currentRole: UserRole;
   currentUser: UserProfile;
-  setRole: (role: UserRole) => void;
+  setRole: (role: UserRole) => Promise<void>;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   tasks: TaskItem[];
-  addTask: (task: Omit<TaskItem, 'id'>) => void;
-  updateTask: (id: string, updates: Partial<TaskItem>) => void;
-  toggleTaskStatus: (id: string) => void;
-  batchApproveTasks: (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => void;
+  addTask: (task: Omit<TaskItem, 'id'>) => Promise<void>;
+  updateTask: (id: string, updates: Partial<TaskItem>) => Promise<void>;
+  toggleTaskStatus: (id: string) => Promise<void>;
+  batchApproveTasks: (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => Promise<void>;
   auditLogs: AuditLogEntry[];
-  logAudit: (actionType: string, targetEntity: string, status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING', details: string) => void;
+  logAudit: (
+    actionType: string,
+    targetEntity: string,
+    status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING',
+    details: string
+  ) => void;
   toasts: Toast[];
   showToast: (title: string, message: string, type?: 'success' | 'warning' | 'error' | 'info') => void;
   removeToast: (id: string) => void;
-  resetDemoData: () => void;
+  resetDemoData: () => Promise<void>;
   kpiMetrics: KPIMetric[];
   documents: DocumentItem[];
   canAccessDocument: (minClearance: number) => boolean;
+  backendOnline: boolean;
+  isSyncing: boolean;
+  syncWithBackend: () => Promise<void>;
+  queryRAG: (queryText: string) => Promise<RAGMessage>;
+  analyzeMeetingTranscript: (text: string, title: string) => Promise<ProtocolAnalysisResult | null>;
+  calendarSlots: CalendarSlot[];
+  scheduledMeetings: MeetingItem[];
+  scheduleMeeting: (params: {
+    title: string;
+    date: string;
+    time: string;
+    durationMinutes?: number;
+    participants: string[];
+    agenda: string[];
+  }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -45,7 +83,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('photoprint_theme');
     if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark'; // default to calm dark
+    return 'dark';
   });
 
   useEffect(() => {
@@ -70,24 +108,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOG);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [kpiMetrics] = useState<KPIMetric[]>(MOCK_KPI_METRICS);
-  const [documents] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
+  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>(MOCK_KPI_METRICS);
+  const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
+  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>(MOCK_CALENDAR_SLOTS);
+  const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
+
+  // Backend connection state
+  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   const currentUser = MOCK_USERS[currentRole];
 
-  const showToast = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info') => {
+  const showToast = useCallback((title: string, message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString() + Math.random().toString();
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
-      removeToast(id);
+      setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
-  };
+  }, []);
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const logAudit = (
+  const logAudit = useCallback((
     actionType: string,
     targetEntity: string,
     status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING',
@@ -106,12 +150,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       details,
     };
     setAuditLogs((prev) => [newEntry, ...prev]);
-  };
+  }, [currentUser.name, currentRole]);
 
-  const loginAs = (role: UserRole) => {
+  // Synchronize state with backend
+  const syncWithBackend = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const health = await apiClient.checkHealth();
+      if (health.online) {
+        setBackendOnline(true);
+
+        // Fetch live entities concurrently
+        const [liveTasks, liveMetrics, liveAudit, liveDocs, liveSlots, liveMeetings] = await Promise.allSettled([
+          apiClient.getTasks(),
+          apiClient.getMetrics(),
+          apiClient.getAuditLogs(),
+          apiClient.getDocuments(),
+          apiClient.getCalendarSlots(),
+          apiClient.getMeetings(),
+        ]);
+
+        if (liveTasks.status === 'fulfilled' && liveTasks.value.length > 0) {
+          setTasks(liveTasks.value);
+        }
+        if (liveMetrics.status === 'fulfilled' && liveMetrics.value.length > 0) {
+          setKpiMetrics(liveMetrics.value);
+        }
+        if (liveAudit.status === 'fulfilled' && liveAudit.value.length > 0) {
+          setAuditLogs(liveAudit.value);
+        }
+        if (liveDocs.status === 'fulfilled' && liveDocs.value.length > 0) {
+          setDocuments(liveDocs.value);
+        }
+        if (liveSlots.status === 'fulfilled' && liveSlots.value.length > 0) {
+          setCalendarSlots(liveSlots.value);
+        }
+        if (liveMeetings.status === 'fulfilled') {
+          setScheduledMeetings(liveMeetings.value);
+        }
+      } else {
+        setBackendOnline(false);
+      }
+    } catch {
+      setBackendOnline(false);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Probe backend on mount and periodically every 10 seconds
+  useEffect(() => {
+    syncWithBackend();
+    const interval = setInterval(() => {
+      syncWithBackend();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [syncWithBackend]);
+
+  const loginAs = async (role: UserRole) => {
     setCurrentRole(role);
     setIsAuthenticated(true);
     const targetUser = MOCK_USERS[role];
+
+    if (backendOnline) {
+      try {
+        await apiClient.switchRole(role);
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // fallback
+      }
+    }
+
     logAudit(
       'LOGIN',
       `User: ${targetUser.id}`,
@@ -126,9 +236,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsAuthenticated(false);
   };
 
-  const setRole = (newRole: UserRole) => {
+  const setRole = async (newRole: UserRole) => {
     setCurrentRole(newRole);
     const targetUser = MOCK_USERS[newRole];
+
+    if (backendOnline) {
+      try {
+        await apiClient.switchRole(newRole);
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // fallback
+      }
+    }
+
     logAudit(
       'SWITCH_ROLE',
       `User: ${targetUser.id}`,
@@ -145,60 +266,274 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return false;
   };
 
-  const addTask = (taskData: Omit<TaskItem, 'id'>) => {
-    const id = 'task-' + Date.now().toString();
-    const newTask: TaskItem = { ...taskData, id };
+  const addTask = async (taskData: Omit<TaskItem, 'id'>) => {
+    const tempId = 'task-' + Date.now().toString();
+    const newTask: TaskItem = { ...taskData, id: tempId };
     setTasks((prev) => [newTask, ...prev]);
+
+    if (backendOnline) {
+      try {
+        const liveTask = await apiClient.createTask(taskData);
+        setTasks((prev) => prev.map((t) => (t.id === tempId ? liveTask : t)));
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
     logAudit('CREATE_TASK', `Task: ${newTask.title}`, 'SUCCESS', `Создана задача: ${newTask.title}`);
   };
 
-  const updateTask = (id: string, updates: Partial<TaskItem>) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-    );
+  const updateTask = async (id: string, updates: Partial<TaskItem>) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+
+    if (backendOnline) {
+      try {
+        await apiClient.updateTask(id, updates);
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
     logAudit('UPDATE_TASK', `Task: ${id}`, 'SUCCESS', `Изменены параметры задачи`);
   };
 
-  const toggleTaskStatus = (id: string) => {
+  const toggleTaskStatus = async (id: string) => {
+    const currentTask = tasks.find((t) => t.id === id);
+    const nextStatus = currentTask?.status === 'completed' ? 'active' : 'completed';
+
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id === id) {
-          const nextStatus = t.status === 'completed' ? 'active' : 'completed';
-          logAudit(
-            'CHANGE_TASK_STATUS',
-            `Task: ${id}`,
-            'SUCCESS',
-            `Статус задачи изменен на "${nextStatus === 'completed' ? 'Завершена' : 'В работе'}"`
-          );
           return { ...t, status: nextStatus };
         }
         return t;
       })
     );
+
+    if (backendOnline) {
+      try {
+        await apiClient.updateTask(id, { status: nextStatus });
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
+    logAudit(
+      'CHANGE_TASK_STATUS',
+      `Task: ${id}`,
+      'SUCCESS',
+      `Статус задачи изменен на "${nextStatus === 'completed' ? 'Завершена' : 'В работе'}"`
+    );
   };
 
-  const batchApproveTasks = (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => {
-    const created: TaskItem[] = newTasks.map((t, idx) => ({
+  const batchApproveTasks = async (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => {
+    const localCreated: TaskItem[] = newTasks.map((t, idx) => ({
       ...t,
       id: `task-appr-${Date.now()}-${idx}`,
       status: 'active',
       meetingTitle,
     }));
-    setTasks((prev) => [...created, ...prev]);
+
+    setTasks((prev) => [...localCreated, ...prev]);
+
+    if (backendOnline) {
+      try {
+        const liveConfirmed = await apiClient.confirmTasks(localCreated, meetingTitle);
+        if (liveConfirmed && liveConfirmed.length > 0) {
+          setTasks((prev) => {
+            const idsToRemove = new Set(localCreated.map((lc) => lc.id));
+            const withoutLocal = prev.filter((p) => !idsToRemove.has(p.id));
+            return [...liveConfirmed, ...withoutLocal];
+          });
+        }
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
     logAudit(
       'APPROVE_TASKS_BATCH',
       `Meeting: ${meetingTitle}`,
       'SUCCESS',
-      `Утверждено ${created.length} поручений по итогам совещания`
+      `Утверждено ${localCreated.length} поручений по итогам совещания (Human-in-the-Loop)`
     );
     showToast(
       'Поручения утверждены',
-      `В реестр успешно добавлено ${created.length} поручений`,
+      `В реестр успешно добавлено ${localCreated.length} поручений`,
       'success'
     );
   };
 
-  const resetDemoData = () => {
+  const scheduleMeeting = async (params: {
+    title: string;
+    date: string;
+    time: string;
+    durationMinutes?: number;
+    participants: string[];
+    agenda: string[];
+  }) => {
+    const newMeeting: MeetingItem = {
+      id: `m-sched-${Date.now()}`,
+      title: params.title,
+      date: params.date,
+      time: params.time,
+      durationMinutes: params.durationMinutes || 45,
+      participants: params.participants,
+      agenda: params.agenda,
+      status: 'scheduled',
+      openQuestions: [],
+    };
+
+    setScheduledMeetings((prev) => [newMeeting, ...prev]);
+
+    if (backendOnline) {
+      try {
+        const liveMeeting = await apiClient.createMeeting(params);
+        setScheduledMeetings((prev) =>
+          prev.map((m) => (m.id === newMeeting.id ? liveMeeting : m))
+        );
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
+    logAudit(
+      'SCHEDULE_MEETING',
+      `Meeting: ${params.title}`,
+      'SUCCESS',
+      `Пользователь подтвердил создание встречи на ${params.date} ${params.time}`
+    );
+    showToast('Встреча запланирована', `Событие создано на ${params.date} в ${params.time}`, 'success');
+  };
+
+  const analyzeMeetingTranscript = async (
+    transcriptText: string,
+    meetingTitle: string
+  ): Promise<ProtocolAnalysisResult | null> => {
+    if (backendOnline) {
+      try {
+        return await apiClient.analyzeTranscript({ transcriptText, meetingTitle });
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const queryRAG = async (queryText: string): Promise<RAGMessage> => {
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    if (backendOnline) {
+      try {
+        const res = await apiClient.queryKnowledgeBase(queryText, currentRole);
+        // Refresh audit logs because backend logged the search or security block
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        return res;
+      } catch {
+        // Fallback to local below
+      }
+    }
+
+    // Local fallback if offline
+    const lower = queryText.toLowerCase();
+    if (
+      lower.includes('бюджет') ||
+      lower.includes('выручк') ||
+      lower.includes('оклад') ||
+      lower.includes('зарплат') ||
+      lower.includes('премирован')
+    ) {
+      if (!canAccessDocument(1)) {
+        logAudit(
+          'ACCESS_DENIED',
+          'Document: doc-fin-01',
+          'ACCESS_DENIED',
+          `Попытка запроса финансовых показателей пользователем с ролью ${currentRole}`
+        );
+        return {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `⛔ Доступ ограничен политикой безопасности предприятия. У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.`,
+          timestamp: time,
+          status: 'access_denied',
+          citations: [],
+        };
+      }
+
+      logAudit('RAG_SEARCH', 'Document: doc-fin-01', 'SUCCESS', 'Поиск в финансовых регламентах с цитированием');
+      return {
+        id: 'asst-' + Date.now(),
+        sender: 'assistant',
+        text: 'Согласно утвержденному Бюджету доходов и расходов (БДР) на Q4 2026, плановая выручка ООО «Фотопринт» составляет 48 500 000 руб. Плановый фонд премирования производственной смены при соблюдении уровня брака ниже 2.5% составляет 3 200 000 руб.',
+        timestamp: time,
+        status: 'grounded',
+        citations: [
+          {
+            documentId: 'doc-fin-01',
+            documentTitle: 'Бюджет доходов и расходов на 4 квартал 2026',
+            documentDate: '2026-10-01',
+            category: 'Финансы и стратегия',
+            excerpt:
+              'Плановые показатели выручки ООО «Фотопринт» на Q4 2026 установлены на уровне 48 500 000 руб. Фонд премирования производственной смены составляет 3 200 000 руб.',
+          },
+        ],
+      };
+    }
+
+    if (lower.includes('delta') || lower.includes('indigo') || lower.includes('калибровк')) {
+      logAudit('RAG_SEARCH', 'Document: doc-prod-01', 'SUCCESS', 'Поиск технологической карты HP Indigo 7900');
+      return {
+        id: 'asst-' + Date.now(),
+        sender: 'assistant',
+        text: 'Согласно Технологической карте цифровой печати на ЦПМ HP Indigo 7900, допустимое оптическое отклонение Delta-E составляет <= 2.0. Калибровка встроенного спектрофотометра обязательна каждые 4 часа работы либо при смене рулона.',
+        timestamp: time,
+        status: 'grounded',
+        citations: [
+          {
+            documentId: 'doc-prod-01',
+            documentTitle: 'Технологическая карта цифровой печати на ЦПМ HP Indigo 7900',
+            documentDate: '2026-08-15',
+            category: 'Производство',
+            excerpt:
+              'Калибровка встроенного спектрофотометра выполняется каждые 4 часа непрерывной работы. Допустимое оптическое отклонение Delta-E <= 2.0. Максимальное технологическое смещение приводки сторон — 0.2 мм.',
+          },
+        ],
+      };
+    }
+
+    return {
+      id: 'asst-' + Date.now(),
+      sender: 'assistant',
+      text: 'В доступных регламентах и документах ООО «Фотопринт» прямых оснований для ответа не найдено. Согласно регламенту безопасности AI-05, утверждение помечено как «требует уточнения / данные отсутствуют».',
+      timestamp: time,
+      status: 'needs_clarification',
+      citations: [],
+    };
+  };
+
+  const resetDemoData = async () => {
+    if (backendOnline) {
+      try {
+        await apiClient.resetDemo();
+        await syncWithBackend();
+        showToast('Демо сброшено', 'База данных и аудит на бэкенде сброшены к эталону', 'info');
+        return;
+      } catch {
+        // fallback to local
+      }
+    }
+
     setTasks(INITIAL_TASKS);
     setAuditLogs(INITIAL_AUDIT_LOG);
     setCurrentRole('ROLE_DIRECTOR');
@@ -238,6 +573,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         kpiMetrics,
         documents,
         canAccessDocument,
+        backendOnline,
+        isSyncing,
+        syncWithBackend,
+        queryRAG,
+        analyzeMeetingTranscript,
+        calendarSlots,
+        scheduledMeetings,
+        scheduleMeeting,
       }}
     >
       {children}

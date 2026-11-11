@@ -19,13 +19,13 @@ import {
 } from 'lucide-react';
 
 export const OverviewView: React.FC = () => {
-  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast } = useApp();
+  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline } = useApp();
 
   const [dataFreshnessTime, setDataFreshnessTime] = useState<string>('2026-11-11 15:00:00');
 
   const overdueTasks = tasks.filter((t) => t.status === 'overdue');
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     const now = new Date();
     const formatted =
       now.toLocaleDateString('ru-RU') +
@@ -33,14 +33,20 @@ export const OverviewView: React.FC = () => {
       now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setDataFreshnessTime(formatted);
 
+    await syncWithBackend();
+
     logAudit(
       'REFRESH_DASHBOARD',
       'KPI & Overdue Registry',
       'SUCCESS',
-      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений`
+      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений (Сервер: ${backendOnline ? 'онлайн' : 'офлайн'})`
     );
 
-    showToast('Витрины данных синхронизированы', `Время актуальности обновлено: ${formatted}`, 'info');
+    showToast(
+      backendOnline ? 'Данные синхронизированы с бэкендом' : 'Витрины обновлены (локальный режим)',
+      `Время актуальности: ${formatted}`,
+      'info'
+    );
   };
 
   const handleResolveOverdue = (task: TaskItem) => {
@@ -85,10 +91,11 @@ export const OverviewView: React.FC = () => {
 
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-colors shadow-sm"
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Синхронизировать
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Синхронизация...' : 'Синхронизировать'}</span>
           </button>
         </div>
       </div>

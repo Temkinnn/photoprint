@@ -9,11 +9,25 @@ import {
   LogOut,
   RotateCcw,
   Sun,
-  Moon
+  Moon,
+  Server,
+  RefreshCw
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { theme, toggleTheme, currentUser, activeTab, setActiveTab, tasks, logout, resetDemoData } = useApp();
+  const {
+    theme,
+    toggleTheme,
+    currentUser,
+    activeTab,
+    setActiveTab,
+    tasks,
+    logout,
+    resetDemoData,
+    backendOnline,
+    isSyncing,
+    syncWithBackend
+  } = useApp();
 
   const activeTasksCount = tasks.filter((t) => t.status === 'active' || t.status === 'overdue').length;
 
@@ -120,21 +134,45 @@ export const Sidebar: React.FC = () => {
         </nav>
       </div>
 
-      {/* Footer Profile Box & Logout */}
-      <div className="p-3 border-t border-neutral-200 dark:border-neutral-800/80 bg-neutral-50 dark:bg-neutral-900/30">
-        <div className="px-2 py-1.5 flex items-center justify-between">
-          <div className="min-w-0 pr-2">
-            <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-200 truncate">{currentUser.name}</div>
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">{currentUser.roleTitle}</div>
+      {/* Footer Backend Status & Profile Box */}
+      <div>
+        {/* Backend Connection Status */}
+        <div className="px-4 py-2 border-t border-neutral-200 dark:border-neutral-800/60 bg-neutral-100/50 dark:bg-neutral-900/40 flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                backendOnline ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'
+              }`}
+            />
+            <span className="truncate text-neutral-600 dark:text-neutral-400">
+              {backendOnline ? 'API 127.0.0.1:8000' : 'Автономный режим'}
+            </span>
           </div>
-
           <button
-            onClick={logout}
-            title="Сменить роль / Выйти на экран авторизации"
-            className="p-1.5 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-lg transition-colors shrink-0"
+            onClick={syncWithBackend}
+            title={backendOnline ? 'Синхронизировано с бэкендом (нажмите для проверки)' : 'Повторить подключение к бэкенду'}
+            className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+
+        {/* Profile Box & Logout */}
+        <div className="p-3 border-t border-neutral-200 dark:border-neutral-800/80 bg-neutral-50 dark:bg-neutral-900/30">
+          <div className="px-2 py-1.5 flex items-center justify-between">
+            <div className="min-w-0 pr-2">
+              <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-200 truncate">{currentUser.name}</div>
+              <div className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">{currentUser.roleTitle}</div>
+            </div>
+
+            <button
+              onClick={logout}
+              title="Сменить роль / Выйти на экран авторизации"
+              className="p-1.5 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-lg transition-colors shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

@@ -9,9 +9,10 @@ import {
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast } = useApp();
+  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG } = useApp();
 
   const [inputQuery, setInputQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<RAGMessage[]>([
     {
       id: 'welcome',
@@ -38,8 +39,8 @@ export const KnowledgeBaseView: React.FC = () => {
     },
   ];
 
-  const handleAsk = (queryText: string) => {
-    if (!queryText.trim()) return;
+  const handleAsk = async (queryText: string) => {
+    if (!queryText.trim() || isLoading) return;
 
     const userMessage: RAGMessage = {
       id: 'user-' + Date.now(),
@@ -50,131 +51,25 @@ export const KnowledgeBaseView: React.FC = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputQuery('');
+    setIsLoading(true);
 
-    setTimeout(() => {
-      generateResponse(queryText);
-    }, 400);
-  };
-
-  const generateResponse = (q: string) => {
-    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    const lower = q.toLowerCase();
-
-    // 1. Finance & Budget Question (Clearance Level 1)
-    if (lower.includes('бюджет') || lower.includes('выручк') || lower.includes('оклад') || lower.includes('премирован')) {
-      if (!canAccessDocument(1)) {
-        logAudit(
-          'ACCESS_DENIED',
-          'Document: doc-fin-01',
-          'ACCESS_DENIED',
-          `Попытка запроса финансовых показателей пользователем с ролью ${currentRole}`
-        );
-        showToast('Ограничение доступа', 'Финансовые документы доступны только Генеральному директору', 'warning');
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: 'asst-' + Date.now(),
-            sender: 'assistant',
-            text: `Доступ к документу ограничен.\n\nЗапрашиваемый финансовый отчет относится к Уровню допуска 1 (Генеральный директор). Ваша текущая роль («${currentUser.roleTitle}») не имеет прав на чтение финансово-кадровой тайны компании.\n\n💡 Нажмите кнопку выхода в левом нижнем углу и войдите как Генеральный директор для проверки.`,
-            timestamp: time,
-            status: 'access_denied',
-          },
-        ]);
-        return;
-      }
-
-      // Director has access
-      logAudit('RAG_SEARCH', 'Document: doc-fin-01', 'SUCCESS', 'Поиск в финансовых регламентах с цитированием');
-
+    try {
+      const assistantMessage = await queryRAG(queryText);
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
-          id: 'asst-' + Date.now(),
+          id: 'err-' + Date.now(),
           sender: 'assistant',
-          text: 'Согласно утвержденному Бюджету доходов и расходов (БДР) на Q4 2026, плановая выручка ООО «Фотопринт» составляет 48 500 000 руб. Плановый фонд премирования производственной смены при соблюдении уровня брака ниже 2.5% составляет 3 200 000 руб.',
-          timestamp: time,
-          status: 'grounded',
-          citations: [
-            {
-              documentId: 'doc-fin-01',
-              documentTitle: 'Бюджет доходов и расходов ООО «Фотопринт» на 4 квартал 2026',
-              documentDate: '2026-10-01',
-              category: 'Финансы и стратегия',
-              excerpt:
-                'Плановые показатели выручки ООО «Фотопринт» на Q4 2026 установлены на уровне 48 500 000 руб. Фонд премирования производственной смены составляет 3 200 000 руб. при выполнении норматива брака ниже 2.5%.',
-            },
-          ],
+          text: 'В доступных регламентах компании «Фотопринт» прямых оснований не найдено (AI-05).',
+          timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          status: 'needs_clarification',
         },
       ]);
-      return;
+    } finally {
+      setIsLoading(false);
     }
-
-    // 2. Technical / Production Question
-    if (lower.includes('delta-e') || lower.includes('indigo') || lower.includes('отклонен')) {
-      logAudit('RAG_SEARCH', 'Document: doc-prod-01', 'SUCCESS', 'Поиск по техкарте HP Indigo');
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: 'asst-' + Date.now(),
-          sender: 'assistant',
-          text: 'По технологической карте ЦПМ HP Indigo 7900 максимально допустимое оптическое отклонение Delta-E составляет не более 2.0. Калибровка встроенного спектрофотометра проводится каждые 4 часа работы либо при замене рулона бумаги. Допустимое смещение приводки — 0.2 мм.',
-          timestamp: time,
-          status: 'grounded',
-          citations: [
-            {
-              documentId: 'doc-prod-01',
-              documentTitle: 'Технологическая карта цифровой печати на ЦПМ HP Indigo 7900',
-              documentDate: '2026-08-15',
-              category: 'Производство',
-              excerpt:
-                'Калибровка спектрофотометра выполняется каждые 4 часа непрерывной работы. Допустимое оптическое отклонение Delta-E <= 2.0. Максимальное смещение приводки сторон — 0.2 мм.',
-            },
-          ],
-        },
-      ]);
-      return;
-    }
-
-    // 3. Customer Service Question
-    if (lower.includes('перепечатк') || lower.includes('picpac') || lower.includes('брак') || lower.includes('срок')) {
-      logAudit('RAG_SEARCH', 'Document: doc-sup-01', 'SUCCESS', 'Поиск по регламенту сервиса PicPac');
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: 'asst-' + Date.now(),
-          sender: 'assistant',
-          text: 'Служба заботы обязана зафиксировать претензию и направить ответ клиенту в течение 15 минут. Если подтвержден производственный брак, заказ направляется на бесплатную экспресс-перепечатку со сроком изготовления до 24 часов.',
-          timestamp: time,
-          status: 'grounded',
-          citations: [
-            {
-              documentId: 'doc-sup-01',
-              documentTitle: 'Регламент обработки рекламаций клиентов сервиса picPac.by',
-              documentDate: '2026-08-01',
-              category: 'Клиентский сервис',
-              excerpt:
-                'Оператор поддержки обязан зафиксировать фото дефекта и направить ответ клиенту в течение 15 минут. При подтверждении брака заказ направляется на бесплатную внеочередную перепечатку со сроком до 24 часов.',
-            },
-          ],
-        },
-      ]);
-      return;
-    }
-
-    // 4. Default: Fact not found (Anti-hallucination)
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: 'asst-' + Date.now(),
-        sender: 'assistant',
-        text: 'В доступных регламентах компании «Фотопринт» информация по этому вопросу не найдена.\n\nСтатус: Требует уточнения (AI-05).',
-        timestamp: time,
-        status: 'needs_clarification',
-      },
-    ]);
   };
 
   return (

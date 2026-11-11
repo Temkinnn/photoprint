@@ -11,11 +11,12 @@ import {
 } from 'lucide-react';
 
 export const MeetingsView: React.FC = () => {
-  const { batchApproveTasks, logAudit, showToast } = useApp();
+  const { batchApproveTasks, logAudit, showToast, analyzeMeetingTranscript, backendOnline } = useApp();
 
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>(MOCK_TRANSCRIPTS[0].id);
   const currentTranscript = MOCK_TRANSCRIPTS.find((t) => t.id === selectedTranscriptId) || MOCK_TRANSCRIPTS[0];
 
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>(
     currentTranscript.stagedTasks.map((t) => ({
       title: t.title,
@@ -28,6 +29,33 @@ export const MeetingsView: React.FC = () => {
   );
 
   const [showTranscript, setShowTranscript] = useState<boolean>(true);
+
+  const handleRunAiAnalysis = async () => {
+    setIsAnalyzing(true);
+    showToast('AI-Анализ запущен', 'Обработка стенограммы встречи локальной моделью...', 'info');
+    try {
+      const res = await analyzeMeetingTranscript(currentTranscript.content, currentTranscript.title);
+      if (res && res.tasks.length > 0) {
+        setTasksToReview(
+          res.tasks.map((t) => ({
+            title: t.title,
+            assigneeName: t.assigneeName,
+            deadline: t.deadline,
+            sourceQuote: t.sourceQuote,
+            timestamp: t.timestamp || '00:00',
+            status: 'pending_approval' as const,
+          }))
+        );
+        showToast('Анализ завершен', `Извлечено ${res.tasks.length} поручений и ${res.decisions.length} решений`, 'success');
+      } else {
+        showToast('Анализ выполнен', 'Стенограмма обработана в штатном режиме', 'info');
+      }
+    } catch {
+      showToast('Ошибка анализа', 'Не удалось связаться с модулем анализа', 'warning');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleSelectMeeting = (id: string) => {
     setSelectedTranscriptId(id);
@@ -129,6 +157,16 @@ export const MeetingsView: React.FC = () => {
             }`}
           >
             {showTranscript ? 'Скрыть текст' : 'Показать текст'}
+          </button>
+
+          <button
+            onClick={handleRunAiAnalysis}
+            disabled={isAnalyzing}
+            title={backendOnline ? 'Запустить анализ стенограммы на FastAPI бэкенде' : 'AI-анализ стенограммы'}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-black dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white transition-all shadow-sm disabled:opacity-50"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+            <span>{isAnalyzing ? 'Анализ...' : 'AI Анализ'}</span>
           </button>
         </div>
       </div>
