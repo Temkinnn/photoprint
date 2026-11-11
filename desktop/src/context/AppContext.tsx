@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserRole, UserProfile, TaskItem, AuditLogEntry, KPIMetric, DocumentItem } from '../types';
 import { MOCK_USERS, MOCK_DOCUMENTS, MOCK_KPI_METRICS, INITIAL_TASKS, INITIAL_AUDIT_LOG } from '../mock/mockData';
+
+export type ThemeMode = 'light' | 'dark';
 
 interface Toast {
   id: string;
@@ -10,6 +12,11 @@ interface Toast {
 }
 
 interface AppContextType {
+  theme: ThemeMode;
+  toggleTheme: () => void;
+  isAuthenticated: boolean;
+  loginAs: (role: UserRole) => void;
+  logout: () => void;
   currentRole: UserRole;
   currentUser: UserProfile;
   setRole: (role: UserRole) => void;
@@ -34,6 +41,30 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Theme state with local persistence
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('photoprint_theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+    return 'dark'; // default to calm dark
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('photoprint_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [currentRole, setCurrentRole] = useState<UserRole>('ROLE_DIRECTOR');
   const [activeTab, setActiveTab] = useState<string>('meetings');
   const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
@@ -77,6 +108,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAuditLogs((prev) => [newEntry, ...prev]);
   };
 
+  const loginAs = (role: UserRole) => {
+    setCurrentRole(role);
+    setIsAuthenticated(true);
+    const targetUser = MOCK_USERS[role];
+    logAudit(
+      'LOGIN',
+      `User: ${targetUser.id}`,
+      'SUCCESS',
+      `Вход в систему: ${targetUser.name} (${targetUser.roleTitle})`
+    );
+    showToast('Вход выполнен', `Вы вошли как: ${targetUser.name}`, 'info');
+  };
+
+  const logout = () => {
+    logAudit('LOGOUT', `User: ${currentUser.id}`, 'SUCCESS', 'Пользователь вышел из системы');
+    setIsAuthenticated(false);
+  };
+
   const setRole = (newRole: UserRole) => {
     setCurrentRole(newRole);
     const targetUser = MOCK_USERS[newRole];
@@ -84,19 +133,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       'SWITCH_ROLE',
       `User: ${targetUser.id}`,
       'SUCCESS',
-      `Переключение активной роли на: ${targetUser.roleTitle} (${targetUser.department})`
+      `Переключение роли на: ${targetUser.roleTitle}`
     );
-    showToast(
-      'Роль изменена',
-      `Вы переключились на роль: ${targetUser.roleTitle}`,
-      'info'
-    );
+    showToast('Роль изменена', `Активная роль: ${targetUser.roleTitle}`, 'info');
   };
 
   const canAccessDocument = (minClearance: number): boolean => {
-    if (currentRole === 'ROLE_DIRECTOR') return true; // full access
-    if (currentRole === 'ROLE_PRODUCTION_HEAD' && minClearance >= 2) return true; // prod & support docs
-    if (currentRole === 'ROLE_SUPPORT_HEAD' && minClearance >= 3) return true; // support docs only
+    if (currentRole === 'ROLE_DIRECTOR') return true;
+    if (currentRole === 'ROLE_PRODUCTION_HEAD' && minClearance >= 2) return true;
+    if (currentRole === 'ROLE_SUPPORT_HEAD' && minClearance >= 3) return true;
     return false;
   };
 
@@ -104,7 +149,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const id = 'task-' + Date.now().toString();
     const newTask: TaskItem = { ...taskData, id };
     setTasks((prev) => [newTask, ...prev]);
-    logAudit('CREATE_TASK', `Task: ${newTask.title}`, 'SUCCESS', `Создана задача: ${newTask.title} (Ответственный: ${newTask.assigneeName})`);
+    logAudit('CREATE_TASK', `Task: ${newTask.title}`, 'SUCCESS', `Создана задача: ${newTask.title}`);
   };
 
   const updateTask = (id: string, updates: Partial<TaskItem>) => {
@@ -144,10 +189,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       'APPROVE_TASKS_BATCH',
       `Meeting: ${meetingTitle}`,
       'SUCCESS',
-      `Утверждено и внесено в реестр ${created.length} поручений по итогам совещания`
+      `Утверждено ${created.length} поручений по итогам совещания`
     );
     showToast(
-      'Поручения зафиксированы',
+      'Поручения утверждены',
       `В реестр успешно добавлено ${created.length} поручений`,
       'success'
     );
@@ -159,20 +204,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentRole('ROLE_DIRECTOR');
     logAudit(
       'RESET_DEMO',
-      'System: State',
+      'System',
       'SUCCESS',
-      'Система сброшена к эталонному синтетическому состоянию (20 документов, 3 расшифровки)'
+      'Сброс состояния к исходному демо-сценарию'
     );
-    showToast(
-      'Данные сброшены',
-      'Все задачи, логи и состояние возвращены к исходному демо-сценарию',
-      'warning'
-    );
+    showToast('Данные сброшены', 'Все задачи и логи возвращены к исходному состоянию', 'info');
   };
 
   return (
     <AppContext.Provider
       value={{
+        theme,
+        toggleTheme,
+        isAuthenticated,
+        loginAs,
+        logout,
         currentRole,
         currentUser,
         setRole,
