@@ -81,5 +81,34 @@ class TestServerPostgres(unittest.TestCase):
             docs_count = db.query(DBDocument).count()
             self.assertEqual(docs_count, 16)
 
+    def test_agenda_generation(self):
+        """Проверка генерации повестки и вопросов локальным/удаленным AI-модулем"""
+        res = self.client.post("/api/v1/meetings/generate-agenda", json={
+            "topic": "Тестовое совещание по ламинации",
+            "participants": ["Смирнов А.В.", "Иванов И.С."],
+            "documents": ["Технологическая карта"]
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("agenda", data)
+        self.assertIn("openQuestions", data)
+        self.assertTrue(len(data["agenda"]) >= 1)
+
+    def test_process_audio_endpoint(self):
+        """Проверка эндпоинта загрузки и анализа аудиофайла"""
+        import io
+        audio_stream = io.BytesIO(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+        res = self.client.post(
+            "/api/v1/meetings/process-audio",
+            files={"file": ("meeting_sample.wav", audio_stream, "audio/wav")},
+            data={"title": "Тестовая встреча по звукозаписи"}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("decisions", data)
+        self.assertIn("tasks", data)
+        self.assertIn("summary", data)
+        self.assertIn("transcriptId", data)
+
 if __name__ == "__main__":
     unittest.main()

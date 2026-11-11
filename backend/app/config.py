@@ -36,7 +36,11 @@ class Settings(BaseSettings):
         )
         return url_obj.render_as_string(hide_password=False)
     
-    # AI / Ollama configuration
+    # AI Server (Developer 2 remote GPU: Whisper + Qwen 2.5)
+    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "https://mighty-bikes-hammer.loca.lt")
+    AI_SERVER_BYPASS_HEADER: str = "true"
+
+    # AI / Ollama configuration (local fallback)
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     OLLAMA_EMBED_MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")

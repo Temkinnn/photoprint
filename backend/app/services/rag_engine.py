@@ -1,5 +1,7 @@
+import httpx
 from datetime import datetime
 from typing import List, Tuple
+from app.config import settings
 from app.db.storage import storage
 from app.schemas import RAGResponse, Citation, UserRole
 
@@ -92,6 +94,38 @@ async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
     ]
 
     answer_text = f"На основании внутреннего регламента «{best_doc.title}» (редакция от {best_doc.date}):\n\n{best_doc.summary}\n\nКлючевая выдержка: {best_doc.content}"
+
+    # Запрос к удаленной модели Qwen 2.5 на AI-сервере для формулирования ответа по регламентам (AI-01, AI-05)
+    if settings.AI_SERVER_URL:
+        try:
+            headers = {"Bypass-Tunnel-Reminder": settings.AI_SERVER_BYPASS_HEADER}
+            context_docs = "\n\n".join([
+                f"Регламент: «{doc.title}» (от {doc.date}, категория: {doc.category}):\n{doc.content}"
+                for doc, _ in matching_docs[:2]
+            ])
+            rag_prompt = f"""Ответь на вопрос пользователя строго по предоставленным регламентам предприятия ООО «Фотопринт». Не выдумывай факты, которых нет в тексте регламентов.
+
+Вопрос: {query}
+
+{context_docs}
+
+Дай четкий структурированный ответ со ссылкой на регламент и точные нормативы:"""
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    f"{settings.AI_SERVER_URL}/api/v1/ai/generate",
+                    headers=headers,
+                    json={
+                        "prompt": rag_prompt,
+                        "system": "Ты — корпоративный AI-ассистент по регламентам ООО «Фотопринт». Отвечай точно, емко и строго по тексту регламентов.",
+                        "temperature": 0.1
+                    }
+                )
+                if resp.status_code == 200:
+                    ai_answer = resp.json().get("response", "").strip()
+                    if ai_answer:
+                        answer_text = ai_answer
+        except Exception:
+            pass
 
     storage.add_audit_log(
         action="RAG_SEARCH_SUCCESS",

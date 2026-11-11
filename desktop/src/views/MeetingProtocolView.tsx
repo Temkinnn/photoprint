@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { TaskItem } from '../types';
 import {
@@ -16,22 +16,27 @@ import {
   User,
   Quote,
   Eye,
-  EyeOff
+  EyeOff,
+  Mic,
+  Loader2
 } from 'lucide-react';
 
 export const MeetingProtocolView: React.FC = () => {
   const {
     transcripts,
     analyzeMeetingTranscript,
+    processAudioMeeting,
     batchApproveTasks,
     setActiveTab,
     logAudit,
     showToast
   } = useApp();
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>(transcripts[0]?.id || 'tr-01');
   const [showFullTranscript, setShowFullTranscript] = useState<boolean>(true);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isUploadingAudio, setIsUploadingAudio] = useState<boolean>(false);
 
   const currentTranscript = transcripts.find((t) => t.id === selectedTranscriptId) || transcripts[0] || {
     id: 'tr-01',
@@ -127,6 +132,52 @@ export const MeetingProtocolView: React.FC = () => {
     }
   };
 
+  const handleAudioFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAudio(true);
+    showToast(
+      'Обработка аудиозаписи',
+      `Файл «${file.name}» передан на Whisper STT и Qwen 2.5...`,
+      'info'
+    );
+
+    try {
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      const res = await processAudioMeeting(file, cleanTitle);
+      if (res) {
+        if (res.transcriptId) {
+          setSelectedTranscriptId(res.transcriptId);
+        }
+        if (res.tasks && res.tasks.length > 0) {
+          setTasksToReview(
+            res.tasks.map((t) => ({
+              title: t.title,
+              assigneeName: t.assigneeName,
+              deadline: t.deadline,
+              sourceQuote: t.sourceQuote,
+              timestamp: t.timestamp || '00:00',
+              status: 'pending_approval' as const,
+            }))
+          );
+        }
+        showToast(
+          'Аудио расшифровано',
+          `Выделено решений: ${res.decisions.length}, задач: ${res.tasks.length}`,
+          'success'
+        );
+      } else {
+        showToast('Внимание', 'Не удалось обработать аудио через удаленный сервер', 'warning');
+      }
+    } catch {
+      showToast('Ошибка аудио', 'Произошла ошибка при отправке аудио на AI-сервер', 'warning');
+    } finally {
+      setIsUploadingAudio(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleSaveProtocol = () => {
     const protocolRef = `#transcript-${currentTranscript.id}`;
     logAudit(
@@ -219,7 +270,29 @@ export const MeetingProtocolView: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleAudioFileChange}
+              accept="audio/*,.wav,.ogg,.mp3,.m4a"
+              className="hidden"
+            />
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingAudio}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 border border-sky-300 dark:border-sky-800 rounded transition-colors shadow-sm disabled:opacity-50"
+              title="Загрузить аудиозапись (.wav, .ogg, .mp3) для распознавания Whisper и извлечения задач Qwen 2.5"
+            >
+              {isUploadingAudio ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-500" />
+              ) : (
+                <Mic className="w-3.5 h-3.5 text-sky-500" />
+              )}
+              <span>{isUploadingAudio ? 'Whisper STT...' : 'Загрузить аудио (.wav, .ogg)'}</span>
+            </button>
+
             <button
               onClick={() => setShowFullTranscript(!showFullTranscript)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#252936] rounded border border-neutral-200 dark:border-[#272b39] transition-colors"

@@ -32,3 +32,4 @@ Thumbs.db
 # Documentation / Large media
 /doc
 *.log
+backend/pgdata/

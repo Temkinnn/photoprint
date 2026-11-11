@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import List
 from app.db.storage import storage
 from app.schemas import (
@@ -7,7 +7,9 @@ from app.schemas import (
     ConfirmTasksRequest, TaskItem, TranscriptItem,
     AgendaGenerationRequest, AgendaGenerationResponse
 )
-from app.services.meeting_analyzer import analyze_meeting_transcript, generate_meeting_agenda
+from app.services.meeting_analyzer import (
+    analyze_meeting_transcript, generate_meeting_agenda, process_audio_meeting
+)
 
 router = APIRouter(prefix="/meetings", tags=["Встречи и Протоколы"])
 
@@ -71,6 +73,31 @@ async def analyze_transcript(req: ProtocolAnalysisRequest):
         details="Запущен автоматический анализ стенограммы встречи локальной AI-моделью"
     )
     return await analyze_meeting_transcript(req.transcriptText, req.meetingTitle)
+
+@router.post("/process-audio", response_model=ProtocolAnalysisResponse)
+async def process_audio(
+    file: UploadFile = File(...),
+    title: str = Form("Оперативное совещание")
+):
+    """
+    Универсальный эндпоинт обработки аудиозаписи встречи:
+    Загрузка аудио (.wav, .ogg, .mp3) -> Whisper STT -> Qwen 2.5 -> сохранение в БД -> протокол и задачи.
+    """
+    file_bytes = await file.read()
+    analysis_resp, new_transcript = await process_audio_meeting(
+        file_bytes=file_bytes,
+        filename=file.filename or "audio.wav",
+        meeting_title=title
+    )
+    # Сохранение созданной расшифровки в PostgreSQL
+    storage.add_transcript(new_transcript)
+    storage.add_audit_log(
+        action="PROCESS_AUDIO_MEETING",
+        target=f"{new_transcript.id} ({new_transcript.title})",
+        status="success",
+        details=f"Аудиозапись '{file.filename}' расшифрована (Whisper) и извлечены поручения (Qwen 2.5)"
+    )
+    return analysis_resp
 
 @router.post("/confirm-tasks", response_model=List[TaskItem])
 async def confirm_tasks(req: ConfirmTasksRequest):

@@ -36,6 +36,9 @@ export interface ProtocolAnalysisResult {
   decisions: DecisionItem[];
   risks: RiskItem[];
   tasks: TaskItem[];
+  transcriptId?: string;
+  questions?: string[];
+  duration?: string;
 }
 
 export interface BackendHealth {
@@ -173,7 +176,24 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       },
-      8000
+      30000
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async processAudioMeeting(file: File, title = 'Оперативное совещание'): Promise<ProtocolAnalysisResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/meetings/process-audio`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      95000
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();

@@ -118,6 +118,9 @@ class ProtocolAnalysisResponse(BaseModel):
     decisions: List[DecisionItem]
     risks: List[RiskItem]
     tasks: List[TaskItem]
+    transcriptId: Optional[str] = None
+    questions: Optional[List[str]] = []
+    duration: Optional[str] = None
 
 class ConfirmTasksRequest(BaseModel):
     tasks: List[TaskItem]

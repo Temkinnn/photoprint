@@ -60,6 +60,7 @@ interface AppContextType {
   syncWithBackend: () => Promise<void>;
   queryRAG: (queryText: string) => Promise<RAGMessage>;
   analyzeMeetingTranscript: (text: string, title: string) => Promise<ProtocolAnalysisResult | null>;
+  processAudioMeeting: (file: File, title?: string) => Promise<ProtocolAnalysisResult | null>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
   transcripts: TranscriptItem[];
@@ -525,6 +526,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return null;
   };
 
+  const processAudioMeeting = async (
+    file: File,
+    title = 'Оперативное совещание'
+  ): Promise<ProtocolAnalysisResult | null> => {
+    if (backendOnline) {
+      try {
+        const res = await apiClient.processAudioMeeting(file, title);
+        const freshTranscripts = await apiClient.getTranscripts();
+        if (freshTranscripts && freshTranscripts.length > 0) {
+          setTranscripts(freshTranscripts);
+        }
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        return res;
+      } catch (err) {
+        console.error('Process audio meeting failed:', err);
+        return null;
+      }
+    }
+    return null;
+  };
+
   const queryRAG = async (queryText: string): Promise<RAGMessage> => {
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
@@ -661,6 +684,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         syncWithBackend,
         queryRAG,
         analyzeMeetingTranscript,
+        processAudioMeeting,
         calendarSlots,
         scheduledMeetings,
         scheduleMeeting,

@@ -827,6 +827,23 @@ class PostgresStorage:
     def save_task(self, item: TaskItem):
         self._on_task_insert(item)
 
+    def add_transcript(self, transcript: TranscriptItem):
+        with SessionLocal() as db:
+            db_tr = DBTranscript(
+                id=transcript.id,
+                title=transcript.title,
+                date=transcript.date,
+                type=transcript.type,
+                content=transcript.content,
+                summary=transcript.summary,
+                staged_tasks=[t.model_dump() for t in transcript.stagedTasks],
+                decisions=[d.model_dump() for d in transcript.decisions],
+                risks=[r.model_dump() for r in transcript.risks]
+            )
+            db.merge(db_tr)
+            db.commit()
+        self.transcripts.insert(0, transcript)
+
     def get_current_user(self) -> UserProfile:
         return self.users.get(self.current_role, self.users.get("ROLE_DIRECTOR", list(self.users.values())[0]))
 
