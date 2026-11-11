@@ -4,25 +4,29 @@
 
 @layer base {
   :root {
-    --canvas: #f4f4f5;
+    --canvas: #f6f7f9;
     --surface: #ffffff;
-    --surface-hover: #fafafa;
-    --border: #e4e4e7;
-    --text-primary: #18181b;
-    --text-muted: #71717a;
-    --scrollbar-track: #f4f4f5;
-    --scrollbar-thumb: #d4d4d8;
+    --surface-hover: #f1f3f6;
+    --border: #e2e5ea;
+    --border-subtle: #edf0f4;
+    --text-primary: #111318;
+    --text-secondary: #4b5262;
+    --text-muted: #848d9a;
+    --scrollbar-track: #f6f7f9;
+    --scrollbar-thumb: #d0d5dd;
   }
 
   .dark {
-    --canvas: #09090b;
-    --surface: #121215;
-    --surface-hover: #18181b;
-    --border: #27272a;
-    --text-primary: #f4f4f5;
-    --text-muted: #a1a1aa;
-    --scrollbar-track: #09090b;
-    --scrollbar-thumb: #27272a;
+    --canvas: #0c0d12;
+    --surface: #13151b;
+    --surface-hover: #191c24;
+    --border: #212530;
+    --border-subtle: #191b22;
+    --text-primary: #f0f2f5;
+    --text-secondary: #9da5b4;
+    --text-muted: #616a79;
+    --scrollbar-track: #0c0d12;
+    --scrollbar-thumb: #232733;
   }
 
   body {
@@ -32,19 +36,19 @@
     transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  /* Custom theme-reactive scrollbar */
+  /* Precision Industrial Scrollbars */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
   }
   ::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: 3px;
+    border-radius: 2px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    filter: brightness(0.9);
+    filter: brightness(0.85);
   }
 }

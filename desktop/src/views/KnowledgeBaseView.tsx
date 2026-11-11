@@ -73,63 +73,69 @@ export const KnowledgeBaseView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-50 dark:bg-neutral-950 overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-8 border-b border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between bg-white dark:bg-neutral-900/40">
+      <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div>
-          <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">База знаний и регламенты</h1>
+          <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
+            Технологические регламенты и стандарты
+          </h1>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Поиск информации по стандартам компании с указанием первоисточника
+            Корпоративный справочник допусков оборудования, нормативов брака и регламентов сервиса
           </p>
         </div>
 
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          {MOCK_DOCUMENTS.length} регламентов доступно
+        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#1a1d25] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36]">
+          {MOCK_DOCUMENTS.length} регламентов в базе
         </div>
       </div>
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-5 max-w-3xl mx-auto w-full">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl mx-auto w-full">
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
             <div
-              className={`max-w-2xl rounded-2xl p-4 text-sm leading-relaxed ${
+              className={`max-w-2xl rounded-lg p-4 text-xs leading-relaxed ${
                 msg.sender === 'user'
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-950 font-medium shadow-sm'
+                  ? 'bg-neutral-950 text-white dark:bg-[#1e222d] dark:text-white font-medium'
                   : msg.status === 'access_denied'
-                  ? 'bg-amber-50 dark:bg-neutral-900 border border-amber-300 dark:border-neutral-700 text-amber-900 dark:text-neutral-300'
-                  : 'bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 shadow-sm'
+                  ? 'bg-amber-50 dark:bg-[#1a1813] border border-amber-300 dark:border-amber-800/60 text-amber-950 dark:text-amber-200'
+                  : 'bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] text-neutral-900 dark:text-neutral-200'
               }`}
             >
               <div className="whitespace-pre-wrap">{msg.text}</div>
 
               {/* Citations Box */}
               {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-2">
-                  <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">Основание:</div>
+                <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#1e222c] space-y-2">
+                  <div className="text-[11px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                    Основание в регламентах:
+                  </div>
 
                   {msg.citations.map((c) => {
                     const isExpanded = expandedDocId === c.documentId;
                     return (
                       <div
                         key={c.documentId}
-                        className="bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 text-xs text-neutral-800 dark:text-neutral-300"
+                        className="bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#202430] rounded-md p-3 text-xs text-neutral-800 dark:text-neutral-300"
                       >
                         <div
                           onClick={() => setExpandedDocId(isExpanded ? null : c.documentId)}
-                          className="flex items-center justify-between cursor-pointer hover:text-black dark:hover:text-white transition-colors font-medium"
+                          className="flex items-center justify-between cursor-pointer hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-medium"
                         >
-                          <span>📄 {c.documentTitle}</span>
+                          <span className="font-semibold">{c.documentTitle}</span>
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </div>
 
-                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">Редакция от {c.documentDate}</div>
+                        <div className="text-[11px] font-mono text-neutral-400 mt-0.5">
+                          Редакция от {c.documentDate} · {c.documentId}
+                        </div>
 
                         {isExpanded && (
-                          <div className="mt-2 pt-2 border-t border-neutral-200 dark:border-neutral-800/80 text-xs text-neutral-700 dark:text-neutral-300 italic bg-white dark:bg-neutral-900/50 p-2.5 rounded">
+                          <div className="mt-2 pt-2 border-t border-neutral-200/80 dark:border-[#1d2028] text-xs text-neutral-700 dark:text-neutral-300 italic bg-white dark:bg-[#14161c] p-2.5 rounded border border-neutral-100 dark:border-[#1e222c]">
                             «{c.excerpt}»
                           </div>
                         )}
@@ -140,22 +146,22 @@ export const KnowledgeBaseView: React.FC = () => {
               )}
             </div>
 
-            <div className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1 px-1">{msg.timestamp}</div>
+            <div className="text-[10px] font-mono text-neutral-400 mt-1 px-1">{msg.timestamp}</div>
           </div>
         ))}
       </div>
 
       {/* Bottom Search Bar & Quick Prompts */}
-      <div className="p-6 border-t border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/30">
-        <div className="max-w-3xl mx-auto space-y-3">
+      <div className="p-4 px-6 border-t border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b]">
+        <div className="max-w-3xl mx-auto space-y-2.5">
           {/* Quick Prompts */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400 shrink-0">Примеры:</span>
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+            <span className="text-[11px] font-mono text-neutral-400 shrink-0">Запросы:</span>
             {sampleQuestions.map((sq, i) => (
               <button
                 key={i}
                 onClick={() => handleAsk(sq.text)}
-                className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800/80 dark:hover:bg-neutral-700/80 border border-neutral-200 dark:border-neutral-700 rounded-full text-xs text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white transition-colors shrink-0"
+                className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#222632] border border-neutral-200/80 dark:border-[#282d3a] rounded text-[11px] text-neutral-700 dark:text-neutral-300 transition-colors shrink-0"
               >
                 {sq.label}
               </button>
@@ -174,15 +180,15 @@ export const KnowledgeBaseView: React.FC = () => {
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
-              placeholder="Спросите ассистента о регламентах, техкартах или планах..."
-              className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-500 shadow-sm"
+              placeholder="Вопрос по стандартам, браку, допускам Delta-E или регламентам цеха..."
+              className="flex-1 bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#282d3a] rounded-md px-3.5 py-2 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-sky-500"
             />
             <button
               type="submit"
-              className="px-5 py-2.5 bg-neutral-900 hover:bg-black dark:bg-neutral-100 dark:hover:bg-white text-white dark:text-neutral-950 text-sm font-semibold rounded-xl transition-colors shadow-sm flex items-center gap-2"
+              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 text-xs font-semibold rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
             >
-              <Send className="w-4 h-4" />
-              Спросить
+              <Send className="w-3.5 h-3.5" />
+              <span>Запросить</span>
             </button>
           </form>
         </div>

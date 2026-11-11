@@ -17,9 +17,9 @@ const Workspace: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-neutral-950 text-neutral-100 font-sans overflow-hidden select-none">
+    <div className="flex h-screen w-screen bg-[#f8f9fa] dark:bg-[#0c0d11] text-neutral-900 dark:text-neutral-100 font-sans overflow-hidden select-none transition-colors">
       <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden bg-neutral-950">
+      <main className="flex-1 flex flex-col overflow-hidden bg-[#f8f9fa] dark:bg-[#0c0d11]">
         {activeTab === 'meetings' && <MeetingsView />}
         {activeTab === 'knowledge_base' && <KnowledgeBaseView />}
         {activeTab === 'overview' && <OverviewView />}
