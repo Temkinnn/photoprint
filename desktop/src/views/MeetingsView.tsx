@@ -41,10 +41,13 @@ export const MeetingsView: React.FC = () => {
     backendOnline,
     calendarSlots,
     scheduleMeeting,
+    scheduledMeetings,
     transcripts,
     users,
     documents,
   } = useApp();
+
+  const [activeTab, setActiveTab] = useState<'transcripts' | 'calendar'>('transcripts');
 
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>('');
   const activeTranscriptId = selectedTranscriptId || (transcripts[0]?.id ?? 'tr-01');
@@ -168,9 +171,10 @@ export const MeetingsView: React.FC = () => {
     );
 
     setIsPrepModalOpen(false);
+    setActiveTab('calendar');
     showToast(
       'Встреча создана в календаре',
-      `Событие назначено на ${selectedSlot.date} в ${selectedSlot.startTime}. Приглашения разосланы.`,
+      `Событие «${prepTopic}» назначено на ${selectedSlot.date} в ${selectedSlot.startTime}. Приглашения разосланы.`,
       'success'
     );
   };
@@ -288,27 +292,61 @@ export const MeetingsView: React.FC = () => {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-              Совещания и протоколы
+              Совещания и календарь
             </h1>
           </div>
 
-          <span className="text-neutral-300 dark:text-neutral-700">/</span>
-
-          {/* Meeting Selector in header */}
-          <div className="relative">
-            <select
-              value={activeTranscriptId}
-              onChange={(e) => handleSelectMeeting(e.target.value)}
-              className="bg-neutral-50 dark:bg-[#1a1d25] border border-neutral-200 dark:border-[#282d3b] text-neutral-850 dark:text-neutral-200 text-xs rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-sky-500 font-medium appearance-none cursor-pointer"
+          {/* View Tab Switcher */}
+          <div className="flex items-center gap-1 bg-neutral-100 dark:bg-[#1b1f28] p-1 rounded-lg border border-neutral-200 dark:border-[#2b3040]">
+            <button
+              onClick={() => setActiveTab('transcripts')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                activeTab === 'transcripts'
+                  ? 'bg-white dark:bg-[#111318] text-neutral-950 dark:text-white shadow-sm'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
             >
-              {transcripts.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
+              <FileText className="w-3.5 h-3.5" />
+              <span>Стенограммы и протоколы</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                activeTab === 'calendar'
+                  ? 'bg-white dark:bg-[#111318] text-neutral-950 dark:text-white shadow-sm'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Календарь встреч</span>
+              {scheduledMeetings.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-sky-500/15 text-sky-700 dark:text-sky-300 font-bold">
+                  {scheduledMeetings.length}
+                </span>
+              )}
+            </button>
           </div>
+
+          {activeTab === 'transcripts' && (
+            <>
+              <span className="text-neutral-300 dark:text-neutral-700">/</span>
+              {/* Meeting Selector in header */}
+              <div className="relative">
+                <select
+                  value={activeTranscriptId}
+                  onChange={(e) => handleSelectMeeting(e.target.value)}
+                  className="bg-neutral-50 dark:bg-[#1a1d25] border border-neutral-200 dark:border-[#282d3b] text-neutral-850 dark:text-neutral-200 text-xs rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-sky-500 font-medium appearance-none cursor-pointer"
+                >
+                  {transcripts.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right side of Top Bar: ONLY One Primary Action */}
@@ -323,7 +361,8 @@ export const MeetingsView: React.FC = () => {
       </div>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden">
+      {activeTab === 'transcripts' ? (
+        <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Transcript */}
         {showTranscript ? (
           <div className="w-[420px] border-r border-neutral-200 dark:border-[#212530] flex flex-col bg-white dark:bg-[#111318] shrink-0 transition-all">
@@ -646,6 +685,157 @@ export const MeetingsView: React.FC = () => {
           </div>
         </div>
       </div>
+      ) : (
+        /* Calendar & Scheduled Meetings Workspace */
+        <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
+          <div className="max-w-5xl mx-auto w-full space-y-6">
+            {/* Header / Filter Toolbar */}
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530] flex-wrap gap-3">
+              <div>
+                <div className="text-xs text-neutral-400 font-mono">
+                  Календарные события · Синхронизировано с базой PostgreSQL
+                </div>
+                <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5 tracking-tight">
+                  Реестр согласованных совещаний
+                </h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Встречи, созданные после автоматического подбора повестки и согласования свободных слотов
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono px-2.5 py-1 rounded bg-neutral-100 dark:bg-[#1b1f28] border border-neutral-200 dark:border-[#282d3c] text-neutral-700 dark:text-neutral-300">
+                  {scheduledMeetings.filter((m) => m.status === 'scheduled').length} назначено · {scheduledMeetings.filter((m) => m.status !== 'scheduled').length} завершено
+                </span>
+
+                <button
+                  onClick={() => setIsPrepModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Подготовка новой встречи</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Empty State */}
+            {scheduledMeetings.length === 0 ? (
+              <div className="p-12 text-center rounded-lg border border-dashed border-neutral-200 dark:border-[#222631] bg-white dark:bg-[#12141a] space-y-3">
+                <Calendar className="w-8 h-8 text-neutral-400 mx-auto" />
+                <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                  Нет запланированных встреч
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto">
+                  Нажмите «Подготовка встречи», чтобы сгенерировать повестку и забронировать свободный слот календаря.
+                </p>
+                <button
+                  onClick={() => setIsPrepModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white dark:bg-white dark:text-neutral-950"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Подготовить встречу</span>
+                </button>
+              </div>
+            ) : (
+              /* Meetings Grid */
+              <div className="grid grid-cols-1 gap-4">
+                {scheduledMeetings.map((meeting) => {
+                  const isScheduled = meeting.status === 'scheduled';
+                  return (
+                    <div
+                      key={meeting.id}
+                      className={`p-5 rounded-lg border bg-white dark:bg-[#14161c] transition-all space-y-4 ${
+                        isScheduled
+                          ? 'border-neutral-200 dark:border-[#222631] shadow-sm hover:border-neutral-300 dark:hover:border-[#2c3242]'
+                          : 'border-neutral-200/60 dark:border-[#1d2028] opacity-80'
+                      }`}
+                    >
+                      {/* Top Row: Date, Time, Status */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-100 dark:bg-[#1b1f28] border border-neutral-200 dark:border-[#2a2f3e] text-xs font-mono font-bold text-neutral-900 dark:text-neutral-100">
+                            <Calendar className="w-3.5 h-3.5 text-neutral-500" />
+                            <span>{meeting.date}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                            <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                            <span>{meeting.time} ({meeting.durationMinutes} мин)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isScheduled ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              Запланировано
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 dark:bg-[#1b1f28] text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-[#262b3a]">
+                              <Check className="w-3 h-3 text-neutral-400" />
+                              Завершено
+                            </span>
+                          )}
+
+                          {meeting.protocolId && (
+                            <button
+                              onClick={() => {
+                                setSelectedTranscriptId(meeting.protocolId!);
+                                setActiveTab('transcripts');
+                              }}
+                              className="text-xs text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 ml-2 font-medium"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Открыть протокол</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Title */}
+                      <div>
+                        <h3 className="text-sm font-bold text-neutral-950 dark:text-white">
+                          {meeting.title}
+                        </h3>
+                      </div>
+
+                      {/* Participants */}
+                      <div>
+                        <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">
+                          Участники встречи:
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(meeting.participants || []).map((p, pIdx) => (
+                            <span
+                              key={pIdx}
+                              className="text-xs px-2.5 py-1 rounded-md bg-neutral-50 dark:bg-[#1a1d25] border border-neutral-200 dark:border-[#262b3a] text-neutral-800 dark:text-neutral-200 font-medium"
+                            >
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Agenda */}
+                      {meeting.agenda && meeting.agenda.length > 0 && (
+                        <div className="pt-3 border-t border-neutral-100 dark:border-[#1d2028]">
+                          <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                            Согласованная повестка:
+                          </div>
+                          <ul className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1 pl-4 list-decimal">
+                            {meeting.agenda.map((item, aIdx) => (
+                              <li key={aIdx}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* SCENARIO 1 & 2: MODAL ДЛЯ ПОДГОТОВКИ ВСТРЕЧИ И КАЛЕНДАРЯ                  */}

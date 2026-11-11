@@ -7,11 +7,13 @@ import {
   TrendingDown,
   Minus,
   CheckCircle2,
-  CheckCheck
+  CheckCheck,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 export const OverviewView: React.FC = () => {
-  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline, overviewBrief } = useApp();
+  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline, overviewBrief, scheduledMeetings } = useApp();
 
   const [dataFreshnessTime, setDataFreshnessTime] = useState<string>('2026-11-11 15:00:00');
 
@@ -301,6 +303,73 @@ export const OverviewView: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* ========================================================================= */}
+        {/* SCHEDULED MEETINGS & CALENDAR PULSE                                       */}
+        {/* ========================================================================= */}
+        {scheduledMeetings && scheduledMeetings.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100">
+                  Ближайшие запланированные совещания
+                </span>
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20">
+                  {scheduledMeetings.filter((m) => m.status === 'scheduled').length} назначено
+                </span>
+              </div>
+              <span className="text-[11px] text-neutral-400 font-mono">
+                Календарь встреч ООО «Фотопринт»
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {scheduledMeetings.slice(0, 4).map((meeting) => (
+                <div
+                  key={meeting.id}
+                  className="p-3.5 rounded-lg border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] flex flex-col justify-between gap-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 line-clamp-1">
+                      {meeting.title}
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
+                        meeting.status === 'scheduled'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                      }`}
+                    >
+                      {meeting.status === 'scheduled' ? 'Запланировано' : 'Завершено'}
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 flex items-center gap-3">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-neutral-400" />
+                      {meeting.date}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-neutral-400" />
+                      {meeting.time}
+                    </span>
+                  </div>
+
+                  {meeting.agenda && meeting.agenda.length > 0 && (
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 line-clamp-2 bg-neutral-50 dark:bg-[#171922] p-2 rounded border border-neutral-100 dark:border-[#222633]">
+                      <span className="font-medium text-neutral-800 dark:text-neutral-200">Повестка: </span>
+                      {meeting.agenda.join('; ')}
+                    </div>
+                  )}
+
+                  <div className="text-[10px] text-neutral-400 truncate">
+                    Участники: {(meeting.participants || []).join(', ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
