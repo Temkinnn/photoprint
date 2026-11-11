@@ -2,6 +2,23 @@ import os
 import sys
 import time
 import json
+
+# Перенаправляем все загрузки моделей HuggingFace / Whisper строго на диск D:
+os.environ["HF_HOME"] = "D:\\huggingface"
+WHISPER_DOWNLOAD_ROOT = "D:\\whisper_models"
+
+# Автоматическое подключение CUDA DLL (если установлены пакеты nvidia-*-cu12)
+try:
+    site_packages = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "Lib", "site-packages")
+    for nvd in ["cublas", "cudnn"]:
+        p = os.path.join(site_packages, "nvidia", nvd, "bin")
+        if os.path.exists(p):
+            os.add_dll_directory(p)
+except Exception:
+    pass
+
+import numpy as np
+import scipy.io.wavfile as wavfile
 from openai import OpenAI
 from typing import List, Optional
 
@@ -15,6 +32,40 @@ client = OpenAI(
 )
 MODEL_NAME = "qwen2.5:7b"
 
+# Корпоративный контекстный словарь для Whisper (исправляет фонетические ошибки)
+CORPORATE_PROMPT = (
+    "Оперативное производственное совещание руководства компании ООО «Фотопринт» (сервис picPac.by). "
+    "Участники: Генеральный директор Смирнов, начальник производства Иванов, служба снабжения Петрова, служба поддержки Ковалева. "
+    "Термины и оборудование: линия УФ-лакировки, ламинатор Foliant Vega 400, перенастройка станка, "
+    "матовая бумага 200 грамм, поставщик, предоплата 50%, регламент 30%, лимит, ночная смена на резке, "
+    "запасной комплект нагревательных элементов, срыв сроков клиентских заказов, SLA."
+)
+
+
+# ==========================================
+# 0. УТИЛИТА ЗАГРУЗКИ АУДИО (БЕЗ PyAV ОШИБОК)
+# ==========================================
+def load_audio_as_numpy(audio_path, target_sr=16000):
+    sr, data = wavfile.read(audio_path)
+    if len(data.shape) > 1:
+        data = data.mean(axis=1)
+
+    if data.dtype == np.int16:
+        data = data.astype(np.float32) / 32768.0
+    elif data.dtype == np.int32:
+        data = data.astype(np.float32) / 2147483648.0
+    elif data.dtype == np.uint8:
+        data = (data.astype(np.float32) - 128.0) / 128.0
+    else:
+        data = data.astype(np.float32)
+
+    if sr != target_sr:
+        from scipy import signal
+        num_samples = int(len(data) * target_sr / sr)
+        data = signal.resample(data, num_samples)
+
+    return data
+
 
 # ==========================================
 # 1. ЗАПИСЬ АУДИО С МИКРОФОНА
@@ -22,8 +73,6 @@ MODEL_NAME = "qwen2.5:7b"
 def record_audio(output_filename="meeting.wav", sample_rate=16000):
     try:
         import sounddevice as sd
-        import scipy.io.wavfile as wavfile
-        import numpy as np
     except ImportError:
         print("[!] Для записи с микрофона установите: pip install sounddevice scipy numpy")
         sys.exit(1)
@@ -42,14 +91,11 @@ def record_audio(output_filename="meeting.wav", sample_rate=16000):
     def callback(indata, frames, time_info, status):
         recording.append(indata.copy())
 
-    # Запускаем неблокирующий аудиопоток (моно, 16 кГц - стандарт для Whisper)
     with sd.InputStream(samplerate=sample_rate, channels=1, callback=callback, dtype='float32'):
         input()
 
     print("[*] Запись остановлена. Сохранение файла...")
     audio_data = np.concatenate(recording, axis=0)
-    
-    # Нормализация громкости и конвертация в 16-bit PCM WAV
     audio_int16 = (audio_data * 32767).astype(np.int16)
     wavfile.write(full_output_path, sample_rate, audio_int16)
     print(f"[✓] Аудиозапись сохранена: {full_output_path}")
@@ -59,7 +105,7 @@ def record_audio(output_filename="meeting.wav", sample_rate=16000):
 # ==========================================
 # 2. РАСПОЗНАВАНИЕ РЕЧИ (STT: faster-whisper)
 # ==========================================
-def transcribe_audio(audio_path="meeting.wav", model_size="small"):
+def transcribe_audio(audio_path="meeting.wav", model_size="medium"):
     try:
         from faster_whisper import WhisperModel
     except ImportError:
@@ -69,24 +115,41 @@ def transcribe_audio(audio_path="meeting.wav", model_size="small"):
     if not os.path.isabs(audio_path):
         audio_path = os.path.join(BASE_DIR, audio_path)
 
-    print(f"\n[*] Инициализация faster-whisper (модель: {model_size})...")
-    
-    # Пробуем запустить на GPU (RTX 4050), если нет CUDA - переключаемся на CPU
-    try:
-        model = WhisperModel(model_size, device="cuda", compute_type="float16")
-        print("[✓] Whisper запущен на GPU (CUDA float16)")
-    except Exception as e:
-        print(f"[!] Предупреждение: GPU CUDA не активна ({e}). Переключаемся на CPU...")
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    print(f"\n[*] Загрузка аудио: '{audio_path}'...")
+    audio_numpy = load_audio_as_numpy(audio_path, target_sr=16000)
 
-    print(f"[*] Идет расшифровка файла '{audio_path}'...")
-    segments, info = model.transcribe(
-        audio_path,
-        beam_size=5,
-        language="ru",
-        vad_filter=True, # Фильтрация пауз и шума
-        vad_parameters=dict(min_silence_duration_ms=500)
-    )
+    def try_decode(m_size, device, compute_type):
+        m = WhisperModel(m_size, device=device, compute_type=compute_type, download_root=WHISPER_DOWNLOAD_ROOT)
+        # Передаем initial_prompt со словарем типографии для идеальной точности!
+        segs, _ = m.transcribe(
+            audio_numpy,
+            beam_size=5,
+            language="ru",
+            initial_prompt=CORPORATE_PROMPT,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=400)
+        )
+        return list(segs)
+
+    print(f"[*] Инициализация faster-whisper (модель: {model_size})...")
+    segments = None
+    
+    # Сначала пробуем medium на GPU -> потом medium на CPU -> при нехватке памяти small
+    for current_model in [model_size, "small"]:
+        try:
+            segments = try_decode(current_model, "cuda", "float16")
+            print(f"[✓] Распознавание выполнено на GPU (CUDA, модель: {current_model})")
+            break
+        except Exception:
+            try:
+                segments = try_decode(current_model, "cpu", "int8")
+                print(f"[✓] Распознавание выполнено на CPU (int8, модель: {current_model})")
+                break
+            except Exception as e_cpu:
+                if current_model == "small":
+                    print(f"[!] Критическая ошибка транскрибации: {e_cpu}")
+                    sys.exit(1)
+                print(f"[!] Не удалось загрузить модель {current_model}, пробуем облегченную small...")
 
     formatted_transcript = []
     print("\n" + "-"*50)
@@ -106,38 +169,45 @@ def transcribe_audio(audio_path="meeting.wav", model_size="small"):
 
 
 # ==========================================
-# 3. АНАЛИЗ СТЕНОГРАММЫ ЧЕРЕЗ QWEN 2.5
+# 3. АНАЛИЗ И ДИАРИЗАЦИЯ СПИКЕРОВ ЧЕРЕЗ QWEN
 # ==========================================
-def analyze_with_llm(transcript_text: str):
-    print(f"\n[*] Передаем стенограмму в Qwen 2.5 ({MODEL_NAME}) для извлечения решений и задач...")
+def analyze_and_diarize_with_llm(transcript_text: str):
+    print(f"\n[*] Передаем стенограмму в Qwen 2.5 ({MODEL_NAME}) для диаризации спикеров и извлечения задач...")
 
     system_prompt = """
     Ты — ведущий AI-ассистент генерального директора производственной компании ООО «Фотопринт».
-    Твоя задача — детально проанализировать стенограмму совещания и строго следовать правилам ТЗ:
+    Перед тобой сырая текстовая стенограмма совещания с таймкодами.
 
+    Твоя задача — выполнить ДВА действия:
+
+    ДЕЙСТВИЕ 1: РАЗДЕЛЕНИЕ ПО СПИКЕРАМ (Diarization)
+    По смыслу реплик и обращениям определи говорящего для КАЖДОЙ строки:
+    - «Директор (Смирнов)» — открывает встречу, раздает поручения («Принято», «Пусть Петрова...», «Что по готовности?»).
+    - «Иванов (Нач. производства)» — отвечает по оборудованию («Я закончу перенастройку...», «не хватит людей на резке»).
+    - «Петрова / Иванов (Снабжение)» — говорит про поставщиков и лимиты предоплаты бумаги.
+    Запиши список diarized_lines: для каждой строки верни: timestamp, speaker, text (исправь опечатки распознавания, если смысл очевиден: например, "фотопринц" -> "Фотопринт", "старшик" -> "поставщик", "предокладка" -> "предоплата").
+
+    ДЕЙСТВИЕ 2: ИЗВЛЕЧЕНИЕ ЗАДАЧ И РЕШЕНИЙ ПО ТЗ
     1. decisions (Список решений):
-       - category: строго одно из четырех значений: "решено", "предложено", "обсуждалось", "требует уточнения"
-       - text: четкая формулировка решения или обсуждаемого факта
-       - timestamp: таймкод фразы из стенограммы
-
+       - category: строго одно из: "решено", "предложено", "обсуждалось", "требует уточнения"
+       - text: формулировка решения
+       - speaker: кто озвучил/утвердил
+       - timestamp: таймкод
     2. tasks (Реестр поручений / Action Items):
        - temp_id: порядковый номер (t1, t2...)
        - title: действие с глаголом в инфинитиве (например: "Перенастроить линию УФ-лакировки")
-       - assignee: ФИО или должность. ПРАВИЛО AI-05: Если исполнитель не назван явно, строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
-       - deadline: конкретный срок или дата. ПРАВИЛО AI-05: Если срок не назван, строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
-       - source_quote: дословная цитата фразы из стенограммы
-       - timestamp: таймкод фразы (например: "[00:15]")
+       - assignee: ФИО или должность. ПРАВИЛО AI-05: Если исполнитель не назван явно — строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
+       - deadline: конкретный срок. ПРАВИЛО AI-05: Если срок не назван — строго пиши: "требует уточнения" (НЕ ВЫДУМЫВАЙ!).
+       - source_quote: точная цитата фразы
+       - timestamp: таймкод фразы
        - status: "pending_approval"
+    3. identified_risks: обнаруженные производственные/бизнес риски.
+    4. open_questions: темы или вопросы, отложенные на будущее.
 
-    3. identified_risks (Обнаруженные риски):
-       - risk: описание риска и возможного негативного влияния
-
-    4. open_questions (Открытые нерешенные вопросы):
-       - question: тема или вопрос, отложенный на будущее
-
-    Ответ верни СТРОГО в виде валидного JSON-объекта со структурой:
+    Ответ верни СТРОГО в виде JSON:
     {
-      "decisions": [{"category": "...", "text": "...", "timestamp": "..."}],
+      "diarized_lines": [{"timestamp": "[00:03]", "speaker": "...", "text": "..."}],
+      "decisions": [{"category": "...", "text": "...", "speaker": "...", "timestamp": "..."}],
       "tasks": [{"temp_id": "...", "title": "...", "assignee": "...", "deadline": "...", "source_quote": "...", "timestamp": "...", "status": "pending_approval"}],
       "identified_risks": [{"risk": "..."}],
       "open_questions": [{"question": "..."}]
@@ -145,7 +215,7 @@ def analyze_with_llm(transcript_text: str):
     Никаких комментариев до и после JSON.
     """
 
-    user_prompt = f"Стенограмма совещания:\n{transcript_text}"
+    user_prompt = f"Сырая стенограмма совещания:\n{transcript_text}"
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -162,9 +232,9 @@ def analyze_with_llm(transcript_text: str):
 
 
 # ==========================================
-# 4. ГЕНЕРАЦИЯ WORD-ДОКУМЕНТА С ПОДСВЕТКОЙ
+# 4. ГЕНЕРАЦИЯ WORD-ДОКУМЕНТА С ДИАРИЗАЦИЕЙ
 # ==========================================
-def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Протокол_совещания_Фотопринт.docx"):
+def create_word_protocol(analysis: dict, output_docx="Протокол_совещания_Фотопринт.docx"):
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
@@ -206,7 +276,7 @@ def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Пр
 
     meta_p = doc.add_paragraph()
     meta_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_date = meta_p.add_run(f"Дата фиксации: {time.strftime('%d.%m.%2026 %H:%M')}\nСтатус протокола: Предварительный (Draft & Review)")
+    r_date = meta_p.add_run(f"Дата фиксации: {time.strftime('%d.%m.%Y %H:%M')}\nСтатус протокола: Предварительный (Draft & Review)")
     r_date.font.name = "Arial"
     r_date.font.size = Pt(9)
     r_date.font.italic = True
@@ -279,6 +349,7 @@ def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Пр
         for d in decisions:
             cat = d.get("category", "обсуждалось")
             text = d.get("text", "")
+            speaker = d.get("speaker", "")
             ts = d.get("timestamp", "")
             
             p = doc.add_paragraph(style='List Bullet')
@@ -289,17 +360,17 @@ def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Пр
             r_cat.font.bold = True
             r_cat.font.size = Pt(9.5)
             
+            speaker_str = f" ({speaker}, {ts})" if speaker else f" ({ts})"
             if cat.lower() == "решено":
                 r_cat.font.color.rgb = RGBColor(38, 128, 0)
-                # Желтая подсветка утвержденного факта!
-                r_text = p.add_run(f"{text} ({ts})")
+                r_text = p.add_run(f"{text}{speaker_str}")
                 r_text.font.highlight_color = WD_COLOR_INDEX.YELLOW
             elif cat.lower() == "требует уточнения":
                 r_cat.font.color.rgb = RGBColor(200, 30, 30)
-                p.add_run(f"{text} ({ts})")
+                p.add_run(f"{text}{speaker_str}")
             else:
                 r_cat.font.color.rgb = RGBColor(80, 80, 80)
-                p.add_run(f"{text} ({ts})")
+                p.add_run(f"{text}{speaker_str}")
 
     # 4. РИСКИ И ОТКРЫТЫЕ ВОПРОСЫ
     add_section_header("3. ОБНАРУЖЕННЫЕ РИСКИ И ПРЕДУПРЕЖДЕНИЯ")
@@ -323,26 +394,42 @@ def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Пр
     else:
         doc.add_paragraph("Открытых вопросов не зафиксировано.")
 
-    # 5. ИСХОДНАЯ СТЕНОГРАММА С ПОДСВЕТКОЙ
-    add_section_header("5. ПОЛНАЯ СТЕНОГРАММА ВСТРЕЧИ (С ПРИВЯЗКОЙ ОСНОВАНИЙ)")
+    # 5. СТЕНОГРАММА С РАЗМЕТКОЙ СПИКЕРОВ (ДИАРИЗАЦИЯ)
+    add_section_header("5. ПОЛНАЯ СТЕНОГРАММА ВСТРЕЧИ (РАЗМЕТКА СПИКЕРОВ)")
     quotes_to_highlight = [t.get("source_quote", "").strip().lower() for t in tasks if t.get("source_quote")]
-    
-    for line in transcript_text.splitlines():
-        if not line.strip():
-            continue
-        p = doc.add_paragraph()
-        p.paragraph_format.space_after = Pt(2)
-        
-        line_lower = line.lower()
-        should_highlight = any(q in line_lower for q in quotes_to_highlight if len(q) > 5)
-        
-        run = p.add_run(line)
-        run.font.name = "Consolas"
-        run.font.size = Pt(8.5)
-        run.font.color.rgb = RGBColor(60, 60, 60)
-        
-        if should_highlight:
-            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    diarized_lines = analysis.get("diarized_lines", [])
+
+    if diarized_lines:
+        for item in diarized_lines:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(2)
+
+            ts = item.get("timestamp", "")
+            speaker = item.get("speaker", "Участник")
+            line_text = item.get("text", "")
+
+            # Таймкод
+            r_ts = p.add_run(f"{ts} ")
+            r_ts.font.name = "Consolas"
+            r_ts.font.size = Pt(8.5)
+            r_ts.font.color.rgb = RGBColor(120, 120, 120)
+
+            # Имя говорящего (синим жирным шрифтом)
+            r_spk = p.add_run(f"{speaker}: ")
+            r_spk.font.name = "Arial"
+            r_spk.font.size = Pt(9)
+            r_spk.font.bold = True
+            r_spk.font.color.rgb = RGBColor(31, 78, 121)
+
+            # Текст реплики с жёлтой подсветкой цитаты задачи
+            r_txt = p.add_run(line_text)
+            r_txt.font.name = "Arial"
+            r_txt.font.size = Pt(9)
+            r_txt.font.color.rgb = RGBColor(40, 40, 40)
+
+            line_lower = line_text.lower()
+            if any(q in line_lower for q in quotes_to_highlight if len(q) > 6):
+                r_txt.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
     doc.save(full_docx_path)
     print(f"\n[✓] Готово! Word-протокол успешно сохранен:\n    {full_docx_path}")
@@ -355,30 +442,31 @@ def create_word_protocol(transcript_text: str, analysis: dict, output_docx="Пр
 def main():
     print("=" * 60)
     print("   AI-АССИСТЕНТ РУКОВОДИТЕЛЯ: ГОЛОС -> ПРОТОКОЛ -> WORD")
-    print("                 ООО «ФОТОПРИНТ» (Модуль AI)")
+    print("        ООО «ФОТОПРИНТ» (Апгрейд: Точность + Диаризация)")
     print("=" * 60)
 
-    print("\nВыберите способ ввода диалога:")
-    print("  [1] Записать живой диалог с микрофона (вы и коллега)")
-    print("  [2] Использовать готовый аудиофайл (meeting.wav / meeting.mp3)")
-    print("  [3] Использовать контрольную текстовую стенограмму из ТЗ (без микрофона)")
-    
-    choice = input("\nВаш выбор [1, 2 или 3] (по умолчанию 1): ").strip() or "1"
-
     audio_file = "meeting.wav"
-    transcript_text = ""
+    full_audio_path = os.path.join(BASE_DIR, audio_file)
+    has_recorded_file = os.path.exists(full_audio_path)
 
-    if choice == "1":
+    print("\nВыберите способ ввода диалога:")
+    if has_recorded_file:
+        print(f"  [1] Использовать УЖЕ ЗАПИСАННЫЙ ранее голос ({audio_file})")
+        print("  [2] Записать живой диалог с микрофона ЗАНОВО")
+        print("  [3] Использовать тестовую текстовую стенограмму (без аудио)")
+        choice = input("\nВаш выбор [1, 2 или 3] (по умолчанию 1): ").strip() or "1"
+    else:
+        print("  [1] Записать живой диалог с микрофона")
+        print("  [2] Использовать готовый аудиофайл")
+        print("  [3] Использовать тестовую текстовую стенограмму")
+        choice = input("\nВаш выбор [1, 2 или 3] (по умолчанию 1): ").strip() or "1"
+
+    transcript_text = ""
+    if (has_recorded_file and choice == "1") or (not has_recorded_file and choice == "2"):
+        transcript_text = transcribe_audio(audio_path=full_audio_path, model_size="medium")
+    elif (has_recorded_file and choice == "2") or (not has_recorded_file and choice == "1"):
         full_audio_path = record_audio(output_filename=audio_file)
-        transcript_text = transcribe_audio(audio_path=full_audio_path)
-    elif choice == "2":
-        path_input = input(f"Введите путь к аудиофайлу (по умолчанию {audio_file}): ").strip() or audio_file
-        if not os.path.isabs(path_input):
-            path_input = os.path.join(BASE_DIR, path_input)
-        if not os.path.exists(path_input):
-            print(f"[!] Файл '{path_input}' не найден!")
-            return
-        transcript_text = transcribe_audio(audio_path=path_input)
+        transcript_text = transcribe_audio(audio_path=full_audio_path, model_size="medium")
     else:
         print("\n[*] Используем тестовую стенограмму планерки...")
         transcript_text = """[00:01] Директор: Коллеги, начинаем планерку по запуску фотокниг 20х20.
@@ -389,11 +477,11 @@ def main():
 [01:10] Иванов: При двукратном росте заказов возникнет дефицит людей в ночную смену на резке. Это серьезный риск срыва SLA.
 [01:30] Директор: Вопрос ночной смены пока отложим, вернемся в понедельник после отчета маркетинга."""
 
-    # Анализ через локальный Qwen 2.5
-    analysis = analyze_with_llm(transcript_text)
+    # Анализ и диаризация через локальный Qwen 2.5
+    analysis = analyze_and_diarize_with_llm(transcript_text)
 
-    # Генерация Word-документа с желтой подсветкой
-    docx_file = create_word_protocol(transcript_text, analysis)
+    # Генерация Word-документа с разделением по спикерам и желтой подсветкой
+    docx_file = create_word_protocol(analysis)
 
     print("\n" + "="*60)
     print("🎉 ВСЯ ЦЕПОЧКА УСПЕШНО ЗАВЕРШЕНА!")
