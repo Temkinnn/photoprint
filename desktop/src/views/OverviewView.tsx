@@ -11,7 +11,8 @@ import {
   Calendar,
   Clock,
   Activity,
-  FileText
+  FileText,
+  Copy
 } from 'lucide-react';
 
 interface MetricDetail {
@@ -113,6 +114,38 @@ export const OverviewView: React.FC = () => {
 
   const activeMetricDetail = selectedMetricId ? METRIC_DETAILS[selectedMetricId] : null;
 
+  const handleCopyDigestToClipboard = () => {
+    if (!overviewBrief && kpiMetrics.length === 0) return;
+    const kpiSummary = kpiMetrics
+      .map((k) => `  - ${k.name}: ${k.value} (Норма: ${k.target}, Контур: ${k.sourceSystem})`)
+      .join('\n');
+    const overdueSummary = overdueTasks
+      .map((t) => `  - [ПРОСРОЧЕНО] ${t.title} (${t.assigneeName}, дедлайн: ${t.deadline})`)
+      .join('\n');
+    const issuesSummary = (overviewBrief?.criticalIssues || [])
+      .map((i) => `  - ${i.title}: ${i.description} (срок: ${i.deadline})`)
+      .join('\n');
+
+    const formatted = `УПРАВЛЕНЧЕСКИЙ ОБЗОР (ПУЛЬС КОМПАНИИ)
+Актуальность: ${overviewBrief?.dataFreshness || dataFreshnessTime}
+
+КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ (KPI):
+${kpiSummary || '  (нет данных)'}
+
+ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ:
+${overviewBrief?.situationBrief || '  (сводка формируется)'}
+
+ВОПРОСЫ К СОГЛАСОВАНИЮ:
+${issuesSummary || '  (нет открытых вопросов)'}
+
+ПРОСРОЧЕННЫЕ РЕШЕНИЯ ТРЕБУЮЩИЕ ЗАКРЫТИЯ:
+${overdueSummary || '  (просроченных решений нет)'}
+`;
+
+    navigator.clipboard.writeText(formatted);
+    showToast('Дайджест скопирован', 'Сводка KPI и управленческий обзор сохранены в буфер обмена', 'success');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
@@ -141,6 +174,15 @@ export const OverviewView: React.FC = () => {
                 {overviewBrief?.dataFreshness || dataFreshnessTime}
               </div>
             </div>
+
+            <button
+              onClick={handleCopyDigestToClipboard}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 bg-white dark:bg-[#161820] hover:bg-neutral-100 dark:hover:bg-[#1e222b] border border-neutral-200 dark:border-[#262a36] rounded transition-colors shadow-sm"
+              title="Скопировать управленческий дайджест в буфер обмена для Telegram или email"
+            >
+              <Copy className="w-3.5 h-3.5 text-neutral-500" />
+              <span>Скопировать дайджест</span>
+            </button>
 
             <button
               onClick={handleRefresh}

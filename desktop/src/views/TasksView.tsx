@@ -14,7 +14,8 @@ import {
   ArrowLeft,
   User,
   Clock,
-  CheckCheck
+  CheckCheck,
+  Copy
 } from 'lucide-react';
 
 export const TasksView: React.FC = () => {
@@ -133,6 +134,21 @@ export const TasksView: React.FC = () => {
     showToast('Поручение создано', 'Задача добавлена в реестр', 'success');
   };
 
+  const handleCopyTasksToClipboard = () => {
+    if (tasks.length === 0) {
+      showToast('Нет задач', 'В реестре пока нет поручений для копирования', 'info');
+      return;
+    }
+    const text = filteredTasks
+      .map(
+        (t, idx) =>
+          `${idx + 1}. [${t.status === 'completed' ? 'Исполнено' : t.status === 'overdue' ? 'ПРОСРОЧЕНО' : 'В работе'}] ${t.title}\n   Исполнитель: ${t.assigneeName} | Срок: ${t.deadline}`
+      )
+      .join('\n\n');
+    navigator.clipboard.writeText(`РЕЕСТР ПОРУЧЕНИЙ (Всего: ${filteredTasks.length})\n\n${text}`);
+    showToast('Задачи скопированы', 'Список поручений сохранен в буфер обмена', 'success');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
       {/* Top Header */}
@@ -150,6 +166,15 @@ export const TasksView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyTasksToClipboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-800 dark:text-neutral-200 bg-white dark:bg-[#161820] hover:bg-neutral-100 dark:hover:bg-[#1f232e] rounded-md transition-colors border border-neutral-200 dark:border-[#282d3b] shadow-sm"
+            title="Скопировать список задач в буфер обмена"
+          >
+            <Copy className="w-3.5 h-3.5 text-neutral-500" />
+            <span>Скопировать реестр</span>
+          </button>
+
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-800 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#252936] rounded-md transition-colors border border-neutral-200 dark:border-[#282d3b]"

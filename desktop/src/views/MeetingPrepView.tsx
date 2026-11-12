@@ -14,7 +14,10 @@ import {
   Trash2,
   RefreshCw,
   ShieldAlert,
-  Sliders
+  Sliders,
+  RotateCcw,
+  Check,
+  X
 } from 'lucide-react';
 
 export const MeetingPrepView: React.FC = () => {
@@ -61,6 +64,33 @@ export const MeetingPrepView: React.FC = () => {
     showToast('Шаблон применен', preset.title, 'info');
   };
 
+  const [customParticipant, setCustomParticipant] = useState<string>('');
+
+  const handleAddCustomParticipant = () => {
+    if (!customParticipant.trim()) return;
+    const name = customParticipant.trim();
+    if (!participants.includes(name)) {
+      setParticipants((prev) => [...prev, name]);
+      showToast('Участник добавлен', name, 'info');
+    }
+    setCustomParticipant('');
+  };
+
+  const handleResetForm = () => {
+    setTopic('');
+    setParticipants([]);
+    setSelectedDocs([]);
+    setMeetingDraft({
+      topic: '',
+      participants: [],
+      documents: [],
+      agenda: [],
+      openQuestions: [],
+      openTasks: []
+    });
+    showToast('Параметры сброшены', 'Форма подготовки очищена', 'info');
+  };
+
   const handleToggleParticipant = (userName: string) => {
     setParticipants((prev) =>
       prev.includes(userName) ? prev.filter((p) => p !== userName) : [...prev, userName]
@@ -71,6 +101,15 @@ export const MeetingPrepView: React.FC = () => {
     setSelectedDocs((prev) =>
       prev.includes(docTitle) ? prev.filter((d) => d !== docTitle) : [...prev, docTitle]
     );
+  };
+
+  const handleSelectAllDocs = () => {
+    const allTitles = accessibleDocs.map(d => d.title);
+    if (selectedDocs.length === allTitles.length) {
+      setSelectedDocs([]);
+    } else {
+      setSelectedDocs(allTitles);
+    }
   };
 
   const handleGenerateAgenda = async () => {
@@ -233,9 +272,21 @@ export const MeetingPrepView: React.FC = () => {
         {/* PRESET SHORTCUTS                                                          */}
         {/* ========================================================================= */}
         <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            <Sliders className="w-3.5 h-3.5 text-sky-500" />
-            <span>Типовые темы совещаний дирекции:</span>
+          <div className="flex items-center justify-between text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-3.5 h-3.5 text-sky-500" />
+              <span>Типовые темы совещаний дирекции:</span>
+            </div>
+            {(topic || participants.length > 0 || selectedDocs.length > 0) && (
+              <button
+                onClick={handleResetForm}
+                className="flex items-center gap-1 text-[11px] font-mono text-neutral-400 hover:text-rose-500 transition-colors"
+                title="Очистить тему, участников и регламенты"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Сбросить форму</span>
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {PRESET_TOPICS.map((preset, idx) => (
@@ -313,6 +364,26 @@ export const MeetingPrepView: React.FC = () => {
                     </label>
                   );
                 })}
+                {/* Custom extra participant input */}
+                <div className="flex items-center gap-1.5 pt-1.5 border-t border-neutral-100 dark:border-[#202430]">
+                  <input
+                    type="text"
+                    value={customParticipant}
+                    onChange={(e) => setCustomParticipant(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddCustomParticipant()}
+                    placeholder="Внешний участник (ФИО / роль)..."
+                    className="flex-1 text-xs bg-neutral-50 dark:bg-[#171922] border border-neutral-200 dark:border-[#262b3a] rounded px-2.5 py-1.5 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomParticipant}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1e222e] dark:hover:bg-[#282e3e] text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-[#262b3a] rounded transition-colors flex items-center gap-1 shrink-0"
+                    title="Добавить внешнего участника в совещание"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-sky-500" />
+                    <span>Добавить</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -323,7 +394,16 @@ export const MeetingPrepView: React.FC = () => {
                   <FileText className="w-3.5 h-3.5 text-sky-500" />
                   <span>Разрешённые документы ({selectedDocs.length})</span>
                 </label>
-                <span className="text-[11px] text-neutral-400 font-mono">RBAC-фильтрация</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllDocs}
+                    className="text-[11px] font-mono text-sky-600 dark:text-sky-400 hover:underline"
+                  >
+                    {selectedDocs.length === accessibleDocs.length ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                  <span className="text-[11px] text-neutral-400 font-mono">RBAC</span>
+                </div>
               </div>
 
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">

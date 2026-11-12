@@ -8,7 +8,9 @@ import {
   FileText,
   BookOpen,
   ArrowRight,
-  ArrowLeft
+  ArrowLeft,
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
@@ -80,6 +82,23 @@ export const KnowledgeBaseView: React.FC = () => {
     }
   };
 
+  const handleCopyAnswer = (text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast('Ответ скопирован', 'Текст ответа сохранен в буфер обмена', 'success');
+  };
+
+  const handleClearChat = () => {
+    setMessages([
+      {
+        id: 'welcome',
+        sender: 'assistant',
+        text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
+        timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    showToast('История очищена', 'Диалог с базой знаний сброшен', 'info');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
       {/* Top Header */}
@@ -104,6 +123,17 @@ export const KnowledgeBaseView: React.FC = () => {
             <BookOpen className="w-3.5 h-3.5 text-sky-500" />
             <span>{documents.length} регламентов</span>
           </button>
+
+          {messages.length > 1 && (
+            <button
+              onClick={handleClearChat}
+              className="text-xs font-mono text-neutral-500 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1.5 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
+              title="Очистить историю диалога"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Очистить</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('overview')}
@@ -195,7 +225,19 @@ export const KnowledgeBaseView: React.FC = () => {
               )}
             </div>
 
-            <div className="text-[10px] font-mono text-neutral-400 mt-1 px-1">{msg.timestamp}</div>
+            <div className="flex items-center gap-2.5 text-[10px] font-mono text-neutral-400 mt-1 px-1">
+              <span>{msg.timestamp}</span>
+              {msg.sender === 'assistant' && (
+                <button
+                  onClick={() => handleCopyAnswer(msg.text)}
+                  className="hover:text-sky-500 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Скопировать текст ответа"
+                >
+                  <Copy className="w-3 h-3 text-neutral-400 hover:text-sky-500" />
+                  <span>Копировать</span>
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

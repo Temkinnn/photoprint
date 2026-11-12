@@ -18,7 +18,9 @@ import {
   Eye,
   EyeOff,
   Mic,
-  Loader2
+  Loader2,
+  Copy,
+  Search
 } from 'lucide-react';
 
 export const MeetingProtocolView: React.FC = () => {
@@ -38,6 +40,8 @@ export const MeetingProtocolView: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState<boolean>(false);
   const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>([]);
+  const [transcriptSearch, setTranscriptSearch] = useState<string>('');
+  const [activeTimecode, setActiveTimecode] = useState<string | null>(null);
 
   // Automatically select first transcript when transcripts load from backend
   useEffect(() => {
@@ -191,6 +195,40 @@ export const MeetingProtocolView: React.FC = () => {
     if (!task) return;
     await batchApproveTasks([task], currentTranscript.title);
     setTasksToReview((prev) => prev.filter((_, i) => i !== taskIndex));
+  };
+
+  const handleCopyProtocolToClipboard = () => {
+    if (!currentTranscript) return;
+    const decisionsText = (currentTranscript.decisions || [])
+      .map((d) => `  - [${d.category}] ${d.text} (${d.speaker || 'Все'}, ${d.timestamp || ''})`)
+      .join('\n');
+    const questionsText = (currentTranscript.questions || []).map((q) => `  - ${q}`).join('\n');
+    const risksText = (currentTranscript.risks || [])
+      .map((r) => `  - ${r.riskDescription} (Влияние: ${r.impact}, Мера: ${r.suggestedMitigation || 'не указана'})`)
+      .join('\n');
+    const tasksText = tasksToReview
+      .map((t) => `  - ${t.title} -> ${t.assigneeName} (срок: ${t.deadline}) [${t.timestamp}]`)
+      .join('\n');
+
+    const formatted = `ПРОТОКОЛ СОВЕЩАНИЯ: ${currentTranscript.title}
+Дата: ${currentTranscript.date} | Длительность: ${currentTranscript.duration || '40 мин'}
+Ссылка на стенограмму: #transcript-${currentTranscript.id}
+
+КЛЮЧЕВЫЕ РЕШЕНИЯ:
+${decisionsText || '  (нет зафиксированных решений)'}
+
+ОТКРЫТЫЕ ВОПРОСЫ:
+${questionsText || '  (нет открытых вопросов)'}
+
+ПРОИЗВОДСТВЕННЫЕ РИСКИ:
+${risksText || '  (риски не зафиксированы)'}
+
+ПОРУЧЕНИЯ К ИСПОЛНЕНИЮ:
+${tasksText || '  (все поручения утверждены и внесены в реестр)'}
+`;
+
+    navigator.clipboard.writeText(formatted);
+    showToast('Протокол скопирован', 'Текст протокола сохранен в буфер обмена для отправки в корпоративный чат или почту', 'success');
   };
 
   const getCategoryBadge = (category: string) => {
@@ -353,6 +391,15 @@ export const MeetingProtocolView: React.FC = () => {
             </button>
 
             <button
+              onClick={handleCopyProtocolToClipboard}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 bg-white dark:bg-[#1a1d25] hover:bg-neutral-100 dark:hover:bg-[#252936] rounded border border-neutral-200 dark:border-[#272b39] transition-colors shadow-sm"
+              title="Скопировать протокол в буфер обмена для отправки в мессенджер или почту"
+            >
+              <Copy className="w-3.5 h-3.5 text-neutral-500" />
+              <span>Скопировать протокол</span>
+            </button>
+
+            <button
               onClick={handleSaveProtocol}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded transition-colors shadow-sm"
               title="Сохранить протокол со ссылкой на исходную расшифровку"
@@ -367,19 +414,62 @@ export const MeetingProtocolView: React.FC = () => {
         {/* COLLAPSIBLE TRANSCRIPT VIEWER WITH TIMECODES                              */}
         {/* ========================================================================= */}
         {showFullTranscript && (
-          <div className="p-4 rounded-lg bg-neutral-50 dark:bg-[#111319] border border-neutral-200 dark:border-[#212530] space-y-2 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between text-xs pb-1.5 border-b border-neutral-200 dark:border-[#1d2028]">
+          <div className="p-4 rounded-lg bg-neutral-50 dark:bg-[#111319] border border-neutral-200 dark:border-[#212530] space-y-2.5 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between text-xs pb-2 border-b border-neutral-200 dark:border-[#1d2028] gap-3 flex-wrap">
               <span className="font-mono text-[11px] font-bold text-neutral-500 uppercase flex items-center gap-1.5">
                 <Quote className="w-3 h-3 text-sky-500" />
                 Исходная стенограмма встречи (ID: {currentTranscript.id})
               </span>
-              <span className="font-mono text-[10px] text-neutral-400">
-                Ссылка протокола: #transcript-{currentTranscript.id}
-              </span>
+
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3 h-3 text-neutral-400 absolute left-2 top-2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={transcriptSearch}
+                    onChange={(e) => setTranscriptSearch(e.target.value)}
+                    placeholder="Поиск по репликам..."
+                    className="pl-6 pr-2 py-0.5 text-[11px] font-mono bg-white dark:bg-[#0c0d12] border border-neutral-200 dark:border-[#262b3a] rounded text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-sky-500 w-44"
+                  />
+                </div>
+                {activeTimecode && (
+                  <button
+                    onClick={() => setActiveTimecode(null)}
+                    className="text-[10px] font-mono text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 rounded border border-sky-300 dark:border-sky-800"
+                    title="Сбросить подсветку таймкода"
+                  >
+                    Фильтр: {activeTimecode} ✕
+                  </button>
+                )}
+                <span className="font-mono text-[10px] text-neutral-400 hidden sm:inline">
+                  Ссылка: #transcript-{currentTranscript.id}
+                </span>
+              </div>
             </div>
 
-            <div className="text-xs text-neutral-700 dark:text-neutral-300 font-mono leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line p-2 bg-white dark:bg-[#0c0d12] rounded border border-neutral-200 dark:border-[#1d2028]">
-              {currentTranscript.content}
+            <div className="text-xs text-neutral-700 dark:text-neutral-300 font-mono leading-relaxed max-h-52 overflow-y-auto space-y-1 p-2 bg-white dark:bg-[#0c0d12] rounded border border-neutral-200 dark:border-[#1d2028]">
+              {currentTranscript.content
+                .split('\n')
+                .filter((line) => {
+                  if (activeTimecode && !line.includes(activeTimecode)) return false;
+                  if (transcriptSearch.trim() && !line.toLowerCase().includes(transcriptSearch.toLowerCase())) return false;
+                  return true;
+                })
+                .map((line, idx) => {
+                  const isHighlighted = activeTimecode && line.includes(activeTimecode);
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-1 rounded transition-colors ${
+                        isHighlighted
+                          ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 font-semibold border-l-2 border-amber-500 pl-2'
+                          : 'hover:bg-neutral-50 dark:hover:bg-[#14161f]'
+                      }`}
+                    >
+                      {line}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -406,9 +496,16 @@ export const MeetingProtocolView: React.FC = () => {
                   <div className="flex items-center justify-between gap-1.5">
                     {getCategoryBadge(d.category)}
                     {d.timestamp && (
-                      <span className="text-[10px] font-mono text-neutral-400">
+                      <button
+                        onClick={() => {
+                          setActiveTimecode(d.timestamp || null);
+                          setShowFullTranscript(true);
+                        }}
+                        title="Найти реплику в тексте стенограммы"
+                        className="text-[10px] font-mono text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 underline decoration-dotted transition-colors"
+                      >
                         {d.timestamp}
-                      </span>
+                      </button>
                     )}
                   </div>
                   <div className="font-medium text-neutral-900 dark:text-neutral-100 text-xs leading-snug">
@@ -514,9 +611,16 @@ export const MeetingProtocolView: React.FC = () => {
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-neutral-900 dark:text-neutral-100">{task.title}</span>
-                      <span className="font-mono text-[10px] text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.2 rounded">
+                      <button
+                        onClick={() => {
+                          setActiveTimecode(task.timestamp || null);
+                          setShowFullTranscript(true);
+                        }}
+                        title="Найти реплику в тексте стенограммы"
+                        className="font-mono text-[10px] text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 bg-neutral-100 hover:bg-sky-50 dark:bg-neutral-800 dark:hover:bg-sky-950/40 px-1.5 py-0.2 rounded transition-colors"
+                      >
                         {task.timestamp}
-                      </span>
+                      </button>
                     </div>
 
                     <div className="text-[11px] text-neutral-500 italic">
