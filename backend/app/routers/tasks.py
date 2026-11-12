@@ -22,6 +22,7 @@ async def update_task(task_id: str, req: TaskUpdateRequest):
             if req.status is not None:
                 task.status = req.status
             
+            storage.save_task(task)
             storage.add_audit_log(
                 action="UPDATE_TASK",
                 target=f"{task.id} ({task.title})",

@@ -7,6 +7,8 @@ export interface UserProfile {
   roleTitle: string;
   department: string;
   avatarInitials: string;
+  clearance?: string;
+  description?: string;
 }
 
 export type DecisionCategory = 'resolved' | 'proposed' | 'discussed' | 'needs_clarification';
@@ -89,6 +91,15 @@ export interface MeetingItem {
   protocolId?: string;
 }
 
+export interface MeetingDraft {
+  topic: string;
+  participants: string[];
+  documents: string[];
+  agenda: string[];
+  openQuestions: string[];
+  openTasks: string[];
+}
+
 export interface KPIMetric {
   id: string;
   name: string;
@@ -109,4 +120,31 @@ export interface AuditLogEntry {
   targetEntity: string;
   status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING';
   details: string;
+}
+
+export interface TranscriptItem {
+  id: string;
+  title: string;
+  date: string;
+  type: string;
+  content: string;
+  stagedTasks: TaskItem[];
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+  duration?: string;
+  questions?: string[];
+}
+
+export interface CriticalIssueItem {
+  id: string;
+  title: string;
+  description: string;
+  deadline: string;
+}
+
+export interface OverviewBrief {
+  situationBrief: string;
+  dataFreshness: string;
+  criticalIssues: CriticalIssueItem[];
 }

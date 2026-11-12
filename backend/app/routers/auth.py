@@ -1,8 +1,13 @@
 from fastapi import APIRouter
+from typing import List
 from app.db.storage import storage
 from app.schemas import UserProfile, SwitchRoleRequest
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация и Роли"])
+
+@router.get("/users", response_model=List[UserProfile])
+async def get_all_users():
+    return list(storage.users.values())
 
 @router.get("/me", response_model=UserProfile)
 async def get_current_user():

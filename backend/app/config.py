@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Database (PostgreSQL 16/18)
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "127.0.0.1")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "photoprint")
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
         env_url = os.getenv("DATABASE_URL")
         if env_url:
             return env_url
+            
         from sqlalchemy.engine import URL
         url_obj = URL.create(
             drivername="postgresql+psycopg2",
@@ -36,7 +37,11 @@ class Settings(BaseSettings):
         )
         return url_obj.render_as_string(hide_password=False)
     
-    # AI / Ollama configuration
+    # AI Server (Отключен - работа напрямую локально на одном компьютере)
+    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "")
+    AI_SERVER_BYPASS_HEADER: str = "true"
+
+    # AI / Ollama configuration (local fallback)
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     OLLAMA_EMBED_MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")

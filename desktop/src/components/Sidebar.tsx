@@ -1,16 +1,17 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import {
-  CalendarDays,
+  FileSpreadsheet,
+  Calendar,
+  FileText,
+  CheckSquare,
   Search,
   Activity,
-  CheckCircle,
   ShieldCheck,
   LogOut,
   RotateCcw,
   Sun,
   Moon,
-  Server,
   RefreshCw
 } from 'lucide-react';
 
@@ -31,31 +32,52 @@ export const Sidebar: React.FC = () => {
 
   const activeTasksCount = tasks.filter((t) => t.status === 'active' || t.status === 'overdue').length;
 
-  const navigation = [
+  // Основные процессы в естественном порядке выполнения
+  const scenarioNavigation = [
     {
-      id: 'meetings',
-      label: 'Совещания',
-      icon: CalendarDays,
+      id: 'meeting_prep',
+      label: 'Подготовка встречи',
+      desc: 'Повестка, вопросы, задачи',
+      icon: FileSpreadsheet,
+    },
+    {
+      id: 'meeting_schedule',
+      label: 'Создание встречи',
+      desc: 'Тестовый календарь и слоты',
+      icon: Calendar,
+    },
+    {
+      id: 'meeting_protocol',
+      label: 'Протокол и summary',
+      desc: 'Решения, риски и поручения',
+      icon: FileText,
+    },
+    {
+      id: 'tasks',
+      label: 'Реестр задач',
+      desc: 'Исполнители, сроки, контроль',
+      icon: CheckSquare,
+      badge: activeTasksCount > 0 ? activeTasksCount : undefined,
     },
     {
       id: 'knowledge_base',
       label: 'База знаний',
+      desc: 'RAG, цитирование, регламенты',
       icon: Search,
     },
     {
       id: 'overview',
       label: 'Пульс компании',
+      desc: 'Сводка KPI и аналитика',
       icon: Activity,
     },
-    {
-      id: 'tasks',
-      label: 'Поручения',
-      icon: CheckCircle,
-      badge: activeTasksCount > 0 ? activeTasksCount : undefined,
-    },
+  ];
+
+  const systemNavigation = [
     {
       id: 'audit',
-      label: 'Аудит действий',
+      label: 'Журнал аудита',
+      desc: 'Фиксация всех действий',
       icon: ShieldCheck,
     },
   ];
@@ -76,7 +98,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="w-64 shrink-0 bg-white dark:bg-[#13151b] border-r border-neutral-200 dark:border-[#212530] flex flex-col justify-between select-none transition-colors">
       {/* Top Header with Authentic Print Brand Mark */}
-      <div>
+      <div className="flex-1 overflow-y-auto">
         <div className="h-16 px-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between">
           <div className="flex items-center gap-3">
             {/* CMYK Registration Mark Icon */}
@@ -90,7 +112,7 @@ export const Sidebar: React.FC = () => {
             </div>
 
             <div>
-              <div className="text-xs font-bold tracking-tight text-neutral-900 dark:text-neutral-100 uppercase">
+              <div className="text-xs font-bold tracking-tight text-neutral-950 dark:text-neutral-100 uppercase">
                 Фотопринт
               </div>
               <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
@@ -120,14 +142,57 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Section Label */}
+        {/* Section Label: Операционное управление */}
         <div className="px-4 pt-4 pb-1.5 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-wider uppercase font-mono">
-          Модули цеха и дирекции
+          Операционные процессы
         </div>
 
-        {/* Navigation Menu */}
+        {/* Scenario Navigation Menu */}
         <nav className="px-2 space-y-1">
-          {navigation.map((item) => {
+          {scenarioNavigation.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full text-left px-3 py-2 rounded-md text-xs flex items-center justify-between transition-colors relative ${
+                  isActive
+                    ? 'bg-neutral-100 dark:bg-[#1b1f29] text-neutral-950 dark:text-white font-medium before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r before:bg-sky-500'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#161820]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-400 dark:text-neutral-500'}`} />
+                  <div className="min-w-0 truncate">
+                    <div className="truncate">{item.label}</div>
+                  </div>
+                </div>
+
+                {item.badge !== undefined && (
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded shrink-0 ${
+                      isActive
+                        ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-200 font-semibold'
+                        : 'bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Section Label: Системные сервисы */}
+        <div className="px-4 pt-5 pb-1.5 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-wider uppercase font-mono">
+          Безопасность и аудит
+        </div>
+
+        <nav className="px-2 space-y-1">
+          {systemNavigation.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
 
@@ -145,18 +210,6 @@ export const Sidebar: React.FC = () => {
                   <Icon className={`w-4 h-4 ${isActive ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-400 dark:text-neutral-500'}`} />
                   <span>{item.label}</span>
                 </div>
-
-                {item.badge !== undefined && (
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
-                      isActive
-                        ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-200 font-semibold'
-                        : 'bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -164,8 +217,8 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Footer Backend Status & Profile Box */}
-      <div>
-        {/* Backend Hardware / API Connection Status */}
+      <div className="shrink-0">
+        {/* Backend Connection Status */}
         <div className="px-4 py-2 border-t border-neutral-200 dark:border-[#212530] bg-neutral-50/60 dark:bg-[#101217] flex items-center justify-between text-[11px] font-mono">
           <div className="flex items-center gap-2 min-w-0">
             <span

@@ -3,10 +3,12 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer } from './components/Toast';
 import { LoginView } from './views/LoginView';
-import { MeetingsView } from './views/MeetingsView';
+import { MeetingPrepView } from './views/MeetingPrepView';
+import { MeetingScheduleView } from './views/MeetingScheduleView';
+import { MeetingProtocolView } from './views/MeetingProtocolView';
+import { TasksView } from './views/TasksView';
 import { KnowledgeBaseView } from './views/KnowledgeBaseView';
 import { OverviewView } from './views/OverviewView';
-import { TasksView } from './views/TasksView';
 import { AuditLogView } from './views/AuditLogView';
 
 const Workspace: React.FC = () => {
@@ -20,10 +22,12 @@ const Workspace: React.FC = () => {
     <div className="flex h-screen w-screen bg-[#f8f9fa] dark:bg-[#0c0d11] text-neutral-900 dark:text-neutral-100 font-sans overflow-hidden select-none transition-colors">
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden bg-[#f8f9fa] dark:bg-[#0c0d11]">
-        {activeTab === 'meetings' && <MeetingsView />}
+        {(activeTab === 'meeting_prep' || activeTab === 'meetings') && <MeetingPrepView />}
+        {activeTab === 'meeting_schedule' && <MeetingScheduleView />}
+        {activeTab === 'meeting_protocol' && <MeetingProtocolView />}
+        {activeTab === 'tasks' && <TasksView />}
         {activeTab === 'knowledge_base' && <KnowledgeBaseView />}
         {activeTab === 'overview' && <OverviewView />}
-        {activeTab === 'tasks' && <TasksView />}
         {activeTab === 'audit' && <AuditLogView />}
       </main>
       <ToastContainer />

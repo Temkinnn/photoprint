@@ -1,17 +1,40 @@
 # Backend API — On-Premise AI-ассистент руководителя ООО «Фотопринт» (Трек 3)
 
-Серверная часть корпоративного ассистента руководителя. Реализует ролевой доступ (RBAC), журнал аудита действий, управление встречами, согласование задач (Human-in-the-Loop) и RAG-поиск по регламентам.
+Серверная часть корпоративного ассистента руководителя.
+- **Python**: `3.12.10`
+- **База данных**: `PostgreSQL` (без SQLite, строго реляционная СУБД с полной схемой)
+- **Фреймворк**: `FastAPI` + `SQLAlchemy 2.0` (через нативный `psycopg2` / `libpq`)
+- **Функционал**: ролевой доступ (RBAC), журнал аудита действий, управление встречами, протоколами и расшифровками, Human-in-the-Loop согласование задач, RAG-поиск по регламентам.
 
 ---
 
-## 🚀 Быстрый запуск (Windows)
+## 🛠 Требования к окружению
+- **Python**: `3.12.10` (зафиксирован в `runtime.txt`, `.python-version`, `pyproject.toml`)
+- **СУБД**: `PostgreSQL 16+` (локальный демон или Docker Compose)
 
-Запуск в один клик:
-Двойной клик на `run_backend.bat`
+---
 
-Или вручную из консоли:
+## 🚀 Быстрый запуск
+
+### Вариант 1: Docker Compose (рекомендуемый для развертывания)
+```bash
+cd backend
+docker-compose up -d --build
+```
+
+### Вариант 2: Локальный запуск (Linux)
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+### Вариант 3: Windows
+Двойной клик на `run_backend.bat` или вручную:
 ```powershell
-cd E:\GithubProjects\Unity\photoprint\backend
+cd backend
 py -3.12 -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt

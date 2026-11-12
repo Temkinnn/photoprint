@@ -2,11 +2,13 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, init_tables
 from app.db.models import (
     DBUser, DBDocument, DBMeeting, DBTask, 
-    DBCalendarSlot, DBAuditLog, DBKPIMetric
+    DBCalendarSlot, DBAuditLog, DBKPIMetric,
+    DBTranscript, DBOverviewBrief
 )
 from app.db.storage import (
     INITIAL_USERS, INITIAL_DOCUMENTS, INITIAL_METRICS,
-    INITIAL_SLOTS, INITIAL_TASKS, INITIAL_MEETINGS, INITIAL_AUDIT
+    INITIAL_SLOTS, INITIAL_TASKS, INITIAL_MEETINGS, INITIAL_AUDIT,
+    INITIAL_TRANSCRIPTS, INITIAL_OVERVIEW_BRIEF
 )
 
 def seed_database(db: Session = None):
@@ -19,10 +21,10 @@ def seed_database(db: Session = None):
     try:
         # Проверяем, есть ли уже данные
         if db.query(DBUser).first() is not None:
-            print("База данных уже инициализирована. Сидирование пропущено.")
+            print("База данных PostgreSQL уже инициализирована. Сидирование пропущено.")
             return
 
-        print("Сидирование базы данных начальным датасетом ООО «Фотопринт»...")
+        print("Сидирование PostgreSQL начальным датасетом ООО «Фотопринт»...")
 
         # 1. Пользователи
         for role_key, u in INITIAL_USERS.items():
@@ -32,10 +34,12 @@ def seed_database(db: Session = None):
                 role=u.role,
                 role_title=u.roleTitle,
                 department=u.department,
-                avatar_initials=u.avatarInitials
+                avatar_initials=u.avatarInitials,
+                clearance=getattr(u, "clearance", None),
+                description=getattr(u, "description", None)
             ))
 
-        # 2. Документы регламентов (20+)
+        # 2. Документы регламентов (16+)
         for doc in INITIAL_DOCUMENTS:
             db.add(DBDocument(
                 id=doc.id,
@@ -100,7 +104,29 @@ def seed_database(db: Session = None):
                 protocol_id=mt.protocolId
             ))
 
-        # 7. Первичный аудит-лог
+        # 7. Расшифровки встреч (Transcripts)
+        for tr in INITIAL_TRANSCRIPTS:
+            db.add(DBTranscript(
+                id=tr.id,
+                title=tr.title,
+                date=tr.date,
+                type=tr.type,
+                content=tr.content,
+                summary=tr.summary,
+                staged_tasks=[t.model_dump() for t in tr.stagedTasks],
+                decisions=[d.model_dump() for d in tr.decisions],
+                risks=[r.model_dump() for r in tr.risks]
+            ))
+
+        # 8. Сводка Overview
+        db.add(DBOverviewBrief(
+            id="default",
+            situation_brief=INITIAL_OVERVIEW_BRIEF.situationBrief,
+            data_freshness=INITIAL_OVERVIEW_BRIEF.dataFreshness,
+            critical_issues=[c.model_dump() for c in INITIAL_OVERVIEW_BRIEF.criticalIssues]
+        ))
+
+        # 9. Первичный аудит-лог
         for a in INITIAL_AUDIT:
             db.add(DBAuditLog(
                 id=a.id,
@@ -115,10 +141,11 @@ def seed_database(db: Session = None):
             ))
 
         db.commit()
-        print("База данных успешно наполнена.")
+        print("База данных PostgreSQL успешно наполнена эталонными данными.")
     except Exception as e:
         db.rollback()
-        print(f"Ошибка при сидировании БД: {e}")
+        print(f"Ошибка при сидировании PostgreSQL: {e}")
+        raise
     finally:
         if should_close:
             db.close()

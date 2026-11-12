@@ -4,12 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.seed import seed_database
-from app.routers import auth, meetings, tasks, rag, overview, system
+from app.db.storage import storage
+from app.routers import auth, meetings, tasks, rag, overview, system, ai_proxy
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Автоматическая инициализация и сидирование БД при старте
     seed_database()
+    storage.reload_from_db()
     yield
 
 app = FastAPI(
@@ -35,6 +37,7 @@ app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag.router, prefix=settings.API_V1_PREFIX)
 app.include_router(overview.router, prefix=settings.API_V1_PREFIX)
 app.include_router(system.router, prefix=settings.API_V1_PREFIX)
+app.include_router(ai_proxy.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():
@@ -42,7 +45,9 @@ async def root():
         "status": "online",
         "service": settings.PROJECT_NAME,
         "docs_url": "/docs",
-        "database": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "local",
+        "database_type": "PostgreSQL",
+        "database": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "postgresql",
+        "python_version": "3.12.10",
         "version": "1.0.0"
     }
 

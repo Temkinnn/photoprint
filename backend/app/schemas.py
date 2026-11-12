@@ -15,6 +15,8 @@ class UserProfile(BaseModel):
     roleTitle: str
     department: str
     avatarInitials: str
+    clearance: Optional[str] = None
+    description: Optional[str] = None
 
 class SwitchRoleRequest(BaseModel):
     role: UserRole
@@ -116,6 +118,9 @@ class ProtocolAnalysisResponse(BaseModel):
     decisions: List[DecisionItem]
     risks: List[RiskItem]
     tasks: List[TaskItem]
+    transcriptId: Optional[str] = None
+    questions: Optional[List[str]] = []
+    duration: Optional[str] = None
 
 class ConfirmTasksRequest(BaseModel):
     tasks: List[TaskItem]
@@ -142,3 +147,34 @@ class AuditLogEntry(BaseModel):
     targetObject: str
     status: Literal['success', 'warning', 'blocked']
     details: str
+
+class TranscriptItem(BaseModel):
+    id: str
+    title: str
+    date: str
+    type: str
+    content: str
+    stagedTasks: List[TaskItem] = []
+    summary: str
+    decisions: List[DecisionItem] = []
+    risks: List[RiskItem] = []
+
+class AgendaGenerationRequest(BaseModel):
+    topic: str
+    participants: List[str] = []
+    documents: List[str] = []
+
+class AgendaGenerationResponse(BaseModel):
+    agenda: List[str]
+    openQuestions: List[str]
+
+class CriticalIssueItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    deadline: str
+
+class OverviewBriefResponse(BaseModel):
+    situationBrief: str
+    dataFreshness: str
+    criticalIssues: List[CriticalIssueItem] = []

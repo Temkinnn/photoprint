@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from app.schemas import (
     UserProfile, DocumentItem, KPIMetric, CalendarSlot, 
-    AuditLogEntry, TaskItem, MeetingItem, UserRole
+    AuditLogEntry, TaskItem, MeetingItem, UserRole,
+    TranscriptItem, DecisionItem, RiskItem, CriticalIssueItem, OverviewBriefResponse
 )
 
 # Начальный эталонный датасет
@@ -16,7 +17,9 @@ INITIAL_USERS: Dict[str, UserProfile] = {
         role="ROLE_DIRECTOR",
         roleTitle="Генеральный директор",
         department="Дирекция",
-        avatarInitials="АС"
+        avatarInitials="АС",
+        clearance="Допуск 1 · Полный",
+        description="Полный доступ ко всей отчетности: финансовые планы, маржинальность, фонд окладов, цех и клиентский сервис."
     ),
     "ROLE_PRODUCTION_HEAD": UserProfile(
         id="u-2",
@@ -24,7 +27,9 @@ INITIAL_USERS: Dict[str, UserProfile] = {
         role="ROLE_PRODUCTION_HEAD",
         roleTitle="Начальник производства",
         department="Производственный цех",
-        avatarInitials="ИИ"
+        avatarInitials="ИИ",
+        clearance="Допуск 2 · Цех",
+        description="Доступ к техкартам станков, нормативам брака, графикам смен и оборудованию. Финансовая тайна закрыта."
     ),
     "ROLE_SUPPORT_HEAD": UserProfile(
         id="u-3",
@@ -32,7 +37,9 @@ INITIAL_USERS: Dict[str, UserProfile] = {
         role="ROLE_SUPPORT_HEAD",
         roleTitle="Руководитель клиентского сервиса",
         department="Служба заботы picPac.by",
-        avatarInitials="ЕК"
+        avatarInitials="ЕК",
+        clearance="Допуск 3 · Сервис",
+        description="Доступ к рекламациям, стандартам SLA, возвратам заказов и модерации фотопродуктов."
     )
 }
 
@@ -287,32 +294,59 @@ INITIAL_SLOTS: List[CalendarSlot] = [
 
 INITIAL_TASKS: List[TaskItem] = [
     TaskItem(
+        id="task-init-1",
+        title="Выполнить плановую замену резинотканевых полотен на ЦПМ HP Indigo",
+        assigneeName="Иванов И.С. (Начальник производства)",
+        deadline="2026-11-13",
+        sourceQuote="Регламент ТО оборудования: замена полотна каждые 150 тыс. оттисков",
+        status="active",
+        meetingTitle="Планерка техобслуживания"
+    ),
+    TaskItem(
+        id="task-init-2",
+        title="Обновить макеты фотокниг Новогодней коллекции 2027 в каталоге PicPac",
+        assigneeName="Ковалева Е.Д. (Клиентский сервис)",
+        deadline="2026-11-14",
+        sourceQuote="Решение маркетингового комитета от 02.11",
+        status="active",
+        meetingTitle="Запуск сезонной кампании"
+    ),
+    TaskItem(
+        id="task-init-3",
+        title="Провести сверку взаиморасчетов с поставщиком картона «Балтика-Пак»",
+        assigneeName="Смирнов А.В. (Директор)",
+        deadline="2026-11-09",
+        sourceQuote="Финансовый комитет 28.10: завершить сверку до поставки новой партии",
+        status="overdue",
+        meetingTitle="Финансовый комитет"
+    ),
+    TaskItem(
+        id="task-init-4",
+        title="Предоставить акт списания бракованных оттисков лакировки за октябрь",
+        assigneeName="Иванов И.С. (Начальник производства)",
+        deadline="2026-11-08",
+        sourceQuote="Производственная планерка 01.11: согласовать с бухгалтерией объем списания",
+        status="overdue",
+        meetingTitle="Производственная планерка"
+    ),
+    TaskItem(
         id="task-101",
         title="Заменить тефлоновый нагревательный вал на ламинаторе Foliant",
-        assigneeName="Иванов И.С.",
+        assigneeName="Иванов И.С. (Начальник производства)",
         deadline="2026-11-13",
-        sourceQuote="«Игорь, бери замену вала на себя, к вечеру четверга ламинатор должен работать идеально»",
+        sourceQuote="Игорь, бери замену вала на себя, к вечеру четверга ламинатор должен работать идеально",
         status="active",
         meetingTitle="Внеплановое совещание по всплеску брака в цехе"
     ),
     TaskItem(
         id="task-102",
         title="Подготовить служебную записку на лизинг дополнительной ЦПМ Canon V1000",
-        assigneeName="Иванов И.С.",
+        assigneeName="Иванов И.С. (Начальник производства)",
         deadline="2026-11-15",
-        sourceQuote="«Нужно формализовать расчет мощности и передать экономистам до 15 ноября»",
+        sourceQuote="Нужно формализовать расчет мощности и передать экономистам до 15 ноября",
         status="active",
         meetingTitle="Внеплановое совещание по всплеску брака в цехе"
     ),
-    TaskItem(
-        id="task-103",
-        title="Внедрить авто-оповещение клиентов picPac о задержке печати тиражей",
-        assigneeName="Ковалева Е.Д.",
-        deadline="2026-11-14",
-        sourceQuote="«Лена, давай пуши в приложение сделаем для тех, чьи заказы задерживаются больше чем на 4 часа»",
-        status="active",
-        meetingTitle="Разбор клиентских рекламаций picPac.by"
-    )
 ]
 
 INITIAL_MEETINGS: List[MeetingItem] = [
@@ -343,55 +377,521 @@ INITIAL_MEETINGS: List[MeetingItem] = [
 INITIAL_AUDIT: List[AuditLogEntry] = [
     AuditLogEntry(
         id="aud-1",
-        timestamp="2026-11-11 11:32:05",
+        timestamp="2026-11-11 14:20:15",
         userId="u-1",
         userName="Смирнов А.В.",
         userRole="ROLE_DIRECTOR",
-        action="VIEW_DOCUMENT",
-        targetObject="doc-fin-01 (БДР на Q4 2026)",
+        action="LOGIN",
+        targetObject="Session",
         status="success",
-        details="Успешный доступ к финансовому отчету (уровень допуска 1)"
+        details="Успешная авторизация в локальном контуре с полными привилегиями"
     ),
     AuditLogEntry(
         id="aud-2",
-        timestamp="2026-11-11 12:05:14",
-        userId="u-2",
-        userName="Иванов И.С.",
-        userRole="ROLE_PRODUCTION_HEAD",
-        action="RAG_SEARCH_ATTEMPT",
-        targetObject="doc-fin-02 (Сетка окладов руководства)",
-        status="blocked",
-        details="Отказ в доступе (403 Forbidden). Зафиксирована попытка несанкционированного запроса к закрытым данным."
-    ),
-    AuditLogEntry(
-        id="aud-3",
-        timestamp="2026-11-11 13:40:22",
+        timestamp="2026-11-11 14:25:30",
         userId="u-1",
         userName="Смирнов А.В.",
         userRole="ROLE_DIRECTOR",
-        action="CONFIRM_TASK_CREATION",
-        targetObject="task-101",
+        action="RAG_SEARCH",
+        targetObject="Document: doc-fin-01",
         status="success",
-        details="Руководитель подтвердил создание задачи из протокола встречи"
+        details="Запрос 'Плановый бюджет на Q4' -> Документ открыт с цитированием оснований"
+    ),
+    AuditLogEntry(
+        id="aud-3",
+        timestamp="2026-11-11 14:45:10",
+        userId="u-2",
+        userName="Иванов И.С.",
+        userRole="ROLE_PRODUCTION_HEAD",
+        action="RAG_SEARCH_RESTRICTED",
+        targetObject="Document: doc-fin-02",
+        status="blocked",
+        details="Попытка запросить фонд окладов топ-менеджмента. Заблокировано сервером (RBAC ОТ-02)"
     )
 ]
 
-class MemoryStorage:
-    def __init__(self):
-        self.reset_to_default()
+INITIAL_TRANSCRIPTS: List[TranscriptItem] = [
+    TranscriptItem(
+        id="tr-01",
+        title="Производственная планерка цеха: Сбой УФ-лакировки и срыв сроков",
+        date="2026-11-10",
+        type="Цех и производство",
+        content="""[00:01] Смирнов А.В. (Директор): Коллеги, начинаем планерку. Вчера по приложению PicPac поступило 18 жалоб на задержку отгрузки фотокниг серии Premium. Игорь, доложи, что произошло на участке лакировки?
+[00:35] Иванов И.С. (Нач. цеха): На линии УФ-лакировки вышел из строя датчик вязкости полимера. Валы начали наносить состав неравномерно, пошли наплывы на глянце. Пришлось экстренно остановить линию на 3.5 часа и отправить в брак 45 готовых обложек.
+[01:15] Смирнов А.В.: Это недопустимо в преддверии праздничного сезона. Какое решение принято?
+[01:25] Иванов И.С.: Мы заменили форсунку и почистили датчик, линия снова в строю. Но нам нужен запасной комплект датчиков. Я договорился с поставщиком «Полиграф-Сервис», они готовы отгрузить его завтра.
+[01:50] Смирнов А.В.: Хорошо. Тогда фиксируем: Иванову заказать запасной датчик вязкости у «Полиграф-Сервис» до 14 ноября, бюджет согласован в пределах 65 тысяч рублей.
+[02:15] Ковалева Е.Д. (Клиентский сервис): Алексей Викторович, клиенты в чате волнуются. Заказы опаздывают уже на сутки.
+[02:30] Смирнов А.В.: Елена, подготовьте персональные промокоды на 500 рублей всем 18 пострадавшим клиентам и отправьте извинительные сообщения в чате PicPac до сегодняшнего вечера, крайний срок — 19:00.
+[02:55] Ковалева Е.Д.: Принято, сделаю сегодня до семи вечера.
+[03:10] Иванов И.С.: Еще момент — по перепечатке брака. Мы успеем отпечатать эти 45 обложек к ночной смене, но нам нужно вывести дополнительного печатника на Indigo.
+[03:30] Смирнов А.В.: Выводите. Ответственный — Иванов, обеспечить полную перепечатку бракованной партии до 12 ноября 10:00 утра.
+[03:50] Смирнов А.В.: А что у нас с калибровкой резального плоттера Zund? Кто отвечает?
+[04:05] Иванов И.С.: Там вроде инженер смотрел, но точный срок калибровки пока не ясен, надо уточнить у сервисной службы.
+[04:20] Смирнов А.В.: Значит этот вопрос пока открыт, требует уточнения. Планерка окончена.""",
+        stagedTasks=[
+            TaskItem(
+                id="task-tr1-1",
+                title="Заказать запасной датчик вязкости полимера у поставщика «Полиграф-Сервис»",
+                assigneeName="Иванов И.С. (Начальник производства)",
+                deadline="2026-11-14",
+                sourceQuote="Иванову заказать запасной датчик вязкости у «Полиграф-Сервис» до 14 ноября, бюджет согласован в пределах 65 тысяч рублей",
+                timestamp="01:50",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr1-2",
+                title="Отправить извинительные сообщения и промокоды на 500 руб 18 задержанным клиентам PicPac",
+                assigneeName="Ковалева Е.Д. (Клиентский сервис)",
+                deadline="2026-11-10 19:00",
+                sourceQuote="Елена, подготовьте персональные промокоды на 500 рублей всем 18 пострадавшим клиентам до сегодняшнего вечера, крайний срок — 19:00",
+                timestamp="02:30",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr1-3",
+                title="Обеспечить внеочередную перепечатку 45 бракованных обложек фотокниг на ЦПМ Indigo",
+                assigneeName="Иванов И.С. (Начальник производства)",
+                deadline="2026-11-12 10:00",
+                sourceQuote="Ответственный — Иванов, обеспечить полную перепечатку бракованной партии до 12 ноября 10:00 утра",
+                timestamp="03:30",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr1-4",
+                title="Провести калибровку резального плоттера Zund",
+                assigneeName="требует уточнения",
+                deadline="требует уточнения",
+                sourceQuote="Там вроде инженер смотрел, но точный срок калибровки пока не ясен, надо уточнить у сервисной службы",
+                timestamp="04:05",
+                status="pending_approval"
+            )
+        ],
+        summary="Разбор инцидента аварийной остановки линии УФ-лакировки. Выявлена причина — сбой датчика вязкости полимера, в брак ушло 45 обложек фотокниг. Утверждены компенсирующие меры для клиентов и график внеочередной перепечатки.",
+        decisions=[
+            DecisionItem(id="d-1", category="resolved", text="Утверждена закупка резервного комплекта датчиков вязкости у «Полиграф-Сервис» за 65 000 руб.", speaker="Смирнов А.В.", timestamp="01:50"),
+            DecisionItem(id="d-2", category="resolved", text="Выдать промокоды по 500 руб всем 18 клиентам задержанных заказов.", speaker="Смирнов А.В.", timestamp="02:30"),
+            DecisionItem(id="d-3", category="proposed", text="Предложение вывести дополнительного оператора на ЦПМ в ночную смену.", speaker="Иванов И.С.", timestamp="03:10"),
+            DecisionItem(id="d-4", category="needs_clarification", text="Сроки сервисного обслуживания и калибровки плоттера Zund не согласованы.", speaker="Иванов И.С.", timestamp="04:05")
+        ],
+        risks=[
+            RiskItem(id="r-1", riskDescription="Повторный сбой линии лакировки при отсутствии запчастей в пиковый сезон ноябрь-декабрь.", impact="High", suggestedMitigation="Создать неснижаемый складской запас датчиков и форсунок к 15 ноября."),
+            RiskItem(id="r-2", riskDescription="Отток постоянных клиентов приложения PicPac из-за срыва объявленного срока доставки.", impact="Medium", suggestedMitigation="Превентивные пуш-уведомления со статусом печати.")
+        ]
+    ),
+    TranscriptItem(
+        id="tr-02",
+        title="Разбор качества PicPac: Претензии по цветопередаче фотополотен",
+        date="2026-11-08",
+        type="Клиентский сервис и препресс",
+        content="""[00:05] Ковалева Е.Д. (Клиентский сервис): Коллеги, за последнюю неделю получили 12 жалоб на темные тени при печати фотохолстов 40х60. На экранах смартфонов iPhone фото выглядят ярче, чем на готовом холсте.
+[00:45] Иванов И.С. (Нач. цеха): Холст матовый и имеет естественное впитывание чернил, поэтому точка черного визуально глубже. Плюс пользователи отправляют фото в цветовом пространстве Display P3, а профиль плоттера настроен на стандартный CMYK Fogra39.
+[01:20] Смирнов А.В. (Директор): Нужно автоматизировать цветокоррекцию на входе. Елена, подготовьте вместе с дизайнерами памятку для мобильного приложения с рекомендациями по яркости до 16 ноября.
+[01:45] Ковалева Е.Д.: Сделаем. Также предлагаю добавить в карточку продукта PicPac предупреждение об особенностях матового холста.
+[02:10] Смирнов А.В.: Поддерживаю. Иванову: обновить ICC-профиль широкоформатного плоттера Epson SC-P9000 до 15 ноября. Срок и исполнитель зафиксированы.""",
+        stagedTasks=[
+            TaskItem(
+                id="task-tr2-1",
+                title="Разработать экранную памятку и подсказки по экспозиции фото для пользователей picPac.by",
+                assigneeName="Ковалева Е.Д. (Клиентский сервис)",
+                deadline="2026-11-16",
+                sourceQuote="Елена, подготовьте вместе с дизайнерами памятку для мобильного приложения с рекомендациями по яркости до 16 ноября",
+                timestamp="01:20",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr2-2",
+                title="Перестроить ICC-профиль и провести спектрофотометрию плоттера Epson SC-P9000 под холсты",
+                assigneeName="Иванов И.С. (Начальник производства)",
+                deadline="2026-11-15",
+                sourceQuote="Иванову: обновить ICC-профиль широкоформатного плоттера Epson SC-P9000 до 15 ноября",
+                timestamp="02:10",
+                status="pending_approval"
+            )
+        ],
+        summary="Анализ расхождений между экранами смартфонов и матовыми фотохолстами. Принято решение внедрить автоматическое предупреждение в приложении и выполнить профилирование плоттера.",
+        decisions=[
+            DecisionItem(id="d-21", category="resolved", text="Обновить ICC-профиль плоттера Epson SC-P9000 для компенсации растискивания на холсте.", speaker="Смирнов А.В.", timestamp="02:10"),
+            DecisionItem(id="d-22", category="resolved", text="Добавить предупреждение в UI корзины PicPac о контрасте на матовых материалах.", speaker="Ковалева Е.Д.", timestamp="01:45")
+        ],
+        risks=[
+            RiskItem(id="r-21", riskDescription="Рост себестоимости перепечаток крупноформатных холстов при отсутствии валидации sRGB/Display P3.", impact="Medium", suggestedMitigation="Внедрение Pre-flight конвертации в приложении.")
+        ]
+    ),
+    TranscriptItem(
+        id="tr-03",
+        title="Совет директоров: Стратегия Q4 и подготовка к пиковому сезону",
+        date="2026-11-05",
+        type="Стратегическое планирование",
+        content="""[00:10] Смирнов А.В. (Директор): Коллеги, главный вопрос повестки — готовность к декабрьскому всплеску заказов. Прогноз спроса показывает рост до 4 200 заказов в сутки в период 10–25 декабря. Текущая мощность цеха — 3 100 заказов.
+[00:55] Иванов И.С. (Нач. цеха): Без запуска резервной ЦПМ Canon V1000 мы войдем в жесткий дефицит на 51-й неделе года. Срок пусконаладки — 5 рабочих дней.
+[01:30] Смирнов А.В.: Договор лизинга подписан, первый транш 3.3 млн рублей отправлен. Иванову: подготовить фундамент и силовые кабели для монтажа машины до 20 ноября.
+[02:00] Ковалева Е.Д. (Клиентский сервис): По клиентской поддержке: в декабре потребуется усиление линии до 6 операторов в смену. Нужно нанять 3 временных операторов поддержки на период 1 декабря — 15 января.
+[02:35] Смирнов А.В.: Согласовано. Ковалевой: согласовать профили кандидатов и завершить найм 3 операторов до 25 ноября.
+[03:10] Смирнов А.В.: Вопрос по дополнительной аренде склада упаковки пока открыт, ждем ответа арендодателя.""",
+        stagedTasks=[
+            TaskItem(
+                id="task-tr3-1",
+                title="Подготовить площадку и электропитание 380В для монтажа печатной машины Canon V1000",
+                assigneeName="Иванов И.С. (Начальник производства)",
+                deadline="2026-11-20",
+                sourceQuote="Иванову: подготовить фундамент и силовые кабели для монтажа машины до 20 ноября",
+                timestamp="01:30",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr3-2",
+                title="Организовать найм и обучение 3 временных операторов службы заботы PicPac на декабрь",
+                assigneeName="Ковалева Е.Д. (Клиентский сервис)",
+                deadline="2026-11-25",
+                sourceQuote="Ковалевой: согласовать профили кандидатов и завершить найм 3 операторов до 25 ноября",
+                timestamp="02:35",
+                status="pending_approval"
+            ),
+            TaskItem(
+                id="task-tr3-3",
+                title="Согласовать договор субаренды теплого склада для готовых тиражей",
+                assigneeName="требует уточнения",
+                deadline="требует уточнения",
+                sourceQuote="Вопрос по дополнительной аренде склада упаковки пока открыт, ждем ответа арендодателя",
+                timestamp="03:10",
+                status="pending_approval"
+            )
+        ],
+        summary="Утверждение плана масштабирования мощностей на пиковый новогодний сезон. Согласован ввод машины Canon V1000 и расширение штата омниканальной поддержки на 3 человека.",
+        decisions=[
+            DecisionItem(id="d-31", category="resolved", text="Утвержден ввод в строй новой ЦПМ Canon V1000 до 1 декабря 2026.", speaker="Смирнов А.В.", timestamp="01:30"),
+            DecisionItem(id="d-32", category="resolved", text="Выделен бюджет на найм 3 сезонных операторов поддержки на 1.5 месяца.", speaker="Смирнов А.В.", timestamp="02:35"),
+            DecisionItem(id="d-33", category="needs_clarification", text="Договор субаренды дополнительного склада упаковки ожидает согласования ставки.", speaker="Смирнов А.В.", timestamp="03:10")
+        ],
+        risks=[
+            RiskItem(id="r-31", riskDescription="Дефицит мощности в 1 100 заказов/сутки при задержке монтажа Canon V1000.", impact="High", suggestedMitigation="План аварийного распределения тиражей на резервные плоттеры цеха.")
+        ]
+    )
+]
 
-    def reset_to_default(self):
+INITIAL_OVERVIEW_BRIEF = OverviewBriefResponse(
+    situationBrief="Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил 3.2% (порог цеха 2.5%), сдача тиражей в срок снизилась до 96.4%. Служба заботы PicPac удерживает показатель SLA 98.2%. Загрузка основного парка плоттеров и ЦПМ достигла 87%, подтверждая необходимость ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.",
+    dataFreshness="2026-11-11 15:00:00",
+    criticalIssues=[
+        CriticalIssueItem(
+            id="iss-1",
+            title="Закупка запасного комплекта датчиков вязкости для УФ-линии",
+            description="Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.",
+            deadline="14.11.2026"
+        ),
+        CriticalIssueItem(
+            id="iss-2",
+            title="Согласование ставки субаренды упаковочного склада",
+            description="Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.",
+            deadline="15.11.2026"
+        )
+    ]
+)
+
+from app.db.session import SessionLocal, init_tables
+from app.db.models import (
+    DBUser, DBDocument, DBMeeting, DBTask,
+    DBCalendarSlot, DBAuditLog, DBKPIMetric,
+    DBTranscript, DBOverviewBrief
+)
+
+class PersistentList(list):
+    def __init__(self, iterable, on_insert=None, on_remove=None):
+        super().__init__(iterable)
+        self.on_insert = on_insert
+        self.on_remove = on_remove
+
+    def insert(self, index, item):
+        super().insert(index, item)
+        if self.on_insert:
+            self.on_insert(item)
+
+    def append(self, item):
+        super().append(item)
+        if self.on_insert:
+            self.on_insert(item)
+
+    def remove(self, item):
+        super().remove(item)
+        if self.on_remove:
+            self.on_remove(item)
+
+class PostgresStorage:
+    def __init__(self):
         self.current_role: UserRole = "ROLE_DIRECTOR"
-        self.users: Dict[str, UserProfile] = copy.deepcopy(INITIAL_USERS)
-        self.documents: List[DocumentItem] = copy.deepcopy(INITIAL_DOCUMENTS)
-        self.metrics: List[KPIMetric] = copy.deepcopy(INITIAL_METRICS)
-        self.slots: List[CalendarSlot] = copy.deepcopy(INITIAL_SLOTS)
-        self.tasks: List[TaskItem] = copy.deepcopy(INITIAL_TASKS)
-        self.meetings: List[MeetingItem] = copy.deepcopy(INITIAL_MEETINGS)
-        self.audit_logs: List[AuditLogEntry] = copy.deepcopy(INITIAL_AUDIT)
+        self._init_and_load()
+
+    def _init_and_load(self):
+        init_tables()
+        self.reload_from_db()
+
+    def reload_from_db(self):
+        with SessionLocal() as db:
+            # Users
+            db_users = db.query(DBUser).all()
+            self.users = {
+                u.role: UserProfile(
+                    id=u.id,
+                    name=u.name,
+                    role=u.role,
+                    roleTitle=u.role_title,
+                    department=u.department,
+                    avatarInitials=u.avatar_initials,
+                    clearance=u.clearance,
+                    description=u.description
+                )
+                for u in db_users
+            }
+            if not self.users:
+                self.users = copy.deepcopy(INITIAL_USERS)
+
+            # Documents
+            db_docs = db.query(DBDocument).all()
+            self.documents = [
+                DocumentItem(
+                    id=d.id,
+                    title=d.title,
+                    category=d.category,
+                    date=d.date,
+                    minClearance=d.min_clearance,
+                    summary=d.summary,
+                    content=d.content
+                )
+                for d in db_docs
+            ]
+
+            # Metrics
+            db_metrics = db.query(DBKPIMetric).all()
+            self.metrics = [
+                KPIMetric(
+                    id=m.id,
+                    name=m.name,
+                    value=m.value,
+                    target=m.target,
+                    status=m.status,
+                    sourceSystem=m.source_system,
+                    updatedAt=m.updated_at,
+                    trend=m.trend
+                )
+                for m in db_metrics
+            ]
+
+            # Slots
+            db_slots = db.query(DBCalendarSlot).all()
+            self.slots = [
+                CalendarSlot(
+                    id=s.id,
+                    startTime=s.start_time,
+                    endTime=s.end_time,
+                    date=s.date,
+                    isAvailable=s.is_available,
+                    participantsFree=s.participants_free or []
+                )
+                for s in db_slots
+            ]
+
+            # Tasks
+            db_tasks = db.query(DBTask).all()
+            task_items = [
+                TaskItem(
+                    id=t.id,
+                    title=t.title,
+                    assigneeName=t.assignee_name,
+                    deadline=t.deadline,
+                    sourceQuote=t.source_quote,
+                    timestamp=t.timestamp,
+                    status=t.status,
+                    meetingTitle=t.meeting_title,
+                    protocolId=t.protocol_id
+                )
+                for t in db_tasks
+            ]
+            self._tasks = PersistentList(task_items, on_insert=self._on_task_insert)
+
+            # Meetings
+            db_meetings = db.query(DBMeeting).all()
+            meeting_items = [
+                MeetingItem(
+                    id=mt.id,
+                    title=mt.title,
+                    date=mt.date,
+                    time=mt.time,
+                    durationMinutes=mt.duration_minutes,
+                    participants=mt.participants or [],
+                    status=mt.status,
+                    agenda=mt.agenda or [],
+                    openQuestions=mt.open_questions or [],
+                    protocolId=mt.protocol_id
+                )
+                for mt in db_meetings
+            ]
+            self._meetings = PersistentList(meeting_items, on_insert=self._on_meeting_insert)
+
+            # Audit Logs
+            db_logs = db.query(DBAuditLog).order_by(DBAuditLog.timestamp.desc()).all()
+            log_items = [
+                AuditLogEntry(
+                    id=a.id,
+                    timestamp=a.timestamp,
+                    userId=a.user_id,
+                    userName=a.user_name,
+                    userRole=a.user_role,
+                    action=a.action,
+                    targetObject=a.target_object,
+                    status=a.status,
+                    details=a.details
+                )
+                for a in db_logs
+            ]
+            self._audit_logs = PersistentList(log_items, on_insert=self._on_audit_insert)
+
+            # Transcripts
+            db_transcripts = db.query(DBTranscript).all()
+            self.transcripts = [
+                TranscriptItem(
+                    id=tr.id,
+                    title=tr.title,
+                    date=tr.date,
+                    type=tr.type,
+                    content=tr.content,
+                    summary=tr.summary,
+                    stagedTasks=[TaskItem(**st) for st in (tr.staged_tasks or [])],
+                    decisions=[DecisionItem(**d) for d in (tr.decisions or [])],
+                    risks=[RiskItem(**r) for r in (tr.risks or [])]
+                )
+                for tr in db_transcripts
+            ]
+
+            # Overview Brief
+            db_brief = db.query(DBOverviewBrief).filter_by(id="default").first()
+            if db_brief:
+                self.overview_brief = OverviewBriefResponse(
+                    situationBrief=db_brief.situation_brief,
+                    dataFreshness=db_brief.data_freshness,
+                    criticalIssues=[CriticalIssueItem(**ci) for ci in (db_brief.critical_issues or [])]
+                )
+            else:
+                self.overview_brief = copy.deepcopy(INITIAL_OVERVIEW_BRIEF)
+
+    @property
+    def tasks(self) -> PersistentList:
+        return self._tasks
+
+    @tasks.setter
+    def tasks(self, new_tasks):
+        with SessionLocal() as db:
+            current_ids = {t.id for t in new_tasks}
+            db.query(DBTask).filter(~DBTask.id.in_(current_ids)).delete(synchronize_session=False)
+            db.commit()
+        self._tasks = PersistentList(list(new_tasks), on_insert=self._on_task_insert)
+
+    @property
+    def meetings(self) -> PersistentList:
+        return self._meetings
+
+    @meetings.setter
+    def meetings(self, new_meetings):
+        self._meetings = PersistentList(list(new_meetings), on_insert=self._on_meeting_insert)
+
+    @property
+    def audit_logs(self) -> PersistentList:
+        return self._audit_logs
+
+    @audit_logs.setter
+    def audit_logs(self, new_logs):
+        self._audit_logs = PersistentList(list(new_logs), on_insert=self._on_audit_insert)
+
+    def _on_task_insert(self, item: TaskItem):
+        with SessionLocal() as db:
+            db_task = DBTask(
+                id=item.id,
+                title=item.title,
+                assignee_name=item.assigneeName,
+                deadline=item.deadline,
+                source_quote=item.sourceQuote,
+                timestamp=item.timestamp,
+                status=item.status,
+                meeting_title=item.meetingTitle,
+                protocol_id=item.protocolId
+            )
+            db.merge(db_task)
+            db.commit()
+
+    def _on_meeting_insert(self, item: MeetingItem):
+        with SessionLocal() as db:
+            db_meeting = DBMeeting(
+                id=item.id,
+                title=item.title,
+                date=item.date,
+                time=item.time,
+                duration_minutes=item.durationMinutes,
+                participants=item.participants,
+                status=item.status,
+                agenda=item.agenda,
+                open_questions=item.openQuestions,
+                protocol_id=item.protocolId
+            )
+            db.merge(db_meeting)
+            db.commit()
+
+    def _on_audit_insert(self, item: AuditLogEntry):
+        with SessionLocal() as db:
+            db_log = DBAuditLog(
+                id=item.id,
+                timestamp=item.timestamp,
+                user_id=item.userId,
+                user_name=item.userName,
+                user_role=item.userRole,
+                action=item.action,
+                target_object=item.targetObject,
+                status=item.status,
+                details=item.details
+            )
+            db.merge(db_log)
+            db.commit()
+
+    def save_task(self, item: TaskItem):
+        self._on_task_insert(item)
+
+    def delete_meeting(self, meeting_id: str) -> bool:
+        with SessionLocal() as db:
+            db.query(DBMeeting).filter_by(id=meeting_id).delete()
+            db.commit()
+        initial_len = len(self._meetings)
+        self._meetings = PersistentList([m for m in self._meetings if m.id != meeting_id], on_insert=self._on_meeting_insert)
+        return len(self._meetings) < initial_len
+
+    def update_meeting(self, meeting_id: str, updates: dict) -> Optional[MeetingItem]:
+        for idx, m in enumerate(self._meetings):
+            if m.id == meeting_id:
+                data = m.model_dump()
+                data.update(updates)
+                updated_item = MeetingItem(**data)
+                self._meetings[idx] = updated_item
+                self._on_meeting_insert(updated_item)
+                return updated_item
+        return None
+
+    def add_transcript(self, transcript: TranscriptItem):
+        with SessionLocal() as db:
+            db_tr = DBTranscript(
+                id=transcript.id,
+                title=transcript.title,
+                date=transcript.date,
+                type=transcript.type,
+                content=transcript.content,
+                summary=transcript.summary,
+                staged_tasks=[t.model_dump() for t in transcript.stagedTasks],
+                decisions=[d.model_dump() for d in transcript.decisions],
+                risks=[r.model_dump() for r in transcript.risks]
+            )
+            db.merge(db_tr)
+            db.commit()
+        self.transcripts.insert(0, transcript)
 
     def get_current_user(self) -> UserProfile:
-        return self.users.get(self.current_role, self.users["ROLE_DIRECTOR"])
+        return self.users.get(self.current_role, self.users.get("ROLE_DIRECTOR", list(self.users.values())[0]))
 
     def switch_role(self, role: UserRole) -> UserProfile:
         if role in self.users:
@@ -401,7 +901,7 @@ class MemoryStorage:
     def add_audit_log(self, action: str, target: str, status: str, details: str):
         user = self.get_current_user()
         entry = AuditLogEntry(
-            id=f"aud-{len(self.audit_logs) + 1}",
+            id=f"aud-{len(self._audit_logs) + 1}",
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             userId=user.id,
             userName=user.name,
@@ -411,7 +911,17 @@ class MemoryStorage:
             status=status,
             details=details
         )
-        self.audit_logs.insert(0, entry)
+        self._audit_logs.insert(0, entry)
         return entry
 
-storage = MemoryStorage()
+    def reset_to_default(self):
+        from app.db.seed import seed_database
+        with SessionLocal() as db:
+            from app.db.models import Base
+            Base.metadata.drop_all(db.bind)
+            Base.metadata.create_all(db.bind)
+        seed_database()
+        self.current_role = "ROLE_DIRECTOR"
+        self.reload_from_db()
+
+storage = PostgresStorage()

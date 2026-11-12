@@ -13,6 +13,8 @@ class DBUser(Base):
     role_title = Column(String(255), nullable=False)
     department = Column(String(255), nullable=False)
     avatar_initials = Column(String(10), nullable=False)
+    clearance = Column(String(128), nullable=True)
+    description = Column(Text, nullable=True)
 
 class DBDocument(Base):
     __tablename__ = "documents"
@@ -38,6 +40,19 @@ class DBMeeting(Base):
     agenda = Column(JSON, default=list)
     open_questions = Column(JSON, default=list)
     protocol_id = Column(String(64), nullable=True)
+
+class DBTranscript(Base):
+    __tablename__ = "transcripts"
+
+    id = Column(String(64), primary_key=True)
+    title = Column(String(512), nullable=False)
+    date = Column(String(32), nullable=False)
+    type = Column(String(64), nullable=False)
+    content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=False)
+    staged_tasks = Column(JSON, default=list)
+    decisions = Column(JSON, default=list)
+    risks = Column(JSON, default=list)
 
 class DBTask(Base):
     __tablename__ = "tasks"
@@ -86,3 +101,11 @@ class DBKPIMetric(Base):
     source_system = Column(String(128), nullable=False)
     updated_at = Column(String(64), nullable=False)
     trend = Column(String(32), default="stable")  # up, down, stable
+
+class DBOverviewBrief(Base):
+    __tablename__ = "overview_brief"
+
+    id = Column(String(64), primary_key=True, default="default")
+    situation_brief = Column(Text, nullable=False)
+    data_freshness = Column(String(64), nullable=False)
+    critical_issues = Column(JSON, default=list)

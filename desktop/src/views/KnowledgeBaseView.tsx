@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { MOCK_DOCUMENTS } from '../mock/mockData';
 import { RAGMessage } from '../types';
 import {
   Send,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  FileText,
+  BookOpen,
+  ArrowRight,
+  ArrowLeft,
+  Copy,
+  RotateCcw
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG } = useApp();
+  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents, setActiveTab } = useApp();
+  const [showDocsList, setShowDocsList] = useState(false);
 
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -17,7 +23,7 @@ export const KnowledgeBaseView: React.FC = () => {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по внутренним регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
+      text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
       timestamp: '14:00',
     },
   ]);
@@ -30,12 +36,16 @@ export const KnowledgeBaseView: React.FC = () => {
       text: 'Какое допустимое оптическое отклонение Delta-E установлено для цифровой печати на ЦПМ HP Indigo 7900?',
     },
     {
-      label: 'Финансы (Тест RBAC): План выручки на Q4',
+      label: 'Клиенты: Перепечатка брака в picPac.by',
+      text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
+    },
+    {
+      label: 'Финансы (RBAC): План выручки на Q4',
       text: 'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
     },
     {
-      label: 'Клиенты: Перепечатка брака в picPac.by',
-      text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
+      label: 'Тест отсутствия основания: Нормативы вертолетов',
+      text: 'Каковы нормативы посадки вертолетов на крышу полиграфического комплекса ООО Фотопринт?',
     },
   ];
 
@@ -72,23 +82,92 @@ export const KnowledgeBaseView: React.FC = () => {
     }
   };
 
+  const handleCopyAnswer = (text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast('Ответ скопирован', 'Текст ответа сохранен в буфер обмена', 'success');
+  };
+
+  const handleClearChat = () => {
+    setMessages([
+      {
+        id: 'welcome',
+        sender: 'assistant',
+        text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
+        timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    showToast('История очищена', 'Диалог с базой знаний сброшен', 'info');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
       {/* Top Header */}
       <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div>
-          <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-            Технологические регламенты и стандарты
-          </h1>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Корпоративный справочник допусков оборудования, нормативов брака и регламентов сервиса
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-sky-500/20" />
+            <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
+              База знаний и регламенты
+            </h1>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            Семантический поиск по регламентам, цитирование документов и фрагментов; проверка требований
           </p>
         </div>
 
-        <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#1a1d25] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36]">
-          {MOCK_DOCUMENTS.length} регламентов в базе
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDocsList((prev) => !prev)}
+            className="text-xs font-mono text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1.5 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-sky-500" />
+            <span>{documents.length} регламентов</span>
+          </button>
+
+          {messages.length > 1 && (
+            <button
+              onClick={handleClearChat}
+              className="text-xs font-mono text-neutral-500 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1.5 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
+              title="Очистить историю диалога"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Очистить</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setActiveTab('overview')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm"
+          >
+            <span>Перейти к пульсу компании</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
+
+      {/* Optional Documents Explorer Drawer */}
+      {showDocsList && (
+        <div className="bg-neutral-50 dark:bg-[#111319] border-b border-neutral-200 dark:border-[#212530] p-4 px-6 shrink-0 max-h-48 overflow-y-auto">
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 font-semibold uppercase">
+              Доступные регламенты ({documents.length}):
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {documents.map((doc) => (
+                <div key={doc.id} className="p-2 rounded bg-white dark:bg-[#161820] border border-neutral-200/80 dark:border-[#252a38] text-xs">
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100 truncate" title={doc.title}>
+                    {doc.title}
+                  </div>
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center justify-between mt-1 font-mono">
+                    <span>{doc.category}</span>
+                    <span>{doc.date}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl mx-auto w-full">
@@ -146,7 +225,19 @@ export const KnowledgeBaseView: React.FC = () => {
               )}
             </div>
 
-            <div className="text-[10px] font-mono text-neutral-400 mt-1 px-1">{msg.timestamp}</div>
+            <div className="flex items-center gap-2.5 text-[10px] font-mono text-neutral-400 mt-1 px-1">
+              <span>{msg.timestamp}</span>
+              {msg.sender === 'assistant' && (
+                <button
+                  onClick={() => handleCopyAnswer(msg.text)}
+                  className="hover:text-sky-500 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Скопировать текст ответа"
+                >
+                  <Copy className="w-3 h-3 text-neutral-400 hover:text-sky-500" />
+                  <span>Копировать</span>
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

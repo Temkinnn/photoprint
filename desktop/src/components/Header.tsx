@@ -89,7 +89,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={resetDemoData}
-          title="Сбросить все задачи, логи и состояние к исходному демо-сценарию"
+          title="Сбросить все данные к исходному состоянию"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-lg transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5 text-slate-400" />

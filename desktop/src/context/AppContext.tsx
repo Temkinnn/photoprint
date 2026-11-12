@@ -9,15 +9,11 @@ import {
   RAGMessage,
   CalendarSlot,
   MeetingItem,
+  MeetingDraft,
+  TranscriptItem,
+  OverviewBrief,
 } from '../types';
-import {
-  MOCK_USERS,
-  MOCK_DOCUMENTS,
-  MOCK_KPI_METRICS,
-  INITIAL_TASKS,
-  INITIAL_AUDIT_LOG,
-  MOCK_CALENDAR_SLOTS,
-} from '../mock/mockData';
+import { MOCK_DOCUMENTS } from '../mock/mockData';
 import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
@@ -43,6 +39,7 @@ interface AppContextType {
   tasks: TaskItem[];
   addTask: (task: Omit<TaskItem, 'id'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<TaskItem>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   toggleTaskStatus: (id: string) => Promise<void>;
   batchApproveTasks: (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => Promise<void>;
   auditLogs: AuditLogEntry[];
@@ -64,8 +61,12 @@ interface AppContextType {
   syncWithBackend: () => Promise<void>;
   queryRAG: (queryText: string) => Promise<RAGMessage>;
   analyzeMeetingTranscript: (text: string, title: string) => Promise<ProtocolAnalysisResult | null>;
+  processAudioMeeting: (file: File, title?: string) => Promise<ProtocolAnalysisResult | null>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
+  transcripts: TranscriptItem[];
+  users: UserProfile[];
+  overviewBrief: OverviewBrief | null;
   scheduleMeeting: (params: {
     title: string;
     date: string;
@@ -74,6 +75,10 @@ interface AppContextType {
     participants: string[];
     agenda: string[];
   }) => Promise<void>;
+  cancelMeeting: (meetingId: string) => Promise<void>;
+  fetchSlotsForDate: (date: string) => Promise<CalendarSlot[]>;
+  meetingDraft: MeetingDraft;
+  setMeetingDraft: React.Dispatch<React.SetStateAction<MeetingDraft>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -104,20 +109,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [currentRole, setCurrentRole] = useState<UserRole>('ROLE_DIRECTOR');
-  const [activeTab, setActiveTab] = useState<string>('meetings');
-  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOG);
+  const [activeTab, setActiveTab] = useState<string>('meeting_prep');
+  const [meetingDraft, setMeetingDraft] = useState<MeetingDraft>({
+    topic: '',
+    participants: [],
+    documents: [],
+    agenda: [],
+    openQuestions: [],
+    openTasks: [],
+  });
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>(MOCK_KPI_METRICS);
-  const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
-  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>(MOCK_CALENDAR_SLOTS);
+  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>([]);
   const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
+  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserProfile>({
+    id: 'u-1',
+    name: 'Смирнов Алексей Викторович',
+    role: 'ROLE_DIRECTOR',
+    roleTitle: 'Генеральный директор',
+    department: 'Дирекция',
+    avatarInitials: 'АС',
+    clearance: 'Допуск 1 · Полный',
+    description: 'Полный доступ ко всей отчетности ООО «Фотопринт»'
+  });
+  const [overviewBrief, setOverviewBrief] = useState<OverviewBrief | null>(null);
 
   // Backend connection state
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-
-  const currentUser = MOCK_USERS[currentRole];
 
   const showToast = useCallback((title: string, message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString() + Math.random().toString();
@@ -161,32 +185,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setBackendOnline(true);
 
         // Fetch live entities concurrently
-        const [liveTasks, liveMetrics, liveAudit, liveDocs, liveSlots, liveMeetings] = await Promise.allSettled([
+        const [
+          liveTasks,
+          liveMetrics,
+          liveAudit,
+          liveDocs,
+          liveSlots,
+          liveMeetings,
+          liveTranscripts,
+          liveUsers,
+          liveBrief,
+          liveMe
+        ] = await Promise.allSettled([
           apiClient.getTasks(),
           apiClient.getMetrics(),
           apiClient.getAuditLogs(),
           apiClient.getDocuments(),
           apiClient.getCalendarSlots(),
           apiClient.getMeetings(),
+          apiClient.getTranscripts(),
+          apiClient.getUsers(),
+          apiClient.getOverviewBrief(),
+          apiClient.getMe(),
         ]);
 
-        if (liveTasks.status === 'fulfilled' && liveTasks.value.length > 0) {
+        if (liveTasks.status === 'fulfilled') {
           setTasks(liveTasks.value);
         }
-        if (liveMetrics.status === 'fulfilled' && liveMetrics.value.length > 0) {
+        if (liveMetrics.status === 'fulfilled') {
           setKpiMetrics(liveMetrics.value);
         }
-        if (liveAudit.status === 'fulfilled' && liveAudit.value.length > 0) {
+        if (liveAudit.status === 'fulfilled') {
           setAuditLogs(liveAudit.value);
         }
-        if (liveDocs.status === 'fulfilled' && liveDocs.value.length > 0) {
+        if (liveDocs.status === 'fulfilled') {
           setDocuments(liveDocs.value);
         }
-        if (liveSlots.status === 'fulfilled' && liveSlots.value.length > 0) {
+        if (liveSlots.status === 'fulfilled') {
           setCalendarSlots(liveSlots.value);
         }
         if (liveMeetings.status === 'fulfilled') {
           setScheduledMeetings(liveMeetings.value);
+        }
+        if (liveTranscripts.status === 'fulfilled') {
+          setTranscripts(liveTranscripts.value);
+        }
+        if (liveUsers.status === 'fulfilled' && liveUsers.value.length > 0) {
+          setUsers(liveUsers.value);
+        }
+        if (liveBrief.status === 'fulfilled') {
+          setOverviewBrief(liveBrief.value);
+        }
+        if (liveMe.status === 'fulfilled') {
+          setCurrentUser(liveMe.value);
         }
       } else {
         setBackendOnline(false);
@@ -210,16 +261,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginAs = async (role: UserRole) => {
     setCurrentRole(role);
     setIsAuthenticated(true);
-    const targetUser = MOCK_USERS[role];
+    let targetUser = users.find((u) => u.role === role) || currentUser;
 
     if (backendOnline) {
       try {
-        await apiClient.switchRole(role);
+        const liveUser = await apiClient.switchRole(role);
+        if (liveUser) {
+          targetUser = liveUser;
+          setCurrentUser(liveUser);
+        }
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        const freshDocs = await apiClient.getDocuments();
+        if (freshDocs) setDocuments(freshDocs);
       } catch {
         // fallback
       }
+    } else {
+      setCurrentUser(targetUser);
     }
 
     logAudit(
@@ -238,16 +297,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setRole = async (newRole: UserRole) => {
     setCurrentRole(newRole);
-    const targetUser = MOCK_USERS[newRole];
+    let targetUser = users.find((u) => u.role === newRole) || currentUser;
 
     if (backendOnline) {
       try {
-        await apiClient.switchRole(newRole);
+        const liveUser = await apiClient.switchRole(newRole);
+        if (liveUser) {
+          targetUser = liveUser;
+          setCurrentUser(liveUser);
+        }
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        const freshDocs = await apiClient.getDocuments();
+        if (freshDocs) setDocuments(freshDocs);
       } catch {
         // fallback
       }
+    } else {
+      setCurrentUser(targetUser);
     }
 
     logAudit(
@@ -283,6 +350,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     logAudit('CREATE_TASK', `Task: ${newTask.title}`, 'SUCCESS', `Создана задача: ${newTask.title}`);
+  };
+
+  const deleteTask = async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+
+    if (backendOnline) {
+      try {
+        await apiClient.deleteTask(id);
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
+    logAudit('DELETE_TASK', `Task: ${id}`, 'SUCCESS', `Задача удалена из реестра`);
   };
 
   const updateTask = async (id: string, updates: Partial<TaskItem>) => {
@@ -400,6 +483,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setScheduledMeetings((prev) =>
           prev.map((m) => (m.id === newMeeting.id ? liveMeeting : m))
         );
+        const freshSlots = await apiClient.getCalendarSlots(params.date);
+        if (freshSlots && freshSlots.length > 0) setCalendarSlots(freshSlots);
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
       } catch {
@@ -416,6 +501,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('Встреча запланирована', `Событие создано на ${params.date} в ${params.time}`, 'success');
   };
 
+  const cancelMeeting = async (meetingId: string) => {
+    const meeting = scheduledMeetings.find((m) => m.id === meetingId);
+    setScheduledMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+
+    if (backendOnline) {
+      try {
+        await apiClient.deleteMeeting(meetingId);
+        if (meeting?.date) {
+          const freshSlots = await apiClient.getCalendarSlots(meeting.date);
+          if (freshSlots && freshSlots.length > 0) setCalendarSlots(freshSlots);
+        }
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+      } catch {
+        // keep local
+      }
+    }
+
+    logAudit(
+      'CANCEL_MEETING',
+      `Meeting: ${meeting?.title || meetingId}`,
+      'SUCCESS',
+      `Встреча отменена, слот в календаре освобожден`
+    );
+    showToast('Встреча отменена', `Событие удалено из календаря`, 'info');
+  };
+
+  const fetchSlotsForDate = async (date: string): Promise<CalendarSlot[]> => {
+    if (backendOnline) {
+      try {
+        const slots = await apiClient.getCalendarSlots(date);
+        if (slots && slots.length > 0) {
+          setCalendarSlots(slots);
+          return slots;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return calendarSlots;
+  };
+
   const analyzeMeetingTranscript = async (
     transcriptText: string,
     meetingTitle: string
@@ -424,6 +551,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
         return await apiClient.analyzeTranscript({ transcriptText, meetingTitle });
       } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const processAudioMeeting = async (
+    file: File,
+    title = 'Оперативное совещание'
+  ): Promise<ProtocolAnalysisResult | null> => {
+    if (backendOnline) {
+      try {
+        const res = await apiClient.processAudioMeeting(file, title);
+        const freshTranscripts = await apiClient.getTranscripts();
+        if (freshTranscripts && freshTranscripts.length > 0) {
+          setTranscripts(freshTranscripts);
+        }
+        const freshLogs = await apiClient.getAuditLogs();
+        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        return res;
+      } catch (err) {
+        console.error('Process audio meeting failed:', err);
         return null;
       }
     }
@@ -525,27 +674,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetDemoData = async () => {
-    if (backendOnline) {
-      try {
-        await apiClient.resetDemo();
-        await syncWithBackend();
-        showToast('Демо сброшено', 'База данных и аудит на бэкенде сброшены к эталону', 'info');
-        return;
-      } catch {
-        // fallback to local
-      }
+    try {
+      await apiClient.resetDemo();
+      await syncWithBackend();
+      showToast('Демо сброшено', 'Данные сброшены к эталонному состоянию', 'info');
+    } catch (err) {
+      console.error('Reset demo failed:', err);
+      showToast('Ошибка сброса', 'Не удалось связаться с сервером', 'error');
     }
-
-    setTasks(INITIAL_TASKS);
-    setAuditLogs(INITIAL_AUDIT_LOG);
-    setCurrentRole('ROLE_DIRECTOR');
-    logAudit(
-      'RESET_DEMO',
-      'System',
-      'SUCCESS',
-      'Сброс состояния к исходному демо-сценарию'
-    );
-    showToast('Данные сброшены', 'Все задачи и логи возвращены к исходному состоянию', 'info');
   };
 
   return (
@@ -564,6 +700,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         tasks,
         addTask,
         updateTask,
+        deleteTask,
         toggleTaskStatus,
         batchApproveTasks,
         auditLogs,
@@ -580,9 +717,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         syncWithBackend,
         queryRAG,
         analyzeMeetingTranscript,
+        processAudioMeeting,
         calendarSlots,
         scheduledMeetings,
         scheduleMeeting,
+        cancelMeeting,
+        fetchSlotsForDate,
+        transcripts,
+        users,
+        overviewBrief,
+        meetingDraft,
+        setMeetingDraft,
       }}
     >
       {children}

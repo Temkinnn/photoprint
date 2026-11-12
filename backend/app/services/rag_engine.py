@@ -106,14 +106,49 @@ async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
 
     answer_text = f"На основании внутреннего регламента «{best_doc.title}» (редакция от {best_doc.date}):\n\n{best_doc.summary}\n\nКлючевая выдержка: {best_doc.content}"
 
-    # Интеллектуальный синтез ответа через локальную нейросеть Qwen 2.5
-    try:
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.post(
-                f"{settings.OLLAMA_BASE_URL}/api/generate",
-                json={
-                    "model": settings.OLLAMA_MODEL,
-                    "prompt": f"""Ты — корпоративный ассистент руководителя ООО «Фотопринт».
+    ai_generated = False
+    # Запрос к удаленной модели Qwen 2.5 на AI-сервере для формулирования ответа по регламентам (AI-01, AI-05)
+    if getattr(settings, "AI_SERVER_URL", None):
+        try:
+            headers = {"Bypass-Tunnel-Reminder": getattr(settings, "AI_SERVER_BYPASS_HEADER", "true")}
+            context_docs = "\n\n".join([
+                f"Регламент: «{doc.title}» (от {doc.date}, категория: {doc.category}):\n{doc.content}"
+                for doc, _ in matching_docs[:2]
+            ])
+            rag_prompt = f"""Ответь на вопрос пользователя строго по предоставленным регламентам предприятия ООО «Фотопринт». Не выдумывай факты, которых нет в тексте регламентов.
+
+Вопрос: {query}
+
+{context_docs}
+
+Дай четкий структурированный ответ со ссылкой на регламент и точные нормативы:"""
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    f"{settings.AI_SERVER_URL}/api/v1/ai/generate",
+                    headers=headers,
+                    json={
+                        "prompt": rag_prompt,
+                        "system": "Ты — корпоративный AI-ассистент по регламентам ООО «Фотопринт». Отвечай точно, емко и строго по тексту регламентов.",
+                        "temperature": 0.1
+                    }
+                )
+                if resp.status_code == 200:
+                    ai_answer = resp.json().get("response", "").strip()
+                    if ai_answer:
+                        answer_text = ai_answer
+                        ai_generated = True
+        except Exception:
+            pass
+
+    # Интеллектуальный синтез ответа через локальную нейросеть Qwen 2.5 (Ollama)
+    if not ai_generated:
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.post(
+                    f"{settings.OLLAMA_BASE_URL}/api/generate",
+                    json={
+                        "model": settings.OLLAMA_MODEL,
+                        "prompt": f"""Ты — корпоративный ассистент руководителя ООО «Фотопринт».
 Ответь кратко, емко и строго по существу вопроса руководителя на основе внутреннего регламента:
 Документ: «{best_doc.title}» (редакция от {best_doc.date})
 Содержание статьи:
@@ -125,15 +160,15 @@ async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
 - Отвечай профессионально и конкретно, опираясь строго на факты из текста.
 - Обязательно назови документ «{best_doc.title}» и дату редакции.
 - Не выдумывай факты (AI-05).""",
-                    "stream": False
-                }
-            )
-            if resp.status_code == 200:
-                generated = resp.json().get("response", "").strip()
-                if generated:
-                    answer_text = generated
-    except Exception:
-        pass
+                        "stream": False
+                    }
+                )
+                if resp.status_code == 200:
+                    generated = resp.json().get("response", "").strip()
+                    if generated:
+                        answer_text = generated
+        except Exception:
+            pass
 
     storage.add_audit_log(
         action="RAG_SEARCH_SUCCESS",
