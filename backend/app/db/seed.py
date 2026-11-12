@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, init_tables
 from app.db.models import (
     DBAppState, DBUser, DBDocument, DBMeeting, DBTask,
-    DBCalendarSlot, DBAuditLog, DBKPIMetric, DBMeetingInvitation
+    DBCalendarSlot, DBAuditLog, DBKPIMetric, DBMeetingInvitation, DBProtocol
 )
 from app.db.storage import (
     INITIAL_USERS, INITIAL_DOCUMENTS, INITIAL_METRICS,
@@ -21,6 +21,7 @@ def seed_database(db: Session = None, force: bool = False):
             db.query(DBAuditLog).delete()
             db.query(DBMeetingInvitation).delete()
             db.query(DBTask).delete()
+            db.query(DBProtocol).delete()
             db.query(DBMeeting).delete()
             db.query(DBCalendarSlot).delete()
             db.query(DBKPIMetric).delete()

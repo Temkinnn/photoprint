@@ -161,6 +161,7 @@ class ProtocolAnalysisRequest(BaseModel):
     transcriptText: str
     meetingTitle: str
     participants: List[str] = []
+    meetingId: Optional[str] = None
 
 class ProtocolAnalysisResponse(BaseModel):
     meetingTitle: str
@@ -168,6 +169,35 @@ class ProtocolAnalysisResponse(BaseModel):
     decisions: List[DecisionItem]
     risks: List[RiskItem]
     tasks: List[TaskItem]
+    transcriptText: Optional[str] = None
+    openQuestions: List[str] = []
+    processingTimeSec: Optional[float] = None
+    modelUsed: Optional[str] = None
+
+class SaveProtocolRequest(BaseModel):
+    meetingId: Optional[str] = None
+    meetingTitle: str
+    transcriptRef: str
+    transcriptText: str
+    summary: str
+    decisions: List[DecisionItem] = []
+    risks: List[RiskItem] = []
+    openQuestions: List[str] = []
+    processingTimeSec: Optional[float] = None
+
+class ProtocolItem(BaseModel):
+    id: str
+    meetingId: Optional[str] = None
+    meetingTitle: str
+    transcriptRef: str
+    transcriptText: str
+    summary: str
+    decisions: List[DecisionItem] = []
+    risks: List[RiskItem] = []
+    openQuestions: List[str] = []
+    processingTimeSec: Optional[float] = None
+    createdAt: str
+    createdBy: str
 
 class ConfirmTasksRequest(BaseModel):
     tasks: List[TaskItem]

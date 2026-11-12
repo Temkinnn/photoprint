@@ -14,7 +14,11 @@ import {
   PrepareAgendaResponse,
   MeetingInvitationItem,
   AIStatusInfo,
+  ProtocolAnalysisResult,
+  ProtocolItem,
 } from '../types';
+
+export type { ProtocolAnalysisResult };
 
 export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -30,14 +34,6 @@ interface BackendAuditEntry {
   targetEntity?: string;
   status: string;
   details: string;
-}
-
-export interface ProtocolAnalysisResult {
-  meetingTitle: string;
-  summary: string;
-  decisions: DecisionItem[];
-  risks: RiskItem[];
-  tasks: TaskItem[];
 }
 
 export interface BackendHealth {
@@ -189,6 +185,7 @@ export const apiClient = {
     meetingTitle: string;
     transcriptText: string;
     participants?: string[];
+    meetingId?: string;
   }): Promise<ProtocolAnalysisResult> {
     const res = await fetchWithTimeout(
       `${API_BASE_URL}/api/v1/meetings/analyze-transcript`,
@@ -197,19 +194,81 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       },
-      60000
+      120000
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 
-  async confirmTasks(tasks: TaskItem[], meetingTitle?: string): Promise<TaskItem[]> {
+  async processAudio(file: File, meetingTitle: string, meetingId?: string): Promise<ProtocolAnalysisResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('meetingTitle', meetingTitle);
+    if (meetingId) formData.append('meetingId', meetingId);
+
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/meetings/process-audio`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      180000
+    );
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async uploadTranscriptFile(file: File, meetingTitle: string, meetingId?: string): Promise<ProtocolAnalysisResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('meetingTitle', meetingTitle);
+    if (meetingId) formData.append('meetingId', meetingId);
+
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/meetings/upload-transcript`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      120000
+    );
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async getProtocols(): Promise<ProtocolItem[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/protocols`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async saveProtocol(params: {
+    meetingId?: string;
+    meetingTitle: string;
+    transcriptRef: string;
+    transcriptText: string;
+    summary: string;
+    decisions: DecisionItem[];
+    risks: RiskItem[];
+    openQuestions?: string[];
+    processingTimeSec?: number | null;
+  }): Promise<ProtocolItem> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/save-protocol`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async confirmTasks(tasks: TaskItem[], meetingTitle?: string, protocolId?: string): Promise<TaskItem[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/confirm-tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tasks, meetingTitle }),
+      body: JSON.stringify({ tasks, meetingTitle, protocolId }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 

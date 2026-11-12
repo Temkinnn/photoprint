@@ -12,6 +12,9 @@ import {
   ParticipantOption,
   PrepareAgendaResponse,
   MeetingInvitationItem,
+  ProtocolItem,
+  DecisionItem,
+  RiskItem,
 } from '../types';
 import {
   MOCK_USERS,
@@ -47,7 +50,7 @@ interface AppContextType {
   addTask: (task: Omit<TaskItem, 'id'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<TaskItem>) => Promise<void>;
   toggleTaskStatus: (id: string) => Promise<void>;
-  batchApproveTasks: (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => Promise<void>;
+  batchApproveTasks: (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string, protocolId?: string) => Promise<void>;
   auditLogs: AuditLogEntry[];
   logAudit: (
     actionType: string,
@@ -68,7 +71,21 @@ interface AppContextType {
   queryRAG: (queryText: string) => Promise<RAGMessage>;
   ragMessages: RAGMessage[];
   setRagMessages: React.Dispatch<React.SetStateAction<RAGMessage[]>>;
-  analyzeMeetingTranscript: (text: string, title: string) => Promise<ProtocolAnalysisResult | null>;
+  analyzeMeetingTranscript: (text: string, title: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
+  processMeetingAudio: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
+  uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
+  protocols: ProtocolItem[];
+  saveMeetingProtocol: (params: {
+    meetingId?: string;
+    meetingTitle: string;
+    transcriptRef: string;
+    transcriptText: string;
+    summary: string;
+    decisions: DecisionItem[];
+    risks: RiskItem[];
+    openQuestions?: string[];
+    processingTimeSec?: number | null;
+  }) => Promise<ProtocolItem>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
   participantsCatalog: ParticipantOption[];
@@ -145,6 +162,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
   const [participantsCatalog, setParticipantsCatalog] = useState<ParticipantOption[]>(DEFAULT_PARTICIPANTS);
   const [invitations, setInvitations] = useState<MeetingInvitationItem[]>([]);
+  const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
 
   // Backend connection state
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
@@ -206,6 +224,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           liveMeetings,
           liveUsers,
           liveInvitations,
+          liveProtocols,
         ] = await Promise.allSettled([
           apiClient.getTasks(),
           apiClient.getMetrics(),
@@ -215,6 +234,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           apiClient.getMeetings(),
           apiClient.getUsers(),
           apiClient.getInvitations(),
+          apiClient.getProtocols(),
         ]);
 
         if (liveTasks.status === 'fulfilled' && liveTasks.value.length > 0) {
@@ -240,6 +260,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         if (liveInvitations.status === 'fulfilled') {
           setInvitations(liveInvitations.value);
+        }
+        if (liveProtocols.status === 'fulfilled') {
+          setProtocols(liveProtocols.value);
         }
       } else {
         setBackendOnline(false);
@@ -391,19 +414,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  const batchApproveTasks = async (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string) => {
+  const batchApproveTasks = async (newTasks: Omit<TaskItem, 'id'>[], meetingTitle: string, protocolId?: string) => {
     const localCreated: TaskItem[] = newTasks.map((t, idx) => ({
       ...t,
       id: `task-appr-${Date.now()}-${idx}`,
       status: 'active',
       meetingTitle,
+      protocolId,
     }));
 
     setTasks((prev) => [...localCreated, ...prev]);
 
     if (backendOnline) {
       try {
-        const liveConfirmed = await apiClient.confirmTasks(localCreated, meetingTitle);
+        const liveConfirmed = await apiClient.confirmTasks(localCreated, meetingTitle, protocolId);
         if (liveConfirmed && liveConfirmed.length > 0) {
           setTasks((prev) => {
             const idsToRemove = new Set(localCreated.map((lc) => lc.id));
@@ -413,8 +437,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
-      } catch {
-        // keep local
+      } catch (err: any) {
+        showToast('Предупреждение синхронизации', err?.message || 'Задачи сохранены только локально', 'warning');
       }
     }
 
@@ -517,18 +541,100 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const refreshAuditLogsSafe = async () => {
+    try {
+      const freshLogs = await apiClient.getAuditLogs();
+      if (freshLogs.length > 0) setAuditLogs(freshLogs);
+    } catch {
+      // ignore audit refresh error
+    }
+  };
+
   const analyzeMeetingTranscript = async (
     transcriptText: string,
-    meetingTitle: string
-  ): Promise<ProtocolAnalysisResult | null> => {
-    if (backendOnline) {
-      try {
-        return await apiClient.analyzeTranscript({ transcriptText, meetingTitle });
-      } catch {
-        return null;
-      }
+    meetingTitle: string,
+    meetingId?: string
+  ): Promise<ProtocolAnalysisResult> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Запустите сервер FastAPI для AI-анализа.');
     }
-    return null;
+    const result = await apiClient.analyzeTranscript({ transcriptText, meetingTitle, meetingId });
+    await refreshAuditLogsSafe();
+    return result;
+  };
+
+  const processMeetingAudio = async (
+    file: File,
+    meetingTitle: string,
+    meetingId?: string
+  ): Promise<ProtocolAnalysisResult> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Запустите сервер FastAPI для распознавания речи.');
+    }
+    const result = await apiClient.processAudio(file, meetingTitle, meetingId);
+    await refreshAuditLogsSafe();
+    return result;
+  };
+
+  const uploadMeetingTranscript = async (
+    file: File,
+    meetingTitle: string,
+    meetingId?: string
+  ): Promise<ProtocolAnalysisResult> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Запустите сервер FastAPI для загрузки стенограммы.');
+    }
+    const result = await apiClient.uploadTranscriptFile(file, meetingTitle, meetingId);
+    await refreshAuditLogsSafe();
+    return result;
+  };
+
+  const saveMeetingProtocol = async (params: {
+    meetingId?: string;
+    meetingTitle: string;
+    transcriptRef: string;
+    transcriptText: string;
+    summary: string;
+    decisions: DecisionItem[];
+    risks: RiskItem[];
+    openQuestions?: string[];
+    processingTimeSec?: number | null;
+  }): Promise<ProtocolItem> => {
+    if (backendOnline) {
+      const saved = await apiClient.saveProtocol(params);
+      setProtocols((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
+      await syncWithBackend();
+      showToast(
+        'Протокол сохранён в БД',
+        `Протокол ${saved.id} записан в PostgreSQL со ссылкой на стенограмму`,
+        'success'
+      );
+      return saved;
+    }
+
+    const localProto: ProtocolItem = {
+      id: `prot-local-${Date.now()}`,
+      meetingId: params.meetingId,
+      meetingTitle: params.meetingTitle,
+      transcriptRef: params.transcriptRef,
+      transcriptText: params.transcriptText,
+      summary: params.summary,
+      decisions: params.decisions,
+      risks: params.risks,
+      openQuestions: params.openQuestions || [],
+      processingTimeSec: params.processingTimeSec ?? null,
+      createdAt: new Date().toLocaleString('ru-RU'),
+      createdBy: currentUser.name,
+    };
+    setProtocols((prev) => [localProto, ...prev]);
+    logAudit(
+      'SAVE_PROTOCOL',
+      `Протокол: ${params.meetingTitle}`,
+      'SUCCESS',
+      `Локальное сохранение протокола (${params.transcriptRef})`
+    );
+    showToast('Протокол зафиксирован', 'Протокол сохранён локально', 'success');
+    return localProto;
   };
 
   const queryRAG = async (queryText: string): Promise<RAGMessage> => {
@@ -649,6 +755,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCalendarSlots(MOCK_CALENDAR_SLOTS);
     setScheduledMeetings([]);
     setInvitations([]);
+    setProtocols([]);
     setCurrentRole('ROLE_DIRECTOR');
     setRagMessages([buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name)]);
     logAudit(
@@ -694,6 +801,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ragMessages,
         setRagMessages,
         analyzeMeetingTranscript,
+        processMeetingAudio,
+        uploadMeetingTranscript,
+        protocols,
+        saveMeetingProtocol,
         calendarSlots,
         scheduledMeetings,
         participantsCatalog,

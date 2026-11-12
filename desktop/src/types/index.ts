@@ -164,3 +164,30 @@ export interface AIStatusInfo {
   databaseBackend: string;
   error?: string | null;
 }
+
+export interface ProtocolAnalysisResult {
+  meetingTitle: string;
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+  tasks: TaskItem[];
+  transcriptText?: string | null;
+  openQuestions?: string[];
+  processingTimeSec?: number | null;
+  modelUsed?: string | null;
+}
+
+export interface ProtocolItem {
+  id: string;
+  meetingId?: string | null;
+  meetingTitle: string;
+  transcriptRef: string;
+  transcriptText: string;
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+  openQuestions?: string[];
+  processingTimeSec?: number | null;
+  createdAt: string;
+  createdBy: string;
+}

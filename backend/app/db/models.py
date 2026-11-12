@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, Boolean, DateTime, JSON
+from sqlalchemy import Column, String, Integer, Float, Text, Boolean, DateTime, JSON
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
@@ -111,3 +111,20 @@ class DBKPIMetric(Base):
     source_system = Column(String(128), nullable=False)
     updated_at = Column(String(64), nullable=False)
     trend = Column(String(32), default="stable")  # up, down, stable
+
+
+class DBProtocol(Base):
+    __tablename__ = "protocols"
+
+    id = Column(String(64), primary_key=True)
+    meeting_id = Column(String(64), nullable=True)
+    meeting_title = Column(String(255), nullable=False)
+    transcript_ref = Column(String(255), nullable=False)
+    transcript_text = Column(Text, default="")
+    summary = Column(Text, nullable=False)
+    decisions = Column(JSON, default=list)
+    risks = Column(JSON, default=list)
+    open_questions = Column(JSON, default=list)
+    processing_time_sec = Column(Float, nullable=True)
+    created_at = Column(String(64), nullable=False)
+    created_by = Column(String(255), nullable=False)

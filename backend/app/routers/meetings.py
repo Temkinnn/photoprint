@@ -1,26 +1,34 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
-from app.db.models import DBCalendarSlot, DBMeeting, DBMeetingInvitation, DBTask, DBUser
+from app.db.models import DBCalendarSlot, DBMeeting, DBMeetingInvitation, DBProtocol, DBTask, DBUser
 from app.db.session import get_db
 from app.db.storage import EXTRA_STAFF
 from app.schemas import (
     CalendarSlot,
     ConfirmTasksRequest,
     CreateMeetingRequest,
+    DecisionItem,
     MeetingInvitationItem,
     MeetingItem,
     PrepareAgendaRequest,
     PrepareAgendaResponse,
     ProtocolAnalysisRequest,
     ProtocolAnalysisResponse,
+    ProtocolItem,
     RespondInvitationRequest,
+    RiskItem,
+    SaveProtocolRequest,
     TaskItem,
 )
 from app.services.audit import add_audit_log, get_active_user, surname_key
-from app.services.meeting_analyzer import analyze_meeting_transcript
+from app.services.meeting_analyzer import (
+    analyze_meeting_transcript,
+    extract_transcript_text,
+    process_meeting_audio,
+)
 from app.services.meeting_prep import generate_meeting_prep
 
 router = APIRouter(prefix="/meetings", tags=["Встречи и Протоколы"])
@@ -56,6 +64,23 @@ def _to_invitation_item(inv: DBMeetingInvitation) -> MeetingInvitationItem:
         messageText=inv.message_text,
         status=inv.status,
         createdAt=inv.created_at,
+    )
+
+
+def _to_protocol_item(p: DBProtocol) -> ProtocolItem:
+    return ProtocolItem(
+        id=p.id,
+        meetingId=p.meeting_id,
+        meetingTitle=p.meeting_title,
+        transcriptRef=p.transcript_ref,
+        transcriptText=p.transcript_text or "",
+        summary=p.summary,
+        decisions=[DecisionItem(**d) for d in (p.decisions or [])],
+        risks=[RiskItem(**r) for r in (p.risks or [])],
+        openQuestions=p.open_questions or [],
+        processingTimeSec=p.processing_time_sec,
+        createdAt=p.created_at,
+        createdBy=p.created_by,
     )
 
 
@@ -234,16 +259,188 @@ async def respond_invitation(
     return _to_invitation_item(inv)
 
 
+@router.get("/protocols", response_model=List[ProtocolItem])
+async def get_protocols(db: Session = Depends(get_db)):
+    rows = db.query(DBProtocol).all()
+    return [_to_protocol_item(p) for p in reversed(rows)]
+
+
+@router.get("/protocols/{protocol_id}", response_model=ProtocolItem)
+async def get_protocol_by_id(protocol_id: str, db: Session = Depends(get_db)):
+    row = db.query(DBProtocol).filter(DBProtocol.id == protocol_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Протокол не найден.")
+    return _to_protocol_item(row)
+
+
+@router.post("/save-protocol", response_model=ProtocolItem)
+async def save_protocol(req: SaveProtocolRequest, db: Session = Depends(get_db)):
+    """Сохраняет протокол в PostgreSQL и привязывает его ко встрече (если указана)."""
+    current_user = get_active_user(db)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    existing = None
+    if req.meetingId:
+        existing = db.query(DBProtocol).filter(DBProtocol.meeting_id == req.meetingId).first()
+
+    if existing:
+        existing.meeting_title = req.meetingTitle
+        existing.transcript_ref = req.transcriptRef
+        existing.transcript_text = req.transcriptText
+        existing.summary = req.summary
+        existing.decisions = [d.model_dump() for d in req.decisions]
+        existing.risks = [r.model_dump() for r in req.risks]
+        existing.open_questions = req.openQuestions
+        existing.processing_time_sec = req.processingTimeSec
+        existing.created_at = now_str
+        existing.created_by = current_user.name
+        db_proto = existing
+    else:
+        db_proto = DBProtocol(
+            id=f"prot-{uuid.uuid4().hex[:6]}",
+            meeting_id=req.meetingId,
+            meeting_title=req.meetingTitle,
+            transcript_ref=req.transcriptRef,
+            transcript_text=req.transcriptText,
+            summary=req.summary,
+            decisions=[d.model_dump() for d in req.decisions],
+            risks=[r.model_dump() for r in req.risks],
+            open_questions=req.openQuestions,
+            processing_time_sec=req.processingTimeSec,
+            created_at=now_str,
+            created_by=current_user.name,
+        )
+        db.add(db_proto)
+
+    db.flush()
+
+    if req.meetingId:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == req.meetingId).first()
+        if db_meeting:
+            db_meeting.protocol_id = db_proto.id
+            db_meeting.status = "completed"
+            if req.openQuestions:
+                db_meeting.open_questions = req.openQuestions
+
+    db.commit()
+    db.refresh(db_proto)
+
+    add_audit_log(
+        db,
+        action="SAVE_PROTOCOL",
+        target=f"{db_proto.id} ({db_proto.meeting_title})",
+        status="success",
+        details=(
+            f"Протокол сохранён в PostgreSQL ({db_proto.transcript_ref}): "
+            f"решений — {len(req.decisions)}, рисков — {len(req.risks)}"
+        ),
+        user=current_user,
+    )
+    return _to_protocol_item(db_proto)
+
+
+@router.post("/process-audio", response_model=ProtocolAnalysisResponse)
+async def process_audio_endpoint(
+    file: UploadFile = File(...),
+    meetingTitle: str = Form("Оперативное совещание"),
+    meetingId: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    file_bytes = await file.read()
+    title = (meetingTitle or "").strip() or (file.filename or "Оперативное совещание")
+    try:
+        result = await process_meeting_audio(
+            file_bytes=file_bytes,
+            filename=file.filename or "meeting.ogg",
+            meeting_title=title,
+            content_type=file.content_type or "application/octet-stream",
+        )
+    except HTTPException as exc:
+        add_audit_log(
+            db,
+            action="PROCESS_MEETING_AUDIO",
+            target=f"{title} ({file.filename})",
+            status="warning",
+            details=f"Ошибка обработки аудиозаписи через Whisper/AI: {exc.detail}",
+        )
+        raise
+
+    add_audit_log(
+        db,
+        action="PROCESS_MEETING_AUDIO",
+        target=f"{title} ({file.filename})",
+        status="success",
+        details=(
+            f"Аудиозапись расшифрована (Whisper + Qwen 2.5): решений — {len(result.decisions)}, "
+            f"поручений — {len(result.tasks)}, рисков — {len(result.risks)}"
+            + (f" [встреча {meetingId}]" if meetingId else "")
+        ),
+    )
+    return result
+
+
+@router.post("/upload-transcript", response_model=ProtocolAnalysisResponse)
+async def upload_transcript_endpoint(
+    file: UploadFile = File(...),
+    meetingTitle: str = Form("Оперативное совещание"),
+    meetingId: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    file_bytes = await file.read()
+    transcript_text = extract_transcript_text(file_bytes, file.filename or "transcript.txt")
+    title = (meetingTitle or "").strip() or (file.filename or "Оперативное совещание")
+    try:
+        result = await analyze_meeting_transcript(transcript_text, title)
+    except HTTPException as exc:
+        add_audit_log(
+            db,
+            action="UPLOAD_AND_ANALYZE_TRANSCRIPT",
+            target=f"{title} ({file.filename})",
+            status="warning",
+            details=f"Ошибка анализа загруженной стенограммы: {exc.detail}",
+        )
+        raise
+
+    add_audit_log(
+        db,
+        action="UPLOAD_AND_ANALYZE_TRANSCRIPT",
+        target=f"{title} ({file.filename})",
+        status="success",
+        details=(
+            f"Загружен файл стенограммы ({file.filename}): решений — {len(result.decisions)}, "
+            f"поручений — {len(result.tasks)}"
+            + (f" [встреча {meetingId}]" if meetingId else "")
+        ),
+    )
+    return result
+
+
 @router.post("/analyze-transcript", response_model=ProtocolAnalysisResponse)
 async def analyze_transcript(req: ProtocolAnalysisRequest, db: Session = Depends(get_db)):
+    try:
+        result = await analyze_meeting_transcript(req.transcriptText, req.meetingTitle)
+    except HTTPException as exc:
+        add_audit_log(
+            db,
+            action="ANALYZE_TRANSCRIPT",
+            target=req.meetingTitle,
+            status="warning",
+            details=f"Ошибка AI-анализа стенограммы: {exc.detail}",
+        )
+        raise
+
     add_audit_log(
         db,
         action="ANALYZE_TRANSCRIPT",
         target=req.meetingTitle,
         status="success",
-        details="Запущен автоматический анализ стенограммы встречи AI-моделью",
+        details=(
+            f"Стенограмма проанализирована AI-моделью ({result.modelUsed or 'Qwen 2.5'}): "
+            f"решений — {len(result.decisions)}, поручений — {len(result.tasks)}"
+            + (f" [встреча {req.meetingId}]" if req.meetingId else "")
+        ),
     )
-    return await analyze_meeting_transcript(req.transcriptText, req.meetingTitle)
+    return result
 
 
 @router.post("/confirm-tasks", response_model=List[TaskItem])
@@ -252,8 +449,8 @@ async def confirm_tasks(req: ConfirmTasksRequest, db: Session = Depends(get_db))
     added_tasks: List[TaskItem] = []
     for t in req.tasks:
         new_id = f"task-{uuid.uuid4().hex[:6]}"
-        assignee = t.assigneeName if t.assigneeName != "Требует уточнения" else "Не назначен"
-        deadline = t.deadline if t.deadline != "Требует уточнения" else "Не установлен"
+        assignee = (t.assigneeName or "").strip() or "Требует уточнения"
+        deadline = (t.deadline or "").strip() or "Требует уточнения"
         meeting_title = req.meetingTitle or t.meetingTitle
 
         db_task = DBTask(

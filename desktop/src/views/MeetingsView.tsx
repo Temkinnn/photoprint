@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { MOCK_TRANSCRIPTS } from '../mock/mockData';
-import { OpenTaskSummary, TaskItem } from '../types';
+import {
+  DecisionCategory,
+  DecisionItem,
+  OpenTaskSummary,
+  ProtocolAnalysisResult,
+  RiskItem,
+  TaskItem,
+} from '../types';
 import {
   CheckCircle2,
   Plus,
@@ -22,7 +29,12 @@ import {
   Users,
   Mail,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  Mic,
+  Upload,
+  Edit3,
+  HelpCircle,
+  MessageSquare,
 } from 'lucide-react';
 
 const surnameKey = (name: string): string => {
@@ -31,12 +43,62 @@ const surnameKey = (name: string): string => {
   return first.toLowerCase();
 };
 
+const normalizeTs = (ts?: string | null): string => {
+  return (ts || '').replace(/[\[\]]/g, '').trim();
+};
+
+const DECISION_CATEGORY_META: Record<
+  DecisionCategory,
+  { label: string; badgeClass: string; iconColor: string }
+> = {
+  resolved: {
+    label: 'Решено',
+    badgeClass: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+  },
+  proposed: {
+    label: 'Предложено',
+    badgeClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
+    iconColor: 'text-sky-600 dark:text-sky-400',
+  },
+  discussed: {
+    label: 'Обсуждалось',
+    badgeClass: 'bg-neutral-500/15 text-neutral-700 dark:text-neutral-300 border-neutral-500/25',
+    iconColor: 'text-neutral-500 dark:text-neutral-400',
+  },
+  needs_clarification: {
+    label: 'Требует уточнения',
+    badgeClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+  },
+};
+
+interface ActiveProtocolWorkspace {
+  id: string;
+  meetingId?: string;
+  savedProtocolId?: string;
+  title: string;
+  date: string;
+  transcriptRef: string;
+  transcriptText: string;
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+  openQuestions: string[];
+  processingTimeSec?: number | null;
+  modelUsed?: string | null;
+}
+
 export const MeetingsView: React.FC = () => {
   const {
     batchApproveTasks,
     logAudit,
     showToast,
     analyzeMeetingTranscript,
+    processMeetingAudio,
+    uploadMeetingTranscript,
+    saveMeetingProtocol,
+    protocols,
     backendOnline,
     calendarSlots,
     scheduledMeetings,
@@ -52,13 +114,44 @@ export const MeetingsView: React.FC = () => {
   } = useApp();
 
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>(MOCK_TRANSCRIPTS[0].id);
-  const scheduledList = scheduledMeetings.filter((m) => m.status === 'scheduled');
-  const selectedScheduledMeeting = scheduledList.find((m) => m.id === selectedTranscriptId) || null;
-  const currentTranscript = MOCK_TRANSCRIPTS.find((t) => t.id === selectedTranscriptId) || MOCK_TRANSCRIPTS[0];
+  const scheduledList = scheduledMeetings.filter(
+    (m) => m.status === 'scheduled' || m.status === 'completed'
+  );
+  const selectedMeetingItem = scheduledList.find((m) => m.id === selectedTranscriptId) || null;
+  const standaloneProtocols = protocols.filter(
+    (p) => !p.meetingId || !scheduledList.some((m) => m.id === p.meetingId)
+  );
+
+  const [showScheduledProtocolWorkspace, setShowScheduledProtocolWorkspace] =
+    useState<boolean>(false);
+  const [workspaceData, setWorkspaceData] = useState<ActiveProtocolWorkspace>(() => {
+    const first = MOCK_TRANSCRIPTS[0];
+    return {
+      id: first.id,
+      title: first.title,
+      date: first.date,
+      transcriptRef: `#transcript-${first.id}`,
+      transcriptText: first.content,
+      summary: first.summary,
+      decisions: first.decisions,
+      risks: first.risks || [],
+      openQuestions: [],
+    };
+  });
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analyzingLabel, setAnalyzingLabel] = useState<string>('Анализ...');
+  const [isSavingProtocol, setIsSavingProtocol] = useState<boolean>(false);
+  const [isEditingTranscript, setIsEditingTranscript] = useState<boolean>(false);
+  const [decisionFilter, setDecisionFilter] = useState<DecisionCategory | 'all'>('all');
+  const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
+
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const transcriptInputRef = useRef<HTMLInputElement | null>(null);
+  const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
+
   const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>(
-    currentTranscript.stagedTasks.map((t) => ({
+    MOCK_TRANSCRIPTS[0].stagedTasks.map((t) => ({
       title: t.title,
       assigneeName: t.assigneeName,
       deadline: t.deadline,
@@ -241,6 +334,7 @@ export const MeetingsView: React.FC = () => {
       });
 
       setSelectedTranscriptId(created.id);
+      setShowScheduledProtocolWorkspace(false);
       setIsPrepModalOpen(false);
       setPrepStep('setup');
     } catch (err: any) {
@@ -250,52 +344,332 @@ export const MeetingsView: React.FC = () => {
     }
   };
 
-  const handleSaveProtocol = () => {
-    const protocolRef = `#transcript-${currentTranscript.id}`;
-    logAudit(
-      'SAVE_PROTOCOL',
-      `Протокол: ${currentTranscript.title}`,
-      'SUCCESS',
-      `Протокол совещания успешно сохранен со ссылкой на исходную расшифровку (${protocolRef})`
+  const applyAnalysisResult = (
+    res: ProtocolAnalysisResult,
+    meta: {
+      id: string;
+      meetingId?: string;
+      date: string;
+      transcriptRef: string;
+      fallbackText?: string;
+    }
+  ) => {
+    setWorkspaceData({
+      id: meta.id,
+      meetingId: meta.meetingId,
+      title: res.meetingTitle || workspaceData.title,
+      date: meta.date,
+      transcriptRef: meta.transcriptRef,
+      transcriptText: res.transcriptText || meta.fallbackText || workspaceData.transcriptText,
+      summary: res.summary,
+      decisions: res.decisions || [],
+      risks: res.risks || [],
+      openQuestions: res.openQuestions || [],
+      processingTimeSec: res.processingTimeSec ?? null,
+      modelUsed: res.modelUsed ?? null,
+    });
+    setTasksToReview(
+      (res.tasks || []).map((t) => ({
+        title: t.title,
+        assigneeName: t.assigneeName,
+        deadline: t.deadline,
+        sourceQuote: t.sourceQuote,
+        timestamp: t.timestamp || '00:00',
+        status: 'pending_approval' as const,
+      }))
     );
-    showToast(
-      'Протокол зафиксирован',
-      `Сохранен протокол совещания со ссылкой на исходную стенограмму (${protocolRef})`,
-      'success'
-    );
+    setShowScheduledProtocolWorkspace(true);
+    setIsEditingTranscript(false);
+    setDecisionFilter('all');
+    setHighlightedTimestamp(null);
+  };
+
+  const handleSaveProtocol = async () => {
+    if (!workspaceData.summary.trim() && workspaceData.decisions.length === 0) {
+      showToast('Нечего сохранять', 'Сначала выполните анализ стенограммы или аудиозаписи', 'warning');
+      return;
+    }
+    setIsSavingProtocol(true);
+    try {
+      const saved = await saveMeetingProtocol({
+        meetingId: workspaceData.meetingId,
+        meetingTitle: workspaceData.title,
+        transcriptRef: workspaceData.transcriptRef,
+        transcriptText: workspaceData.transcriptText,
+        summary: workspaceData.summary,
+        decisions: workspaceData.decisions,
+        risks: workspaceData.risks,
+        openQuestions: workspaceData.openQuestions,
+        processingTimeSec: workspaceData.processingTimeSec,
+      });
+      setWorkspaceData((prev) => ({
+        ...prev,
+        id: saved.id,
+        savedProtocolId: saved.id,
+      }));
+    } catch (err: any) {
+      showToast('Ошибка сохранения', err?.message || 'Не удалось сохранить протокол в БД', 'error');
+    } finally {
+      setIsSavingProtocol(false);
+    }
   };
 
   const handleRunAiAnalysis = async () => {
+    const textToAnalyze = workspaceData.transcriptText.trim();
+    if (!textToAnalyze) {
+      showToast('Пустая стенограмма', 'Вставьте текст или загрузите файл стенограммы/аудио', 'warning');
+      return;
+    }
     setIsAnalyzing(true);
-    showToast('AI-Анализ запущен', 'Обработка стенограммы встречи локальной моделью...', 'info');
+    setAnalyzingLabel('Qwen 2.5 анализирует...');
+    showToast('AI-Анализ запущен', 'Обработка стенограммы моделью Qwen 2.5...', 'info');
     try {
-      const res = await analyzeMeetingTranscript(currentTranscript.content, currentTranscript.title);
-      if (res && res.tasks.length > 0) {
-        setTasksToReview(
-          res.tasks.map((t) => ({
-            title: t.title,
-            assigneeName: t.assigneeName,
-            deadline: t.deadline,
-            sourceQuote: t.sourceQuote,
-            timestamp: t.timestamp || '00:00',
-            status: 'pending_approval' as const,
-          }))
-        );
-        showToast('Анализ завершен', `Извлечено ${res.tasks.length} поручений и ${res.decisions.length} решений`, 'success');
-      } else {
-        showToast('Анализ выполнен', 'Стенограмма обработана в штатном режиме', 'info');
-      }
-    } catch {
-      showToast('Ошибка анализа', 'Не удалось связаться с модулем анализа', 'warning');
+      const res = await analyzeMeetingTranscript(
+        textToAnalyze,
+        workspaceData.title,
+        workspaceData.meetingId
+      );
+      applyAnalysisResult(res, {
+        id: workspaceData.id,
+        meetingId: workspaceData.meetingId,
+        date: workspaceData.date,
+        transcriptRef: workspaceData.transcriptRef,
+        fallbackText: textToAnalyze,
+      });
+      showToast(
+        'Анализ завершен',
+        `Решений: ${res.decisions.length}, поручений: ${res.tasks.length}, рисков: ${res.risks.length}`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Ошибка AI-анализа', err?.message || 'AI-сервер недоступен', 'error');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  const handleAudioFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const targetMeeting = selectedMeetingItem;
+    const isAdHoc = !targetMeeting && selectedTranscriptId === 'ad-hoc-new';
+    const title = targetMeeting?.title || (isAdHoc ? file.name.replace(/\.[^.]+$/, '') : workspaceData.title);
+    const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
+
+    setIsAnalyzing(true);
+    setAnalyzingLabel('Whisper STT + Qwen 2.5...');
+    showToast('Распознавание речи', `Загрузка и расшифровка «${file.name}» (Whisper -> Qwen 2.5)...`, 'info');
+    try {
+      const res = await processMeetingAudio(file, title, targetMeeting?.id);
+      applyAnalysisResult(res, {
+        id: targetMeeting?.id || `audio-${Date.now()}`,
+        meetingId: targetMeeting?.id,
+        date: today,
+        transcriptRef: `#audio-${file.name}`,
+      });
+      showToast(
+        'Аудио обработано',
+        `Транскрибация и протокол готовы: решений — ${res.decisions.length}, поручений — ${res.tasks.length}`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Ошибка распознавания аудио', err?.message || 'Сервер Whisper/AI недоступен', 'error');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleTranscriptFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const targetMeeting = selectedMeetingItem;
+    const title = targetMeeting?.title || file.name.replace(/\.[^.]+$/, '');
+    const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
+
+    setIsAnalyzing(true);
+    setAnalyzingLabel('Анализ файла...');
+    showToast('Обработка файла', `Чтение «${file.name}» и анализ моделью Qwen 2.5...`, 'info');
+    try {
+      const res = await uploadMeetingTranscript(file, title, targetMeeting?.id);
+      applyAnalysisResult(res, {
+        id: targetMeeting?.id || `upload-${Date.now()}`,
+        meetingId: targetMeeting?.id,
+        date: today,
+        transcriptRef: `#file-${file.name}`,
+      });
+      showToast(
+        'Стенограмма обработана',
+        `Выделено решений: ${res.decisions.length}, поручений: ${res.tasks.length}`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('Ошибка чтения файла', err?.message || 'Не удалось обработать файл стенограммы', 'error');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleOpenAdHocProtocol = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    setSelectedTranscriptId('ad-hoc-new');
+    setShowScheduledProtocolWorkspace(true);
+    setWorkspaceData({
+      id: `ad-hoc-${Date.now()}`,
+      title: 'Новое оперативное совещание',
+      date: today,
+      transcriptRef: `#transcript-ad-hoc-${today}`,
+      transcriptText:
+        '[00:05] Смирнов А.В.: Коллеги, начинаем разбор по текущему тиражу.\n[00:18] Иванов И.С.: Проблема со сроками на участке печати, нужно утвердить ответственных.',
+      summary: 'Черновик протокола. Загрузите аудио (.ogg/.wav/.mp3), файл стенограммы (.txt/.vtt/.docx) или отредактируйте текст слева и нажмите «Анализ AI».',
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+    });
+    setTasksToReview([]);
+    setIsEditingTranscript(true);
+    setDecisionFilter('all');
+    setHighlightedTimestamp(null);
+  };
+
+  const handleSwitchToScheduledWorkspace = () => {
+    if (!selectedMeetingItem) return;
+    const savedProto = selectedMeetingItem.protocolId
+      ? protocols.find((p) => p.id === selectedMeetingItem.protocolId)
+      : protocols.find((p) => p.meetingId === selectedMeetingItem.id);
+
+    if (savedProto) {
+      setWorkspaceData({
+        id: savedProto.id,
+        meetingId: selectedMeetingItem.id,
+        savedProtocolId: savedProto.id,
+        title: savedProto.meetingTitle,
+        date: selectedMeetingItem.date,
+        transcriptRef: savedProto.transcriptRef,
+        transcriptText: savedProto.transcriptText,
+        summary: savedProto.summary,
+        decisions: savedProto.decisions,
+        risks: savedProto.risks,
+        openQuestions: savedProto.openQuestions || [],
+        processingTimeSec: savedProto.processingTimeSec,
+      });
+      setIsEditingTranscript(false);
+    } else {
+      const agendaPreview = selectedMeetingItem.agenda.map((a, idx) => `[00:0${idx + 1}] Повестка: ${a}`).join('\n');
+      setWorkspaceData({
+        id: selectedMeetingItem.id,
+        meetingId: selectedMeetingItem.id,
+        title: selectedMeetingItem.title,
+        date: selectedMeetingItem.date,
+        transcriptRef: `#meeting-${selectedMeetingItem.id}`,
+        transcriptText:
+          agendaPreview ||
+          `[00:00] ${selectedMeetingItem.participants[0] || 'Руководитель'}: Начинаем совещание «${selectedMeetingItem.title}».`,
+        summary: 'Встреча ещё не обработана. Загрузите аудиозапись, файл стенограммы или вставьте текст совещания слева и запустите AI-анализ.',
+        decisions: [],
+        risks: [],
+        openQuestions: selectedMeetingItem.openQuestions || [],
+      });
+      setIsEditingTranscript(true);
+    }
+    setTasksToReview([]);
+    setShowScheduledProtocolWorkspace(true);
+    setDecisionFilter('all');
+    setHighlightedTimestamp(null);
+  };
+
+  const handleJumpToTimestamp = (rawTs?: string | null) => {
+    const clean = normalizeTs(rawTs);
+    if (!clean) return;
+    setShowTranscript(true);
+    setIsEditingTranscript(false);
+    setHighlightedTimestamp(clean);
+    setTimeout(() => {
+      const container = transcriptContainerRef.current;
+      if (!container) return;
+      const targetEl = container.querySelector(`[data-ts="${clean}"]`) as HTMLElement | null;
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 60);
+  };
+
   const handleSelectMeeting = (id: string) => {
     setSelectedTranscriptId(id);
+    setDecisionFilter('all');
+    setHighlightedTimestamp(null);
+
+    if (id === 'ad-hoc-new') {
+      handleOpenAdHocProtocol();
+      return;
+    }
+
+    const meetingObj = scheduledList.find((m) => m.id === id);
+    if (meetingObj) {
+      const linkedProto = meetingObj.protocolId
+        ? protocols.find((p) => p.id === meetingObj.protocolId)
+        : protocols.find((p) => p.meetingId === meetingObj.id);
+      if (linkedProto) {
+        setWorkspaceData({
+          id: linkedProto.id,
+          meetingId: meetingObj.id,
+          savedProtocolId: linkedProto.id,
+          title: linkedProto.meetingTitle,
+          date: meetingObj.date,
+          transcriptRef: linkedProto.transcriptRef,
+          transcriptText: linkedProto.transcriptText,
+          summary: linkedProto.summary,
+          decisions: linkedProto.decisions,
+          risks: linkedProto.risks,
+          openQuestions: linkedProto.openQuestions || [],
+          processingTimeSec: linkedProto.processingTimeSec,
+        });
+        setShowScheduledProtocolWorkspace(true);
+      } else {
+        setShowScheduledProtocolWorkspace(false);
+      }
+      setTasksToReview([]);
+      setIsEditingTranscript(false);
+      return;
+    }
+
+    const protoObj = protocols.find((p) => p.id === id);
+    if (protoObj) {
+      setWorkspaceData({
+        id: protoObj.id,
+        meetingId: protoObj.meetingId || undefined,
+        savedProtocolId: protoObj.id,
+        title: protoObj.meetingTitle,
+        date: protoObj.createdAt,
+        transcriptRef: protoObj.transcriptRef,
+        transcriptText: protoObj.transcriptText,
+        summary: protoObj.summary,
+        decisions: protoObj.decisions,
+        risks: protoObj.risks,
+        openQuestions: protoObj.openQuestions || [],
+        processingTimeSec: protoObj.processingTimeSec,
+      });
+      setTasksToReview([]);
+      setIsEditingTranscript(false);
+      return;
+    }
+
     const found = MOCK_TRANSCRIPTS.find((t) => t.id === id);
     if (found) {
+      setWorkspaceData({
+        id: found.id,
+        title: found.title,
+        date: found.date,
+        transcriptRef: `#transcript-${found.id}`,
+        transcriptText: found.content,
+        summary: found.summary,
+        decisions: found.decisions,
+        risks: found.risks || [],
+        openQuestions: [],
+      });
       setTasksToReview(
         found.stagedTasks.map((t) => ({
           title: t.title,
@@ -306,8 +680,7 @@ export const MeetingsView: React.FC = () => {
           status: 'pending_approval' as const,
         }))
       );
-    } else {
-      setTasksToReview([]);
+      setIsEditingTranscript(false);
     }
   };
 
@@ -343,14 +716,15 @@ export const MeetingsView: React.FC = () => {
       showToast('Нет задач', 'Список задач пуст', 'warning');
       return;
     }
-    batchApproveTasks(tasksToReview, currentTranscript.title);
+    const protoId = workspaceData.savedProtocolId;
+    batchApproveTasks(tasksToReview, workspaceData.title, protoId);
     setTasksToReview([]);
   };
 
   const handleReject = () => {
     logAudit(
       'REJECT_TASKS',
-      `Meeting: ${currentTranscript.title}`,
+      `Meeting: ${workspaceData.title}`,
       'REJECTED',
       'Руководитель отклонил черновик поручений. База данных не изменена.'
     );
@@ -360,6 +734,22 @@ export const MeetingsView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
+      {/* Hidden File Inputs for Stage 2 STT Audio & Transcript File Upload */}
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept=".wav,.ogg,.mp3,.m4a,.flac,.webm"
+        className="hidden"
+        onChange={handleAudioFileSelected}
+      />
+      <input
+        ref={transcriptInputRef}
+        type="file"
+        accept=".txt,.vtt,.srt,.docx"
+        className="hidden"
+        onChange={handleTranscriptFileSelected}
+      />
+
       {/* Top Header - Spacious & Clean */}
       <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
         <div className="flex items-center gap-4">
@@ -378,16 +768,29 @@ export const MeetingsView: React.FC = () => {
               onChange={(e) => handleSelectMeeting(e.target.value)}
               className="bg-neutral-50 dark:bg-[#1a1d25] border border-neutral-200 dark:border-[#282d3b] text-neutral-850 dark:text-neutral-200 text-xs rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-sky-500 font-medium appearance-none cursor-pointer max-w-[380px]"
             >
+              {selectedTranscriptId === 'ad-hoc-new' && (
+                <option value="ad-hoc-new">[Новый протокол] {workspaceData.title}</option>
+              )}
               {scheduledList.length > 0 && (
-                <optgroup label="Запланированные встречи (PostgreSQL)">
+                <optgroup label="Совещания компании (PostgreSQL)">
                   {scheduledList.map((m) => (
                     <option key={m.id} value={m.id}>
-                      [Запланировано] {m.title} ({m.date})
+                      {m.status === 'completed' || m.protocolId ? '[Протокол] ' : '[Запланировано] '}
+                      {m.title} ({m.date})
                     </option>
                   ))}
                 </optgroup>
               )}
-              <optgroup label="Проведённые совещания и стенограммы">
+              {standaloneProtocols.length > 0 && (
+                <optgroup label="Сохранённые протоколы (PostgreSQL)">
+                  {standaloneProtocols.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      [Протокол {p.id}] {p.meetingTitle}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Демо-стенограммы и архив">
                 {MOCK_TRANSCRIPTS.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
@@ -401,6 +804,15 @@ export const MeetingsView: React.FC = () => {
 
         {/* Right side of Top Bar */}
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleOpenAdHocProtocol}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors"
+            title="Создать новый протокол из аудиозаписи или стенограммы"
+          >
+            <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+            <span>Новый протокол</span>
+          </button>
+
           <button
             onClick={() => setIsInvitationsOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors relative"
@@ -428,9 +840,9 @@ export const MeetingsView: React.FC = () => {
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
-        {selectedScheduledMeeting ? (() => {
-          const meetingInvitations = invitations.filter((inv) => inv.meetingId === selectedScheduledMeeting.id);
-          const pSurnames = new Set(selectedScheduledMeeting.participants.map(surnameKey));
+        {selectedMeetingItem && !showScheduledProtocolWorkspace ? (() => {
+          const meetingInvitations = invitations.filter((inv) => inv.meetingId === selectedMeetingItem.id);
+          const pSurnames = new Set(selectedMeetingItem.participants.map(surnameKey));
           const relatedTasks = tasks.filter(
             (t) => (t.status === 'active' || t.status === 'overdue') && pSurnames.has(surnameKey(t.assigneeName))
           );
@@ -438,21 +850,53 @@ export const MeetingsView: React.FC = () => {
           return (
             <div className="flex-1 overflow-y-auto p-6 lg:p-8">
               <div className="max-w-5xl mx-auto space-y-6">
-                <div className="flex items-start justify-between pb-4 border-b border-neutral-200 dark:border-[#212530]">
+                <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-[#212530]">
                   <div>
                     <div className="flex items-center gap-2 text-xs font-mono text-neutral-500 dark:text-neutral-400">
                       <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 font-semibold">
                         Запланировано
                       </span>
-                      <span>{selectedScheduledMeeting.date}</span>
+                      <span>{selectedMeetingItem.date}</span>
                       <span>·</span>
-                      <span>{selectedScheduledMeeting.time}</span>
+                      <span>{selectedMeetingItem.time}</span>
                       <span>·</span>
-                      <span>{selectedScheduledMeeting.durationMinutes} мин</span>
+                      <span>{selectedMeetingItem.durationMinutes} мин</span>
                     </div>
                     <h2 className="text-lg font-bold text-neutral-950 dark:text-white mt-2">
-                      {selectedScheduledMeeting.title}
+                      {selectedMeetingItem.title}
                     </h2>
+                  </div>
+
+                  {/* Stage 2 Actions on Scheduled Meeting */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => audioInputRef.current?.click()}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                      title="Отправить аудиозапись (.ogg/.wav/.mp3) в Whisper + Qwen 2.5"
+                    >
+                      <Mic className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-pulse' : ''}`} />
+                      <span>{isAnalyzing ? analyzingLabel : 'Загрузить аудиозапись'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => transcriptInputRef.current?.click()}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
+                      title="Загрузить текстовую стенограмму (.txt, .vtt, .docx)"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-neutral-500" />
+                      <span>Загрузить стенограмму</span>
+                    </button>
+
+                    <button
+                      onClick={handleSwitchToScheduledWorkspace}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15 transition-colors disabled:opacity-50"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Оформить протокол</span>
+                    </button>
                   </div>
                 </div>
 
@@ -463,7 +907,7 @@ export const MeetingsView: React.FC = () => {
                       <span>Участники и статусы приглашений</span>
                     </div>
                     <div className="space-y-2">
-                      {selectedScheduledMeeting.participants.map((p) => {
+                      {selectedMeetingItem.participants.map((p) => {
                         const inv = meetingInvitations.find((i) => surnameKey(i.recipientName) === surnameKey(p));
                         return (
                           <div key={p} className="flex items-center justify-between text-xs p-2 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200/70 dark:border-[#1f232e]">
@@ -495,7 +939,7 @@ export const MeetingsView: React.FC = () => {
                       <span>Утвержденный проект повестки</span>
                     </div>
                     <ul className="space-y-2 text-xs text-neutral-800 dark:text-neutral-200">
-                      {selectedScheduledMeeting.agenda.map((item, idx) => (
+                      {selectedMeetingItem.agenda.map((item, idx) => (
                         <li key={idx} className="p-2 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200/60 dark:border-[#1f232e]">
                           {item}
                         </li>
@@ -504,13 +948,13 @@ export const MeetingsView: React.FC = () => {
                   </div>
                 </div>
 
-                {selectedScheduledMeeting.openQuestions && selectedScheduledMeeting.openQuestions.length > 0 && (
+                {selectedMeetingItem.openQuestions && selectedMeetingItem.openQuestions.length > 0 && (
                   <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2.5">
                     <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
                       Открытые вопросы к обсуждению
                     </div>
                     <ul className="space-y-1.5 text-xs text-amber-900 dark:text-amber-300">
-                      {selectedScheduledMeeting.openQuestions.map((q, idx) => (
+                      {selectedMeetingItem.openQuestions.map((q, idx) => (
                         <li key={idx}>{q}</li>
                       ))}
                     </ul>
@@ -550,71 +994,140 @@ export const MeetingsView: React.FC = () => {
           );
         })() : (
           <>
-            {/* Left Pane: Transcript */}
+            {/* Left Pane: Transcript & Media Ingestion */}
             {showTranscript ? (
-          <div className="w-[420px] border-r border-neutral-200 dark:border-[#212530] flex flex-col bg-white dark:bg-[#111318] shrink-0 transition-all">
+          <div className="w-[440px] border-r border-neutral-200 dark:border-[#212530] flex flex-col bg-white dark:bg-[#111318] shrink-0 transition-all">
             <div className="p-3.5 px-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
               <div className="flex items-center gap-2 font-medium">
                 <FileText className="w-3.5 h-3.5 text-neutral-500" />
-                <span className="font-semibold text-neutral-900 dark:text-neutral-200">Стенограмма записи</span>
-                <span className="text-[11px] font-mono text-neutral-400">({currentTranscript.date})</span>
+                <span className="font-semibold text-neutral-900 dark:text-neutral-200">Стенограмма</span>
+                <span className="text-[11px] font-mono text-neutral-400">({workspaceData.date})</span>
               </div>
-              <button
-                onClick={() => setShowTranscript(false)}
-                title="Скрыть панель стенограммы"
-                className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors"
-              >
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => audioInputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  title="Загрузить аудио (.ogg, .wav, .mp3, .m4a)"
+                  className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => transcriptInputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  title="Загрузить файл стенограммы (.txt, .vtt, .docx)"
+                  className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setIsEditingTranscript((prev) => !prev)}
+                  title={isEditingTranscript ? 'Режим просмотра по репликам' : 'Вставить / отредактировать текст'}
+                  className={`p-1.5 rounded transition-colors ${
+                    isEditingTranscript
+                      ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
+                      : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]'
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setShowTranscript(false)}
+                  title="Скрыть панель стенограммы"
+                  className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div
-              id={`transcript-${currentTranscript.id}`}
-              className="flex-1 overflow-y-auto p-3 space-y-1 select-text"
-            >
-              {currentTranscript.content.split('\n').map((line, idx) => {
-                const match = line.match(/^(\[\d\d:\d\d\])\s+([^:]+):\s*(.*)$/);
-                if (match) {
-                  const [, time, speaker, text] = match;
-                  // Derive 2-letter initials from speaker
-                  const initials = speaker.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('');
+            {isEditingTranscript ? (
+              <div className="flex-1 flex flex-col p-3 gap-2">
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center justify-between">
+                  <span>Формат: <code className="font-mono">[00:15] Спикер: Текст реплики</code></span>
+                  <button
+                    onClick={() => setIsEditingTranscript(false)}
+                    className="text-sky-600 dark:text-sky-400 hover:underline font-medium"
+                  >
+                    Готово
+                  </button>
+                </div>
+                <textarea
+                  value={workspaceData.transcriptText}
+                  onChange={(e) =>
+                    setWorkspaceData((prev) => ({ ...prev, transcriptText: e.target.value }))
+                  }
+                  placeholder="Вставьте стенограмму совещания или загрузите аудио/файл выше..."
+                  className="flex-1 w-full bg-neutral-50 dark:bg-[#0e1015] border border-neutral-200 dark:border-[#242834] rounded-md p-3 text-xs font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-sky-500 resize-none leading-relaxed"
+                />
+              </div>
+            ) : (
+              <div
+                ref={transcriptContainerRef}
+                id={`transcript-${workspaceData.id}`}
+                className="flex-1 overflow-y-auto p-3 space-y-1 select-text"
+              >
+                {workspaceData.transcriptText.split('\n').map((line, idx) => {
+                  const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s*(.*)$/);
+                  if (match) {
+                    const [, rawTs, speaker, text] = match;
+                    const tsClean = normalizeTs(rawTs);
+                    const isHighlighted =
+                      highlightedTimestamp !== null && tsClean === highlightedTimestamp;
+                    const initials = speaker
+                      .split(' ')
+                      .map((w) => w[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join('');
 
-                  return (
-                    <div
-                      key={idx}
-                      className="group px-3 py-2 rounded-md hover:bg-neutral-100/70 dark:hover:bg-[#161922] transition-colors border-l-2 border-transparent hover:border-sky-500 flex items-start gap-3"
-                    >
-                      {/* Monospace Timecode */}
-                      <div className="shrink-0 pt-0.5">
-                        <span className="font-mono text-[11px] text-neutral-400 dark:text-neutral-500 group-hover:text-sky-500 transition-colors select-none tracking-tight">
-                          {time}
-                        </span>
-                      </div>
-
-                      {/* Speaker & Spoken Content */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-bold bg-neutral-200/80 dark:bg-[#202533] text-neutral-700 dark:text-neutral-300">
-                            {initials}
-                          </span>
-                          <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-200 font-sans tracking-tight">
-                            {speaker}
+                    return (
+                      <div
+                        key={idx}
+                        data-ts={tsClean}
+                        className={`group px-3 py-2 rounded-md transition-colors border-l-2 flex items-start gap-3 ${
+                          isHighlighted
+                            ? 'bg-sky-500/12 dark:bg-sky-500/15 border-sky-500 ring-1 ring-sky-500/30'
+                            : 'border-transparent hover:bg-neutral-100/70 dark:hover:bg-[#161922] hover:border-sky-500'
+                        }`}
+                      >
+                        <div className="shrink-0 pt-0.5">
+                          <span
+                            className={`font-mono text-[11px] transition-colors select-none tracking-tight ${
+                              isHighlighted
+                                ? 'text-sky-600 dark:text-sky-300 font-bold'
+                                : 'text-neutral-400 dark:text-neutral-500 group-hover:text-sky-500'
+                            }`}
+                          >
+                            [{tsClean}]
                           </span>
                         </div>
-                        <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans font-normal selection:bg-sky-500/20">
-                          {text}
-                        </p>
+
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-bold bg-neutral-200/80 dark:bg-[#202533] text-neutral-700 dark:text-neutral-300">
+                              {initials}
+                            </span>
+                            <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-200 font-sans tracking-tight">
+                              {speaker}
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans font-normal selection:bg-sky-500/20">
+                            {text}
+                          </p>
+                        </div>
                       </div>
+                    );
+                  }
+                  if (!line.trim()) return null;
+                  return (
+                    <div key={idx} className="px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 font-sans">
+                      {line}
                     </div>
                   );
-                }
-                return (
-                  <div key={idx} className="px-3 py-1 text-xs text-neutral-400 italic font-sans">
-                    {line}
-                  </div>
-                );
-              })}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-12 border-r border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#111318] flex flex-col items-center py-4 shrink-0">
@@ -631,38 +1144,83 @@ export const MeetingsView: React.FC = () => {
           </div>
         )}
 
-        {/* Right Pane: Summary, Decisions, Risks & Staged Tasks */}
+        {/* Right Pane: Summary, 4-Category Decisions, Risks, Open Questions & Staged Tasks */}
         <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
           <div className="max-w-5xl mx-auto w-full space-y-6">
             {/* Context Header for Protocol */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-neutral-200 dark:border-[#212530]">
-              <div>
-                <div className="text-xs text-neutral-400 font-mono">
-                  Протокол № {currentTranscript.id} · {currentTranscript.date}
+            <div className="flex flex-wrap items-start justify-between gap-3 pb-3.5 border-b border-neutral-200 dark:border-[#212530]">
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 font-mono">
+                  <span>Протокол № {workspaceData.savedProtocolId || workspaceData.id}</span>
+                  <span>·</span>
+                  <span>{workspaceData.date}</span>
+                  {workspaceData.savedProtocolId && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold">
+                      Сохранено в PostgreSQL
+                    </span>
+                  )}
+                  {workspaceData.modelUsed && (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[10px]">
+                      {workspaceData.modelUsed}
+                      {workspaceData.processingTimeSec ? ` (${workspaceData.processingTimeSec}с)` : ''}
+                    </span>
+                  )}
                 </div>
-                <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5 tracking-tight">
-                  {currentTranscript.title}
-                </h2>
+                {selectedTranscriptId === 'ad-hoc-new' ? (
+                  <input
+                    type="text"
+                    value={workspaceData.title}
+                    onChange={(e) =>
+                      setWorkspaceData((prev) => ({ ...prev, title: e.target.value }))
+                    }
+                    className="w-full max-w-lg mt-1 bg-transparent text-base font-bold text-neutral-950 dark:text-white border-b border-neutral-300 dark:border-[#2c3242] focus:border-sky-500 focus:outline-none pb-0.5"
+                  />
+                ) : (
+                  <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5 tracking-tight">
+                    {workspaceData.title}
+                  </h2>
+                )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedMeetingItem && (
+                  <button
+                    onClick={() => setShowScheduledProtocolWorkspace(false)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Карточка встречи</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => audioInputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  title="Загрузить аудио (.ogg, .wav, .mp3) -> Whisper + Qwen 2.5"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
+                >
+                  <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                  <span>Аудио (Whisper)</span>
+                </button>
+
                 <button
                   onClick={handleRunAiAnalysis}
                   disabled={isAnalyzing}
-                  title={backendOnline ? 'Запустить автоматический анализ стенограммы' : 'AI-анализ стенограммы'}
+                  title={backendOnline ? 'Запустить AI-анализ текущей стенограммы (Qwen 2.5)' : 'Бэкенд недоступен'}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm disabled:opacity-50"
                 >
                   <Cpu className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                  <span>{isAnalyzing ? 'Анализ...' : 'Анализ стенограммы'}</span>
+                  <span>{isAnalyzing ? analyzingLabel : 'Анализ стенограммы'}</span>
                 </button>
 
                 <button
                   onClick={handleSaveProtocol}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors"
-                  title="Сохранить протокол со ссылкой на исходную расшифровку"
+                  disabled={isSavingProtocol || isAnalyzing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                  title="Сохранить протокол в PostgreSQL со ссылкой на стенограмму"
                 >
-                  <Bookmark className="w-3.5 h-3.5 text-neutral-500" />
-                  <span>Сохранить протокол</span>
+                  <Bookmark className="w-3.5 h-3.5" />
+                  <span>{isSavingProtocol ? 'Сохранение...' : 'Сохранить протокол в БД'}</span>
                 </button>
               </div>
             </div>
@@ -672,67 +1230,173 @@ export const MeetingsView: React.FC = () => {
               <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
                 Краткое резюме встречи
               </div>
-              <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{currentTranscript.summary}</p>
+              <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{workspaceData.summary}</p>
             </div>
 
-            {/* Decisions & Risks Cards Grid (Scenario 3 Requirement) */}
+            {/* 4-Category Decisions & Risks Cards Grid (Scenario 3 & AI-04 Requirement) */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {/* Decisions Card */}
               <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
                   <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                    Принятые решения
+                    Итоги и статусы решений (AI-04)
                   </h3>
                   <span className="text-[11px] font-mono text-neutral-400">
-                    {currentTranscript.decisions.length} решения
+                    {workspaceData.decisions.length} поз.
                   </span>
+                </div>
+
+                {/* 4-Category Filter Tabs */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setDecisionFilter('all')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                      decisionFilter === 'all'
+                        ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 border-transparent'
+                        : 'border-neutral-200 dark:border-[#282d3b] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1b1f28]'
+                    }`}
+                  >
+                    Все ({workspaceData.decisions.length})
+                  </button>
+                  {(['resolved', 'proposed', 'discussed', 'needs_clarification'] as DecisionCategory[]).map(
+                    (cat) => {
+                      const count = workspaceData.decisions.filter((d) => d.category === cat).length;
+                      const meta = DECISION_CATEGORY_META[cat];
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => setDecisionFilter(cat)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                            decisionFilter === cat
+                              ? meta.badgeClass + ' font-semibold'
+                              : 'border-neutral-200 dark:border-[#282d3b] text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1b1f28]'
+                          }`}
+                        >
+                          {meta.label} ({count})
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
 
                 <div className="space-y-2.5">
-                  {currentTranscript.decisions.map((d) => (
-                    <div key={d.id} className="flex items-start gap-2.5 text-xs text-neutral-800 dark:text-neutral-200">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                      <div className="flex-1 leading-snug">
-                        <span>{d.text}</span>
-                        {d.speaker && (
-                          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 ml-1.5 font-medium">({d.speaker})</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                  {(() => {
+                    const filtered =
+                      decisionFilter === 'all'
+                        ? workspaceData.decisions
+                        : workspaceData.decisions.filter((d) => d.category === decisionFilter);
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="text-xs text-neutral-400 py-2">
+                          В выбранной категории записей нет
+                        </div>
+                      );
+                    }
+                    return filtered.map((d) => {
+                      const meta =
+                        DECISION_CATEGORY_META[d.category] || DECISION_CATEGORY_META.discussed;
+                      const tsClean = normalizeTs(d.timestamp);
+                      return (
+                        <div
+                          key={d.id}
+                          className="p-2.5 rounded-md bg-neutral-50/70 dark:bg-[#101217] border border-neutral-200/80 dark:border-[#1f232e] space-y-1.5 text-xs text-neutral-800 dark:text-neutral-200"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${meta.badgeClass}`}
+                            >
+                              {d.category === 'resolved' ? (
+                                <CheckCircle2 className="w-3 h-3" />
+                              ) : d.category === 'needs_clarification' ? (
+                                <HelpCircle className="w-3 h-3" />
+                              ) : (
+                                <MessageSquare className="w-3 h-3" />
+                              )}
+                              <span>{meta.label}</span>
+                            </span>
+
+                            <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                              {d.speaker && <span className="font-medium">{d.speaker}</span>}
+                              {tsClean && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleJumpToTimestamp(tsClean)}
+                                  title="Перейти к реплике в стенограмме"
+                                  className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 transition-colors"
+                                >
+                                  [{tsClean}]
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="leading-snug">{d.text}</div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
-              {/* Risks Card */}
-              <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                  <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                    Карта выявленных рисков
-                  </h3>
-                  <span className="text-[11px] font-mono text-neutral-400">
-                    {currentTranscript.risks?.length || 0} риска
-                  </span>
+              {/* Risks & Open Questions Column */}
+              <div className="space-y-4">
+                {/* Risks Card */}
+                <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
+                    <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
+                      Карта выявленных рисков
+                    </h3>
+                    <span className="text-[11px] font-mono text-neutral-400">
+                      {workspaceData.risks?.length || 0} риск(а)
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {workspaceData.risks && workspaceData.risks.length > 0 ? (
+                      workspaceData.risks.map((r) => (
+                        <div key={r.id} className="p-2.5 rounded bg-amber-500/[0.04] dark:bg-amber-500/[0.07] border border-amber-500/20 text-xs space-y-1">
+                          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between gap-2">
+                            <span>{r.riskDescription}</span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold uppercase shrink-0">
+                              {r.impact}
+                            </span>
+                          </div>
+                          {r.suggestedMitigation && (
+                            <div className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                              Меры: {r.suggestedMitigation}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-neutral-400">Критических рисков не зафиксировано</div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  {currentTranscript.risks && currentTranscript.risks.length > 0 ? (
-                    currentTranscript.risks.map((r) => (
-                      <div key={r.id} className="p-2.5 rounded bg-amber-500/[0.04] dark:bg-amber-500/[0.07] border border-amber-500/20 text-xs space-y-1">
-                        <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
-                          <span>{r.riskDescription}</span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold uppercase">
-                            {r.impact}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                          Меры: {r.suggestedMitigation}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-neutral-400">Критических рисков не зафиксировано</div>
-                  )}
-                </div>
+                {/* Open Questions Card */}
+                {workspaceData.openQuestions && workspaceData.openQuestions.length > 0 && (
+                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2.5">
+                    <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
+                      <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
+                        <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Открытые вопросы к проработке</span>
+                      </h3>
+                      <span className="text-[11px] font-mono text-neutral-400">
+                        {workspaceData.openQuestions.length}
+                      </span>
+                    </div>
+                    <ul className="space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
+                      {workspaceData.openQuestions.map((q, idx) => (
+                        <li
+                          key={idx}
+                          className="p-2 rounded bg-amber-500/[0.05] border border-amber-500/20 leading-snug"
+                        >
+                          {q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -839,9 +1503,14 @@ export const MeetingsView: React.FC = () => {
                           <div className="text-[11px] text-neutral-600 dark:text-neutral-400 bg-white dark:bg-[#15171e] p-2 rounded border border-neutral-200/80 dark:border-[#1f232e] flex items-center justify-between italic">
                             <span>Основание: «{task.sourceQuote}»</span>
                             {task.timestamp && (
-                              <span className="font-mono not-italic shrink-0 ml-2 text-neutral-400 font-normal">
-                                {task.timestamp}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleJumpToTimestamp(task.timestamp)}
+                                title="Найти реплику в стенограмме"
+                                className="font-mono not-italic shrink-0 ml-2 px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 font-medium transition-colors"
+                              >
+                                [{normalizeTs(task.timestamp)}]
+                              </button>
                             )}
                           </div>
                         )}
