@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.db.models import DBAppState, DBAuditLog, DBUser
 from app.db.storage import INITIAL_USERS
@@ -84,3 +85,29 @@ def add_audit_log(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def resolve_authorized_user(
+    db: Session,
+    requested_role: Optional[UserRole] = None,
+    action_context: str = "API_REQUEST",
+) -> UserProfile:
+    """Возвращает активного пользователя сессии и блокирует попытки повышения привилегий (AI-02)."""
+    session_user = get_active_user(db)
+    if requested_role and get_role_clearance(requested_role) < get_role_clearance(session_user.role):
+        add_audit_log(
+            db,
+            action="ACCESS_DENIED",
+            target=action_context,
+            status="blocked",
+            details=(
+                f"Заблокирована попытка повышения привилегий: активная роль {session_user.role} "
+                f"передала в запросе более высокий уровень {requested_role}."
+            ),
+            user=session_user,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Недостаточно прав доступа: повышение привилегий через параметр роли запрещено (AI-02).",
+        )
+    return session_user

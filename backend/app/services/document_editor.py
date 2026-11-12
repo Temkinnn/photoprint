@@ -16,7 +16,7 @@ from app.schemas import (
     DocumentVersionItem,
 )
 from app.services.audit import add_audit_log, get_role_clearance
-from app.services.ollama_client import chat_with_ollama, extract_json_object
+from app.services.ollama_client import chat_with_ollama, extract_json_object, wrap_untrusted_context
 
 
 def to_document_item(doc: DBDocument) -> DocumentItem:
@@ -68,9 +68,7 @@ def enforce_document_clearance(db: Session, doc: DBDocument, user: DBUser, actio
         )
         raise HTTPException(
             status_code=403,
-            detail=(
-                f"Недостаточно прав доступа: документ «{doc.title}» требует более высокий уровень допуска."
-            ),
+            detail="Недостаточно прав доступа: документ требует более высокий уровень допуска (AI-02).",
         )
 
 
@@ -132,7 +130,7 @@ async def generate_document_draft(
             f"Категория: {req.category or existing_doc.category}\n"
             f"Инструкция по изменению: {instruction}\n\n"
             "Сохрани структуру и действующие пункты документа, изменив или дополнив только то, что просит руководитель.\n\n"
-            f"<untrusted_context>\n{existing_doc.content}\n</untrusted_context>"
+            f"{wrap_untrusted_context(existing_doc.content)}"
         )
     else:
         user_prompt = (

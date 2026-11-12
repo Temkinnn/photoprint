@@ -10,7 +10,7 @@ from app.schemas import (
     UserProfile,
 )
 from app.services.audit import add_audit_log, get_role_clearance, surname_key
-from app.services.ollama_client import chat_with_ollama, extract_json_object
+from app.services.ollama_client import chat_with_ollama, extract_json_object, wrap_untrusted_context
 
 
 def _get_open_tasks_for_participants(db: Session, participants: List[str]) -> List[OpenTaskSummary]:
@@ -138,7 +138,7 @@ async def generate_meeting_prep(
                 f"Тема совещания: {topic}\n"
                 f"Выбранные участники: {participants_text}\n\n"
                 f"Открытые задачи участников из реестра БД:\n{tasks_text}\n\n"
-                f"Выбранные разрешенные документы:\n<untrusted_context>\n{docs_xml}\n</untrusted_context>"
+                f"Выбранные разрешенные документы:\n{wrap_untrusted_context(docs_xml)}"
             ),
         },
     ]

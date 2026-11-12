@@ -6,11 +6,19 @@ from app.config import settings
 from app.db.models import DBDocument
 from app.schemas import RAGResponse, Citation, UserRole
 from app.services.audit import get_role_clearance, add_audit_log, get_active_user
-from app.services.ollama_client import chat_with_ollama
+from app.services.ollama_client import chat_with_ollama, wrap_untrusted_context
 
-SENSITIVE_KEYWORDS = [
-    "зарплат", "оклад", "сетка окладов", "бдр", "прибыль", "p&l",
-    "сколько зарабатывает", "доход топ-менеджмент", "премиальн", "фот"
+FINANCE_SENSITIVE_KEYWORDS = [
+    "зарплат", "оклад", "сетка окладов", "бдр", "прибыль", "p&l", "ebitda",
+    "сколько зарабатывает", "доход топ-менеджмент", "премиальн", "премирован",
+    "фот", "инвест", "лизинг", "авансирован", "предоплат", "выручк", "бюджет",
+    "штатн", "бонус", "коммерческ", "doc-fin-",
+]
+
+PRODUCTION_RESTRICTED_KEYWORDS = [
+    "hp indigo", "indigo 7900", "delta-e", "дельта-е", "foliant", "horizon bq",
+    "pur-кле", "polar 92", "уф-лак", "макулатур", "приладк", "профилактическ",
+    "doc-prod-",
 ]
 
 OVERVIEW_KEYWORDS = [
@@ -19,26 +27,58 @@ OVERVIEW_KEYWORDS = [
 ]
 
 
-async def execute_rag_search(db: Session, query: str, user_role: UserRole) -> RAGResponse:
+async def execute_rag_search(db: Session, query: str, requested_role: UserRole) -> RAGResponse:
+    session_user = get_active_user(db)
+    user_role = session_user.role
     user_clearance = get_role_clearance(user_role)
-    active_user = get_active_user(db, user_role)
+
+    # Блокировка попытки подмены роли с повышением привилегий в теле RAG-запроса (AI-02)
+    if requested_role and get_role_clearance(requested_role) < user_clearance:
+        add_audit_log(
+            db,
+            action="ACCESS_DENIED",
+            target="RAG: подмена userRole",
+            status="blocked",
+            details=(
+                f"Заблокирована попытка повышения привилегий в RAG: активная роль {user_role}, "
+                f"передано в запросе {requested_role}."
+            ),
+            user=session_user,
+        )
+        return RAGResponse(
+            id=f"rag-denied-{int(datetime.now().timestamp())}",
+            text=(
+                "⛔ Доступ ограничен политикой безопасности предприятия (AI-02). "
+                "Попытка запроса с повышенными правами зарегистрирована в журнале аудита."
+            ),
+            timestamp=datetime.now().strftime("%H:%M"),
+            citations=[],
+            status="access_denied",
+        )
+
+    active_user = session_user
     query_lower = query.lower()
 
-    # Проверка на попытку несанкционированного доступа к закрытым данным (AI-02 / AI-06)
-    if any(kw in query_lower for kw in SENSITIVE_KEYWORDS) and user_clearance > 1:
+    # Проверка на попытку несанкционированного доступа к закрытым данным (уровень 1 и уровень 2)
+    explicit_restricted_id = db.query(DBDocument.id).filter(DBDocument.min_clearance < user_clearance).all()
+    hits_restricted_id = any(doc_id.lower() in query_lower for (doc_id,) in explicit_restricted_id)
+    hits_finance_kw = user_clearance > 1 and any(kw in query_lower for kw in FINANCE_SENSITIVE_KEYWORDS)
+    hits_prod_kw = user_clearance > 2 and any(kw in query_lower for kw in PRODUCTION_RESTRICTED_KEYWORDS)
+
+    if hits_restricted_id or hits_finance_kw or hits_prod_kw:
         add_audit_log(
             db,
             action="RAG_SECURITY_BLOCK",
-            target="Конфиденциальные финансовые документы (min_clearance=1)",
+            target=f"Ограниченные документы (требуется допуск < {user_clearance})",
             status="blocked",
-            details=f"Заблокирован запрос: '{query}'. У роли {user_role} недостаточно прав (требуется допуск 1).",
+            details=f"Заблокирован запрос: '{query}'. У роли {user_role} недостаточно прав (уровень {user_clearance}).",
             user=active_user,
         )
         return RAGResponse(
             id=f"rag-denied-{int(datetime.now().timestamp())}",
             text=(
-                "⛔ Доступ к запрашиваемому разделу ограничен вашей ролью. "
-                "У вас отсутствуют права на просмотр финансовой отчетности, ФОТ и персональных окладов руководства. "
+                "⛔ Доступ к запрашиваемому разделу ограничен вашей ролью (AI-02). "
+                "У вас отсутствуют права на просмотр закрытых финансовых или технологических регламентов. "
                 "Попытка доступа зафиксирована в журнале аудита информационной безопасности."
             ),
             timestamp=datetime.now().strftime("%H:%M"),
@@ -129,7 +169,7 @@ async def execute_rag_search(db: Session, query: str, user_role: UserRole) -> RA
         {
             "role": "user",
             "content": (
-                f"<untrusted_context>\n{context_blocks}\n</untrusted_context>\n\n"
+                f"{wrap_untrusted_context(context_blocks)}\n\n"
                 f"Вопрос пользователя ({active_user.roleTitle}): {query}"
             ),
         },

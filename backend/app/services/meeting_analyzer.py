@@ -10,7 +10,7 @@ from app.config import settings
 from app.schemas import (
     ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
 )
-from app.services.ollama_client import TUNNEL_HEADERS, chat_with_ollama, extract_json_object
+from app.services.ollama_client import TUNNEL_HEADERS, chat_with_ollama, extract_json_object, wrap_untrusted_context
 
 CATEGORY_MAP = {
     "решено": "resolved",
@@ -359,7 +359,7 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
     )
     user_prompt = (
         f"Совещание: «{meeting_title}»\n\n"
-        f"<untrusted_context>\n{cleaned_text}\n</untrusted_context>"
+        f"{wrap_untrusted_context(cleaned_text)}"
     )
 
     try:

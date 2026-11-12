@@ -101,3 +101,14 @@ async def chat_with_ollama(
             detail=f"AI-сервер вернул пустой ответ для модели {settings.OLLAMA_MODEL}.",
         )
     return content
+
+
+def wrap_untrusted_context(text: str) -> str:
+    """Оборачивает недоверенный контекст в <untrusted_context> и нейтрализует закрывающие теги."""
+    sanitized = re.sub(
+        r"</?\s*untrusted_context\b[^>]*>",
+        "[untrusted_tag_escaped]",
+        text or "",
+        flags=re.IGNORECASE,
+    )
+    return f"<untrusted_context>\n{sanitized}\n</untrusted_context>"

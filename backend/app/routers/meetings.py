@@ -23,7 +23,7 @@ from app.schemas import (
     SaveProtocolRequest,
     TaskItem,
 )
-from app.services.audit import add_audit_log, get_active_user, surname_key
+from app.services.audit import add_audit_log, get_active_user, resolve_authorized_user, surname_key
 from app.services.meeting_analyzer import (
     analyze_meeting_transcript,
     extract_transcript_text,
@@ -111,7 +111,7 @@ async def get_calendar_slots(db: Session = Depends(get_db)):
 
 @router.post("/prepare-agenda", response_model=PrepareAgendaResponse)
 async def prepare_agenda(req: PrepareAgendaRequest, db: Session = Depends(get_db)):
-    current_user = get_active_user(db, req.userRole)
+    current_user = resolve_authorized_user(db, req.userRole, "MEETING_PREP")
     return await generate_meeting_prep(db, req, current_user)
 
 
