@@ -302,10 +302,16 @@ export const apiClient = {
     return rawList.map((entry) => {
       let mappedStatus: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING' = 'SUCCESS';
       const s = (entry.status || '').toLowerCase();
-      if (s === 'blocked' || s === 'access_denied') mappedStatus = 'ACCESS_DENIED';
-      else if (s === 'warning' || s === 'rejected') mappedStatus = 'REJECTED';
-      else if (s === 'pending') mappedStatus = 'PENDING';
-      else mappedStatus = 'SUCCESS';
+      const act = (entry.action || entry.actionType || '').toUpperCase();
+      if (s === 'blocked' || s === 'access_denied' || act.includes('SECURITY') || act.includes('ACCESS_DENIED')) {
+        mappedStatus = 'ACCESS_DENIED';
+      } else if (s === 'warning' || s === 'rejected') {
+        mappedStatus = 'REJECTED';
+      } else if (s === 'pending') {
+        mappedStatus = 'PENDING';
+      } else {
+        mappedStatus = 'SUCCESS';
+      }
 
       return {
         id: entry.id,
@@ -318,6 +324,28 @@ export const apiClient = {
         details: entry.details,
       };
     });
+  },
+
+  async addAuditLog(entry: {
+    id: string;
+    timestamp: string;
+    userId: string;
+    userName: string;
+    userRole: string;
+    action: string;
+    targetObject: string;
+    status: string;
+    details: string;
+  }): Promise<void> {
+    try {
+      await fetchWithTimeout(`${API_BASE_URL}/api/v1/overview/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    } catch (err) {
+      console.warn('Failed to post audit log to backend:', err);
+    }
   },
 
   // 6. System

@@ -145,7 +145,7 @@ class AuditLogEntry(BaseModel):
     userRole: UserRole
     action: str
     targetObject: str
-    status: Literal['success', 'warning', 'blocked']
+    status: str
     details: str
 
 class TranscriptItem(BaseModel):

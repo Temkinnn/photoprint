@@ -13,7 +13,15 @@ import {
   TranscriptItem,
   OverviewBrief,
 } from '../types';
-import { MOCK_DOCUMENTS } from '../mock/mockData';
+import {
+  MOCK_DOCUMENTS,
+  INITIAL_AUDIT_LOG,
+  INITIAL_TASKS,
+  MOCK_KPI_METRICS,
+  MOCK_CALENDAR_SLOTS,
+  MOCK_TRANSCRIPTS,
+  MOCK_USERS,
+} from '../mock/mockData';
 import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
@@ -118,15 +126,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     openQuestions: [],
     openTasks: [],
   });
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOG);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>([]);
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>([]);
+  const [kpiMetrics, setKpiMetrics] = useState<KPIMetric[]>(MOCK_KPI_METRICS);
+  const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
+  const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>(MOCK_CALENDAR_SLOTS);
   const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
-  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [transcripts, setTranscripts] = useState<TranscriptItem[]>(MOCK_TRANSCRIPTS);
+  const [users, setUsers] = useState<UserProfile[]>(Object.values(MOCK_USERS));
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     id: 'u-1',
     name: 'Смирнов Алексей Викторович',
@@ -174,7 +182,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       details,
     };
     setAuditLogs((prev) => [newEntry, ...prev]);
-  }, [currentUser.name, currentRole]);
+
+    if (backendOnline) {
+      apiClient.addAuditLog({
+        id: newEntry.id,
+        timestamp: newEntry.timestamp,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentRole,
+        action: actionType,
+        targetObject: targetEntity,
+        status: status === 'ACCESS_DENIED' ? 'blocked' : status === 'REJECTED' ? 'warning' : 'success',
+        details,
+      }).catch(() => {});
+    }
+  }, [currentUser.id, currentUser.name, currentRole, backendOnline]);
 
   // Synchronize state with backend
   const syncWithBackend = useCallback(async () => {
@@ -215,8 +237,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (liveMetrics.status === 'fulfilled') {
           setKpiMetrics(liveMetrics.value);
         }
-        if (liveAudit.status === 'fulfilled') {
-          setAuditLogs(liveAudit.value);
+        if (liveAudit.status === 'fulfilled' && liveAudit.value.length > 0) {
+          setAuditLogs((prev) => {
+            const backendIds = new Set(liveAudit.value.map((l) => l.id));
+            const unsynced = prev.filter((p) => !backendIds.has(p.id));
+            return [...unsynced, ...liveAudit.value];
+          });
         }
         if (liveDocs.status === 'fulfilled') {
           setDocuments(liveDocs.value);
@@ -588,6 +614,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Refresh audit logs because backend logged the search or security block
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        if (res.status === 'access_denied') {
+          showToast('Отказ в доступе', 'Запрос заблокирован политикой безопасности предприятия (RBAC AI-02)', 'warning');
+        }
         return res;
       } catch {
         // Fallback to local below
@@ -598,18 +627,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const lower = queryText.toLowerCase();
 
     // Check RBAC for sensitive finance / salaries
-    const isFinanceProbe = ['оклад', 'зарплат', 'бдр', 'прибыль', 'p&l', 'премирован'].some((kw) => lower.includes(kw));
+    const isFinanceProbe = [
+      'оклад', 'зарплат', 'бдр', 'прибыль', 'p&l', 'премир', 'премиальн', 'бонус',
+      'выручк', 'бюджет', 'дивиденд', 'финанс', 'себестоимост', 'руководств'
+    ].some((kw) => lower.includes(kw));
+
     if (isFinanceProbe && !canAccessDocument(1)) {
       logAudit(
-        'ACCESS_DENIED',
-        'Document: doc-fin-02',
+        'RAG_SECURITY_BLOCK',
+        'Document: doc-fin-02 (Штатное расписание и оклады)',
         'ACCESS_DENIED',
         `Попытка несанкционированного доступа к финансовой информации пользователем с ролью ${currentRole}`
       );
+      showToast('Отказ в доступе', 'Запрос заблокирован политикой безопасности предприятия (RBAC AI-02)', 'warning');
       return {
         id: 'asst-' + Date.now(),
         sender: 'assistant',
-        text: `⛔ Доступ ограничен политикой безопасности предприятия. У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.`,
+        text: `⛔ Доступ ограничен политикой безопасности предприятия (RBAC AI-02). У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.`,
         timestamp: time,
         status: 'access_denied',
         citations: [],
@@ -675,12 +709,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetDemoData = async () => {
     try {
-      await apiClient.resetDemo();
-      await syncWithBackend();
+      if (backendOnline) {
+        await apiClient.resetDemo();
+        await syncWithBackend();
+      }
+      setTasks(INITIAL_TASKS);
+      setAuditLogs(INITIAL_AUDIT_LOG);
+      setDocuments(MOCK_DOCUMENTS);
+      setKpiMetrics(MOCK_KPI_METRICS);
+      setCalendarSlots(MOCK_CALENDAR_SLOTS);
+      setTranscripts(MOCK_TRANSCRIPTS);
       showToast('Демо сброшено', 'Данные сброшены к эталонному состоянию', 'info');
     } catch (err) {
       console.error('Reset demo failed:', err);
-      showToast('Ошибка сброса', 'Не удалось связаться с сервером', 'error');
+      setTasks(INITIAL_TASKS);
+      setAuditLogs(INITIAL_AUDIT_LOG);
+      setDocuments(MOCK_DOCUMENTS);
+      setKpiMetrics(MOCK_KPI_METRICS);
+      setCalendarSlots(MOCK_CALENDAR_SLOTS);
+      setTranscripts(MOCK_TRANSCRIPTS);
+      showToast('Демо сброшено', 'Локальные данные сброшены к эталонному состоянию', 'info');
     }
   };
 

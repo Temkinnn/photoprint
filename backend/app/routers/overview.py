@@ -16,3 +16,8 @@ async def get_overview_brief():
 @router.get("/audit", response_model=List[AuditLogEntry])
 async def get_audit_logs():
     return storage.audit_logs
+
+@router.post("/audit", response_model=AuditLogEntry)
+async def create_audit_entry(entry: AuditLogEntry):
+    storage.audit_logs.insert(0, entry)
+    return entry

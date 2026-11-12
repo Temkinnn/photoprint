@@ -25,25 +25,50 @@ export const AuditLogView: React.FC = () => {
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Helpers to reliably recognize Access Denied & security blocks across all sources
+  const isAccessDenied = (l: { status: string; actionType?: string }) => {
+    const s = (l.status || '').toUpperCase();
+    const act = (l.actionType || '').toUpperCase();
+    return s === 'ACCESS_DENIED' || s === 'BLOCKED' || act.includes('SECURITY') || act.includes('ACCESS_DENIED');
+  };
+
+  const isRejected = (l: { status: string }) => {
+    const s = (l.status || '').toUpperCase();
+    return s === 'REJECTED' || s === 'WARNING';
+  };
+
+  const isSuccess = (l: { status: string; actionType?: string }) => {
+    const s = (l.status || '').toUpperCase();
+    return !isAccessDenied(l) && !isRejected(l) && (s === 'SUCCESS' || s === 'OK');
+  };
+
   // Counts for quick badges
   const accessDeniedCount = useMemo(
-    () => auditLogs.filter((l) => l.status === 'ACCESS_DENIED').length,
+    () => auditLogs.filter(isAccessDenied).length,
     [auditLogs]
   );
   const successCount = useMemo(
-    () => auditLogs.filter((l) => l.status === 'SUCCESS').length,
+    () => auditLogs.filter(isSuccess).length,
     [auditLogs]
   );
   const rejectedCount = useMemo(
-    () => auditLogs.filter((l) => l.status === 'REJECTED').length,
+    () => auditLogs.filter(isRejected).length,
     [auditLogs]
   );
 
   const filteredLogs = useMemo(() => {
     return auditLogs.filter((log) => {
       // Status filter
-      if (filterStatus !== 'all' && log.status !== filterStatus) {
-        return false;
+      if (filterStatus !== 'all') {
+        if (filterStatus === 'ACCESS_DENIED') {
+          if (!isAccessDenied(log)) return false;
+        } else if (filterStatus === 'SUCCESS') {
+          if (!isSuccess(log)) return false;
+        } else if (filterStatus === 'REJECTED') {
+          if (!isRejected(log)) return false;
+        } else if (log.status !== filterStatus) {
+          return false;
+        }
       }
       // Role filter
       if (filterRole !== 'all' && log.userRole !== filterRole) {
@@ -52,44 +77,44 @@ export const AuditLogView: React.FC = () => {
       // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesAction = log.actionType.toLowerCase().includes(query);
-        const matchesUser = log.userName.toLowerCase().includes(query);
-        const matchesTarget = log.targetEntity.toLowerCase().includes(query);
-        const matchesDetails = log.details.toLowerCase().includes(query);
+        const matchesAction = (log.actionType || '').toLowerCase().includes(query);
+        const matchesUser = (log.userName || '').toLowerCase().includes(query);
+        const matchesTarget = (log.targetEntity || '').toLowerCase().includes(query);
+        const matchesDetails = (log.details || '').toLowerCase().includes(query);
         return matchesAction || matchesUser || matchesTarget || matchesDetails;
       }
       return true;
     });
   }, [auditLogs, filterStatus, filterRole, searchQuery]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACCESS_DENIED':
-        return {
-          icon: <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />,
-          label: 'Отказ в доступе',
-          cardBorder: 'border-rose-300 dark:border-rose-900/50 hover:border-rose-400',
-          badgeClass: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20',
-          indicatorDot: 'bg-rose-500',
-        };
-      case 'REJECTED':
-        return {
-          icon: <XCircle className="w-3.5 h-3.5 text-amber-500" />,
-          label: 'Отклонено',
-          cardBorder: 'border-amber-300 dark:border-amber-900/50 hover:border-amber-400',
-          badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20',
-          indicatorDot: 'bg-amber-500',
-        };
-      case 'SUCCESS':
-      default:
-        return {
-          icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />,
-          label: 'Успешно',
-          cardBorder: 'border-neutral-200 dark:border-[#222631] hover:border-neutral-300 dark:hover:border-[#2e3342]',
-          badgeClass: 'bg-neutral-100 dark:bg-[#1a1d25] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-[#262a36]',
-          indicatorDot: 'bg-emerald-500',
-        };
+  const getStatusBadge = (status: string, actionType?: string) => {
+    const s = (status || '').toUpperCase();
+    const act = (actionType || '').toUpperCase();
+    if (s === 'ACCESS_DENIED' || s === 'BLOCKED' || act.includes('SECURITY') || act.includes('ACCESS_DENIED')) {
+      return {
+        icon: <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />,
+        label: 'Отказ в доступе',
+        cardBorder: 'border-rose-300 dark:border-rose-900/60 hover:border-rose-400 bg-rose-50/40 dark:bg-rose-950/10 shadow-sm',
+        badgeClass: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 font-bold',
+        indicatorDot: 'bg-rose-500 animate-pulse',
+      };
     }
+    if (s === 'REJECTED' || s === 'WARNING') {
+      return {
+        icon: <XCircle className="w-3.5 h-3.5 text-amber-500" />,
+        label: 'Отклонено / Предупреждение',
+        cardBorder: 'border-amber-300 dark:border-amber-900/50 hover:border-amber-400',
+        badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20',
+        indicatorDot: 'bg-amber-500',
+      };
+    }
+    return {
+      icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />,
+      label: 'Успешно',
+      cardBorder: 'border-neutral-200 dark:border-[#222631] hover:border-neutral-300 dark:hover:border-[#2e3342]',
+      badgeClass: 'bg-neutral-100 dark:bg-[#1a1d25] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-[#262a36]',
+      indicatorDot: 'bg-emerald-500',
+    };
   };
 
   const getActionCategory = (action: string) => {
@@ -243,7 +268,7 @@ export const AuditLogView: React.FC = () => {
             </div>
           ) : (
             filteredLogs.map((log) => {
-              const statusConfig = getStatusBadge(log.status);
+              const statusConfig = getStatusBadge(log.status, log.actionType);
               const category = getActionCategory(log.actionType);
 
               return (

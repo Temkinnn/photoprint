@@ -10,11 +10,12 @@ import {
   ArrowRight,
   ArrowLeft,
   Copy,
-  RotateCcw
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents, setActiveTab } = useApp();
+  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG, documents, setActiveTab, auditLogs } = useApp();
   const [showDocsList, setShowDocsList] = useState(false);
 
   const [inputQuery, setInputQuery] = useState('');
@@ -36,15 +37,19 @@ export const KnowledgeBaseView: React.FC = () => {
       text: 'Какое допустимое оптическое отклонение Delta-E установлено для цифровой печати на ЦПМ HP Indigo 7900?',
     },
     {
+      label: '⛔ Отказ в доступе (RBAC): Зарплата директора',
+      text: 'Какая зарплата у генерального директора и сетка премиальных окладов руководства?',
+    },
+    {
+      label: 'Финансы (RBAC): Бюджет и фонд премирования Q4',
+      text: 'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
+    },
+    {
       label: 'Клиенты: Перепечатка брака в picPac.by',
       text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
     },
     {
-      label: 'Финансы (RBAC): План выручки на Q4',
-      text: 'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
-    },
-    {
-      label: 'Тест отсутствия основания: Нормативы вертолетов',
+      label: 'AI-05: Нормативы вертолетов (нет данных)',
       text: 'Каковы нормативы посадки вертолетов на крышу полиграфического комплекса ООО Фотопринт?',
     },
   ];
@@ -116,6 +121,17 @@ export const KnowledgeBaseView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {auditLogs.some((l) => (l.status || '').toUpperCase() === 'ACCESS_DENIED' || (l.status || '').toUpperCase() === 'BLOCKED' || (l.actionType || '').includes('SECURITY')) && (
+            <button
+              onClick={() => setActiveTab('audit')}
+              className="text-xs font-mono font-medium text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1.5 rounded border border-rose-500/30 flex items-center gap-1.5 transition-colors"
+              title="Перейти к журналу аудита нарушений доступа"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
+              <span>Отказы в аудите</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowDocsList((prev) => !prev)}
             className="text-xs font-mono text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#242936] px-2.5 py-1.5 rounded border border-neutral-200 dark:border-[#262a36] flex items-center gap-1.5 transition-colors"
@@ -181,11 +197,32 @@ export const KnowledgeBaseView: React.FC = () => {
                 msg.sender === 'user'
                   ? 'bg-neutral-950 text-white dark:bg-[#1e222d] dark:text-white font-medium'
                   : msg.status === 'access_denied'
-                  ? 'bg-amber-50 dark:bg-[#1a1813] border border-amber-300 dark:border-amber-800/60 text-amber-950 dark:text-amber-200'
+                  ? 'bg-rose-50/80 dark:bg-[#1c0f13] border-2 border-rose-400 dark:border-rose-900/80 text-rose-950 dark:text-rose-100 shadow-sm'
                   : 'bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] text-neutral-900 dark:text-neutral-200'
               }`}
             >
-              <div className="whitespace-pre-wrap">{msg.text}</div>
+              {msg.status === 'access_denied' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 p-2.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-800 dark:text-rose-300 font-medium">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 animate-pulse" />
+                      <span className="font-bold text-[11px] uppercase tracking-wide">
+                        Отказ в доступе (Политика безопасности RBAC AI-02)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('audit')}
+                      className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-semibold transition-colors shrink-0 shadow-sm flex items-center gap-1"
+                    >
+                      <span>Журнал аудита</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap">{msg.text}</div>
+              )}
 
               {/* Citations Box */}
               {msg.citations && msg.citations.length > 0 && (

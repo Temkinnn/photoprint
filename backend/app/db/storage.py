@@ -660,6 +660,8 @@ class PostgresStorage:
                 )
                 for d in db_docs
             ]
+            if not self.documents:
+                self.documents = copy.deepcopy(INITIAL_DOCUMENTS)
 
             # Metrics
             db_metrics = db.query(DBKPIMetric).all()
@@ -676,6 +678,8 @@ class PostgresStorage:
                 )
                 for m in db_metrics
             ]
+            if not self.metrics:
+                self.metrics = copy.deepcopy(INITIAL_METRICS)
 
             # Slots
             db_slots = db.query(DBCalendarSlot).all()
@@ -690,6 +694,8 @@ class PostgresStorage:
                 )
                 for s in db_slots
             ]
+            if not self.slots:
+                self.slots = copy.deepcopy(INITIAL_SLOTS)
 
             # Tasks
             db_tasks = db.query(DBTask).all()
@@ -707,6 +713,8 @@ class PostgresStorage:
                 )
                 for t in db_tasks
             ]
+            if not task_items:
+                task_items = copy.deepcopy(INITIAL_TASKS)
             self._tasks = PersistentList(task_items, on_insert=self._on_task_insert)
 
             # Meetings
@@ -726,6 +734,8 @@ class PostgresStorage:
                 )
                 for mt in db_meetings
             ]
+            if not meeting_items:
+                meeting_items = copy.deepcopy(INITIAL_MEETINGS)
             self._meetings = PersistentList(meeting_items, on_insert=self._on_meeting_insert)
 
             # Audit Logs
@@ -744,6 +754,8 @@ class PostgresStorage:
                 )
                 for a in db_logs
             ]
+            if not log_items:
+                log_items = copy.deepcopy(INITIAL_AUDIT)
             self._audit_logs = PersistentList(log_items, on_insert=self._on_audit_insert)
 
             # Transcripts
@@ -762,6 +774,8 @@ class PostgresStorage:
                 )
                 for tr in db_transcripts
             ]
+            if not self.transcripts:
+                self.transcripts = copy.deepcopy(INITIAL_TRANSCRIPTS)
 
             # Overview Brief
             db_brief = db.query(DBOverviewBrief).filter_by(id="default").first()
@@ -898,14 +912,18 @@ class PostgresStorage:
             self.current_role = role
         return self.get_current_user()
 
-    def add_audit_log(self, action: str, target: str, status: str, details: str):
+    def add_audit_log(self, action: str, target: str, status: str, details: str, role: Optional[UserRole] = None, user_name: Optional[str] = None):
         user = self.get_current_user()
+        actual_role = role or self.current_role
+        actual_user_name = user_name or (self.users[actual_role].name if actual_role in self.users else user.name)
+        actual_user_id = self.users[actual_role].id if actual_role in self.users else user.id
+
         entry = AuditLogEntry(
-            id=f"aud-{len(self._audit_logs) + 1}",
+            id=f"aud-{len(self._audit_logs) + 1}-{int(datetime.now().timestamp())}",
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            userId=user.id,
-            userName=user.name,
-            userRole=user.role,
+            userId=actual_user_id,
+            userName=actual_user_name,
+            userRole=actual_role,
             action=action,
             targetObject=target,
             status=status,

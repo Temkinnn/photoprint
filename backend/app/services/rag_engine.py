@@ -20,27 +20,54 @@ def get_role_clearance(role: UserRole) -> int:
 
 async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
     user_clearance = get_role_clearance(user_role)
+    actor_name = storage.users.get(user_role, storage.get_current_user()).name
     query_lower = query.lower()
 
-    # Проверка на попытку несанкционированного доступа к закрытым данным
+    # Проверка на попытку несанкционированного доступа к закрытым данным (AI-02 / RBAC)
     is_finance_or_salary_probe = any(
         kw in query_lower for kw in [
-            "зарплат", "оклад", "сетка окладов", "бдр", "прибыль", "p&l", 
-            "сколько зарабатывает", "доход топ-менеджмент", "премиальн"
+            "зарплат", "оклад", "сетка оклад", "бдр", "прибыль", "p&l", 
+            "сколько зарабатывает", "доход", "премир", "премиальн", "бонус", "выручк",
+            "бюджет", "дивиденд", "финанс", "себестоимост", "лимит расх", "руководств"
         ]
     )
 
-    if is_finance_or_salary_probe and user_clearance > 1:
+    # Предварительный скоринг по всем документам базы для выявления закрытых регламентов
+    all_scored_docs = []
+    for doc in storage.documents:
+        score = 0
+        doc_text = (doc.title + " " + doc.summary + " " + doc.content).lower()
+        for word in query_lower.split():
+            clean_word = "".join(ch for ch in word if ch.isalnum())
+            if len(clean_word) >= 3:
+                stem = clean_word[:4] if len(clean_word) >= 5 else clean_word
+                if stem in doc_text or clean_word in doc_text:
+                    score += 1
+        if score > 0:
+            all_scored_docs.append((doc, score))
+    all_scored_docs.sort(key=lambda x: x[1], reverse=True)
+
+    has_restricted_match = bool(all_scored_docs and all_scored_docs[0][0].minClearance < user_clearance)
+
+    if (is_finance_or_salary_probe or has_restricted_match) and user_clearance > 1:
         # Фиксация нарушения безопасности в аудит-лог (AI-06)
+        target_doc = all_scored_docs[0][0] if has_restricted_match else None
+        target_title = target_doc.title if target_doc else "Конфиденциальные финансовые документы (doc-fin-*)"
+        target_id = target_doc.id if target_doc else "doc-fin-02"
+        role_title = "Начальник производства" if user_role == "ROLE_PRODUCTION_HEAD" else "Клиентский сервис" if user_role == "ROLE_SUPPORT_HEAD" else str(user_role)
+        actor_name = storage.users.get(user_role, storage.get_current_user()).name
+
         storage.add_audit_log(
             action="RAG_SECURITY_BLOCK",
-            target="Конфиденциальные финансовые документы (doc-fin-*)",
+            target=f"Документ: {target_id} ({target_title})",
             status="blocked",
-            details=f"Заблокирован запрос: '{query}'. У роли {user_role} недостаточно прав (требуется допуск 1-го уровня)."
+            details=f"Заблокирован запрос: '{query}'. У роли {role_title} ({user_role}) недостаточно прав (требуется допуск 1-го уровня).",
+            role=user_role,
+            user_name=actor_name
         )
         return RAGResponse(
             id=f"rag-denied-{int(datetime.now().timestamp())}",
-            text="⛔ Доступ ограничен политикой безопасности предприятия. У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.",
+            text=f"⛔ Доступ ограничен политикой безопасности предприятия (RBAC AI-02). У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и закрытых документов руководства ООО «Фотопринт» («{target_title}»). Попытка доступа зарегистрирована в журнале аудита информационной безопасности.",
             timestamp=datetime.now().strftime("%H:%M"),
             citations=[],
             status="access_denied"
@@ -81,7 +108,9 @@ async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
             action="RAG_SEARCH_EMPTY",
             target="База знаний регламентов",
             status="warning",
-            details=f"Запрос '{query}' не дал прямых совпадений в разрешенной базе регламентов."
+            details=f"Запрос '{query}' не дал прямых совпадений в разрешенной базе регламентов.",
+            role=user_role,
+            user_name=actor_name
         )
         return RAGResponse(
             id=f"rag-empty-{int(datetime.now().timestamp())}",
@@ -174,7 +203,9 @@ async def execute_rag_search(query: str, user_role: UserRole) -> RAGResponse:
         action="RAG_SEARCH_SUCCESS",
         target=f"{best_doc.id} ({best_doc.title})",
         status="success",
-        details=f"Успешный ответ по регламенту с формированием {len(citations)} цитат."
+        details=f"Успешный ответ по регламенту с формированием {len(citations)} цитат.",
+        role=user_role,
+        user_name=actor_name
     )
 
     return RAGResponse(
