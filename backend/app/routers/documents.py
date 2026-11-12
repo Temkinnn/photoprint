@@ -2,7 +2,6 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import DBDocument, DBDocumentVersion
 from app.db.session import get_db
 from app.schemas import (
     DocumentCommitRequest,
@@ -21,8 +20,11 @@ from app.services.document_editor import (
     enforce_document_clearance,
     generate_document_draft,
     rollback_document_version,
-    to_document_item,
-    to_version_item,
+)
+from app.services.document_store import (
+    get_document_from_disk,
+    list_documents_from_disk,
+    list_versions_from_disk,
 )
 
 router = APIRouter(prefix="/documents", tags=["Документы и Версионирование"])
@@ -30,39 +32,26 @@ router = APIRouter(prefix="/documents", tags=["Документы и Верси�
 
 @router.get("/", response_model=List[DocumentItem])
 async def list_documents(db: Session = Depends(get_db)):
-    """Возвращает документы из PostgreSQL, разрешенные текущей роли (RBAC)."""
+    """Возвращает документы из папки documents, разрешенные текущей роли (RBAC)."""
     current_user = get_active_user(db)
     clearance = get_role_clearance(current_user.role)
-    docs = (
-        db.query(DBDocument)
-        .filter(DBDocument.min_clearance >= clearance)
-        .order_by(DBDocument.id.asc())
-        .all()
-    )
-    return [to_document_item(d) for d in docs]
+    return list_documents_from_disk(min_clearance=clearance)
 
 
 @router.get("/{doc_id}/versions", response_model=List[DocumentVersionItem])
 async def list_document_versions(doc_id: str, db: Session = Depends(get_db)):
-    """Возвращает историю версий документа с проверкой RBAC (AI-02, AI-07)."""
+    """Возвращает историю версий документа из папки documents/.versions с проверкой RBAC (AI-02, AI-07)."""
     current_user = get_active_user(db)
-    doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
+    doc = get_document_from_disk(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
     enforce_document_clearance(db, doc, current_user, "VIEW_DOCUMENT_VERSIONS")
-
-    versions = (
-        db.query(DBDocumentVersion)
-        .filter(DBDocumentVersion.document_id == doc_id)
-        .order_by(DBDocumentVersion.version_number.desc())
-        .all()
-    )
-    return [to_version_item(v) for v in versions]
+    return list_versions_from_disk(doc_id)
 
 
 @router.post("/draft", response_model=DocumentDraftResponse)
 async def create_document_draft(req: DocumentDraftRequest, db: Session = Depends(get_db)):
-    """Генерирует AI-черновик и diff-превью без записи в базу до явного подтверждения (AI-03)."""
+    """Генерирует AI-черновик и diff-превью без записи в папку documents до явного подтверждения (AI-03)."""
     current_user = get_active_user(db)
     return await generate_document_draft(db, req, current_user)
 
@@ -75,7 +64,7 @@ async def preview_document_diff(req: DocumentDiffPreviewRequest):
 
 @router.post("/commit", response_model=DocumentItem)
 async def commit_document(req: DocumentCommitRequest, db: Session = Depends(get_db)):
-    """Явное подтверждение сохранения нового документа или новой версии в PostgreSQL (AI-03, AI-07)."""
+    """Явное подтверждение сохранения нового документа или новой версии в папку documents (AI-03, AI-07)."""
     current_user = get_active_user(db)
     return commit_document_change(db, req, current_user)
 

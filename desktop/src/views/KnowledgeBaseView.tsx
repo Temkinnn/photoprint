@@ -210,7 +210,7 @@ export const KnowledgeBaseView: React.FC = () => {
       });
       showToast(
         'Черновик готов (AI-03)',
-        'Проверьте изменения в Diff-превью и подтвердите сохранение в PostgreSQL.',
+        'Проверьте изменения в Diff-превью и подтвердите сохранение в папку documents.',
         'info'
       );
     } catch (err: any) {
@@ -822,7 +822,7 @@ export const KnowledgeBaseView: React.FC = () => {
                     <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
                       <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
                         <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                          Журнал версий документа (PostgreSQL, AI-07)
+                          Журнал версий документа (папка documents, AI-07)
                         </h3>
                         <span className="text-[11px] font-mono text-neutral-400">
                           {versions.length} рев.

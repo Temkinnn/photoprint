@@ -1,16 +1,26 @@
+import asyncio
+import importlib.util
 import io
 import json
+import os
 import re
-import zipfile
-import xml.etree.ElementTree as ET
+import tempfile
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from app.config import settings
 from app.schemas import (
     ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
 )
-from app.services.ollama_client import TUNNEL_HEADERS, chat_with_ollama, extract_json_object, wrap_untrusted_context
+from app.services.document_store import extract_docx_text
+from app.services.ollama_client import (
+    TUNNEL_HEADERS,
+    chat_with_ollama,
+    extract_json_object,
+    probe_ai_server,
+    probe_local_ollama,
+    wrap_untrusted_context,
+)
 
 CATEGORY_MAP = {
     "решено": "resolved",
@@ -268,17 +278,7 @@ def extract_transcript_text(file_bytes: bytes, filename: str) -> str:
 
     if ext == ".docx":
         try:
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                xml_bytes = zf.read("word/document.xml")
-            root = ET.fromstring(xml_bytes)
-            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-            paragraphs: List[str] = []
-            for p in root.findall(".//w:body/w:p", ns):
-                texts = [t.text for t in p.findall(".//w:t", ns) if t.text]
-                joined = "".join(texts).strip()
-                if joined:
-                    paragraphs.append(joined)
-            content = "\n".join(paragraphs).strip()
+            content = extract_docx_text(file_bytes)
         except Exception as exc:
             raise HTTPException(
                 status_code=400,
@@ -299,22 +299,196 @@ def extract_transcript_text(file_bytes: bytes, filename: str) -> str:
     return content
 
 
+_LOCAL_WHISPER_CACHE: Dict[Tuple[str, str, str], Any] = {}
+
+
+def _decode_audio_to_16k_mono(audio_path: str):
+    """Декодирует .wav/.ogg/.mp3/.m4a/.webm в float32 mono 16kHz (обходит баг av.open metadata_errors в faster-whisper)."""
+    import numpy as np
+
+    try:
+        import av
+
+        with av.open(audio_path, mode="r") as container:
+            resampler = av.audio.resampler.AudioResampler(format="flt", layout="mono", rate=16000)
+            chunks = []
+            for packet in container.demux(audio=0):
+                for frame in packet.decode():
+                    for out_frame in resampler.resample(frame):
+                        chunks.append(np.asarray(out_frame.to_ndarray(), dtype=np.float32).reshape(-1))
+            for out_frame in resampler.resample(None):
+                chunks.append(np.asarray(out_frame.to_ndarray(), dtype=np.float32).reshape(-1))
+        if chunks:
+            return np.concatenate(chunks).astype(np.float32, copy=False)
+    except Exception:
+        pass
+
+    from scipy.io import wavfile
+    from scipy import signal
+
+    sr, data = wavfile.read(audio_path)
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    if data.dtype == np.int16:
+        data = data.astype(np.float32) / 32768.0
+    elif data.dtype == np.int32:
+        data = data.astype(np.float32) / 2147483648.0
+    elif data.dtype == np.uint8:
+        data = (data.astype(np.float32) - 128.0) / 128.0
+    else:
+        data = data.astype(np.float32)
+    if sr != 16000:
+        num_samples = max(1, int(len(data) * 16000 / sr))
+        data = signal.resample(data, num_samples).astype(np.float32)
+    return data
+
+
+def _transcribe_with_local_faster_whisper(file_bytes: bytes, ext: str) -> str:
+    """Локальная транскрибация аудио через faster-whisper прямо на ПК пользователя."""
+    from faster_whisper import WhisperModel
+
+    preferred_size = (settings.WHISPER_MODEL_SIZE or "medium").strip() or "medium"
+    download_root = r"D:\whisper_models" if os.path.exists(r"D:\whisper_models") else None
+
+    attempts: List[Tuple[str, str, str]] = [
+        (preferred_size, "cuda", "float16"),
+        (preferred_size, "cpu", "int8"),
+    ]
+    if preferred_size != "small":
+        attempts.append(("small", "cpu", "int8"))
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext or ".ogg") as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+
+    try:
+        audio_array = _decode_audio_to_16k_mono(tmp_path)
+        if audio_array.size == 0:
+            raise RuntimeError("Аудиофайл не содержит звуковой дорожки.")
+
+        last_exc: Optional[Exception] = None
+        for m_size, device, compute_type in attempts:
+            cache_key = (m_size, device, compute_type)
+            try:
+                model = _LOCAL_WHISPER_CACHE.get(cache_key)
+                if model is None:
+                    kwargs: Dict[str, Any] = {"device": device, "compute_type": compute_type}
+                    if download_root:
+                        kwargs["download_root"] = download_root
+                    try:
+                        model = WhisperModel(m_size, local_files_only=True, **kwargs)
+                    except Exception:
+                        model = WhisperModel(m_size, **kwargs)
+                    _LOCAL_WHISPER_CACHE[cache_key] = model
+
+                segs, _ = model.transcribe(
+                    audio_array,
+                    beam_size=5,
+                    language="ru",
+                    vad_filter=True,
+                    vad_parameters={"min_silence_duration_ms": 400},
+                )
+                seg_list = list(segs)
+                if not seg_list:
+                    segs_no_vad, _ = model.transcribe(audio_array, beam_size=5, language="ru", vad_filter=False)
+                    seg_list = list(segs_no_vad)
+
+                lines = [
+                    f"[{int(s.start // 60):02d}:{int(s.start % 60):02d}] {s.text.strip()}"
+                    for s in seg_list
+                    if (s.text or "").strip()
+                ]
+                transcript = "\n".join(lines).strip()
+                if not transcript:
+                    raise RuntimeError("Whisper не распознал речь в аудиофайле.")
+                return transcript
+            except Exception as exc:
+                last_exc = exc
+                _LOCAL_WHISPER_CACHE.pop(cache_key, None)
+                continue
+        raise RuntimeError(f"Не удалось выполнить локальную транскрибацию Whisper: {last_exc}")
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
+async def _proxy_audio_to_server(
+    target_base_url: str,
+    file_bytes: bytes,
+    filename: str,
+    meeting_title: str,
+    content_type: str,
+    req_timeout: float,
+) -> ProtocolAnalysisResponse:
+    target_url = f"{target_base_url.rstrip('/')}/api/v1/meetings/process-audio"
+    try:
+        async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
+            resp = await client.post(
+                target_url,
+                headers=TUNNEL_HEADERS,
+                files={"file": (filename or "meeting.ogg", file_bytes, content_type or "application/octet-stream")},
+                data={"title": meeting_title or "Оперативное совещание"},
+            )
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        if settings.ALLOW_FALLBACK:
+            return _build_fallback_response(meeting_title, "")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Сервер распознавания речи Whisper/AI недоступен ({target_url}): {exc}",
+        ) from exc
+
+    if resp.status_code != 200:
+        if settings.ALLOW_FALLBACK:
+            return _build_fallback_response(meeting_title, "")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ошибка STT/AI при обработке аудио (HTTP {resp.status_code}): {resp.text[:300]}",
+        )
+
+    return parse_meeting_analysis_payload(
+        resp.json(),
+        meeting_title=meeting_title,
+        fallback_transcript="",
+        model_used=f"Whisper + {settings.OLLAMA_MODEL}",
+    )
+
+
 async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -> ProtocolAnalysisResponse:
     """
     Анализ текстовой стенограммы встречи:
-    1. Удаленный AI-сервер ({AI_SERVER_URL}/api/v1/ai/analyze-transcript), если задан.
-    2. Иначе Ollama Qwen 2.5 (/api/chat в JSON-режиме).
+    - AI_MODE=auto: если локальная Ollama (или локальный ai/server.py) запущена — анализирует локально;
+      иначе использует удаленный AI_SERVER_URL (/api/v1/ai/analyze-transcript).
     Без скрытых заглушек при ALLOW_FALLBACK=false.
     """
     cleaned_text = (transcript_text or "").strip()
     if not cleaned_text:
         raise HTTPException(status_code=400, detail="Текст стенограммы пуст.")
 
+    mode = (settings.AI_MODE or "auto").strip().lower()
     ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")
+    local_ai_server = (settings.LOCAL_AI_SERVER_URL or "").strip().rstrip("/")
     req_timeout = max(settings.OLLAMA_TIMEOUT_SECONDS, 120.0)
 
-    if ai_server:
-        target_url = f"{ai_server}/api/v1/ai/analyze-transcript"
+    remote_analyze_base: Optional[str] = None
+    use_direct_ollama = False
+
+    if mode in ("auto", "local"):
+        reachable, model_ready, _, _, _ = await probe_local_ollama()
+        if reachable and model_ready:
+            use_direct_ollama = True
+        elif local_ai_server:
+            local_up, _, _ = await probe_ai_server(local_ai_server)
+            if local_up:
+                remote_analyze_base = local_ai_server
+
+    if not use_direct_ollama and remote_analyze_base is None and mode in ("auto", "remote") and ai_server:
+        remote_analyze_base = ai_server
+
+    if remote_analyze_base:
+        target_url = f"{remote_analyze_base}/api/v1/ai/analyze-transcript"
         try:
             async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
                 resp = await client.post(
@@ -399,8 +573,10 @@ async def process_meeting_audio(
     content_type: str = "application/octet-stream",
 ) -> ProtocolAnalysisResponse:
     """
-    Отправляет аудиофайл (.wav/.ogg/.mp3/.m4a/.webm) на сервер распознавания речи
-    (Whisper STT -> Qwen 2.5) по эндпоинту /api/v1/meetings/process-audio.
+    Обрабатывает аудиофайл (.wav/.ogg/.mp3/.m4a/.webm):
+    1. В режиме auto/local: сначала проверяет локальный ai/server.py (LOCAL_AI_SERVER_URL),
+       затем локальный faster-whisper прямо в процессе + Ollama.
+    2. Если локального STT нет — проксирует на удаленный AI_SERVER_URL.
     """
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Аудиофайл пуст.")
@@ -413,39 +589,47 @@ async def process_meeting_audio(
             detail=f"Неподдерживаемый формат аудио ({ext}). Допустимые форматы: .wav, .ogg, .mp3, .m4a, .flac, .webm.",
         )
 
-    ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/") or "http://127.0.0.1:8001"
-    target_url = f"{ai_server}/api/v1/meetings/process-audio"
+    mode = (settings.AI_MODE or "auto").strip().lower()
+    ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")
+    local_ai_server = (settings.LOCAL_AI_SERVER_URL or "").strip().rstrip("/")
     req_timeout = max(settings.OLLAMA_TIMEOUT_SECONDS, 180.0)
 
-    try:
-        async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
-            resp = await client.post(
-                target_url,
-                headers=TUNNEL_HEADERS,
-                files={"file": (filename or "meeting.ogg", file_bytes, content_type or "application/octet-stream")},
-                data={"title": meeting_title or "Оперативное совещание"},
-            )
-    except (httpx.TimeoutException, httpx.RequestError) as exc:
-        if settings.ALLOW_FALLBACK:
-            return _build_fallback_response(meeting_title, "")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Сервер распознавания речи Whisper/AI недоступен ({target_url}): {exc}",
-        ) from exc
+    if mode in ("auto", "local"):
+        if local_ai_server:
+            local_up, _, _ = await probe_ai_server(local_ai_server)
+            if local_up:
+                return await _proxy_audio_to_server(
+                    local_ai_server, file_bytes, filename, meeting_title, content_type, req_timeout
+                )
 
-    if resp.status_code != 200:
-        if settings.ALLOW_FALLBACK:
-            return _build_fallback_response(meeting_title, "")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Ошибка STT/AI при обработке аудио (HTTP {resp.status_code}): {resp.text[:300]}",
+        if importlib.util.find_spec("faster_whisper") is not None:
+            try:
+                transcript_text = await asyncio.to_thread(_transcribe_with_local_faster_whisper, file_bytes, ext)
+            except Exception as exc:
+                if settings.ALLOW_FALLBACK:
+                    return _build_fallback_response(meeting_title, "")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Ошибка локального Whisper при распознавании речи: {exc}",
+                ) from exc
+
+            result = await analyze_meeting_transcript(transcript_text, meeting_title)
+            result.modelUsed = f"local faster-whisper + {result.modelUsed or settings.OLLAMA_MODEL}"
+            return result
+
+    if mode in ("auto", "remote") and ai_server:
+        return await _proxy_audio_to_server(
+            ai_server, file_bytes, filename, meeting_title, content_type, req_timeout
         )
 
-    return parse_meeting_analysis_payload(
-        resp.json(),
-        meeting_title=meeting_title,
-        fallback_transcript="",
-        model_used=f"Whisper + {settings.OLLAMA_MODEL}",
+    if settings.ALLOW_FALLBACK:
+        return _build_fallback_response(meeting_title, "")
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Сервер распознавания речи Whisper недоступен: локальный faster-whisper не установлен "
+            "и удаленный AI_SERVER_URL не подключен."
+        ),
     )
 
 

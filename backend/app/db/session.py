@@ -54,9 +54,3 @@ def init_tables():
             for col_name, col_type in extra_cols.items():
                 if col_name not in existing_cols:
                     conn.execute(text(f"ALTER TABLE protocols ADD COLUMN {col_name} {col_type}"))
-
-    if "documents" in table_names:
-        doc_cols = {col["name"] for col in inspector.get_columns("documents")}
-        if "version" not in doc_cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN version INTEGER DEFAULT 1"))

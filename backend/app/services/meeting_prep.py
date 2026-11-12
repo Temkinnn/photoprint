@@ -2,14 +2,21 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.db.models import DBDocument, DBTask
+from app.db.models import DBTask
 from app.schemas import (
+    DocumentItem,
     PrepareAgendaRequest,
     PrepareAgendaResponse,
     OpenTaskSummary,
     UserProfile,
 )
-from app.services.audit import add_audit_log, get_role_clearance, surname_key
+from app.services.audit import (
+    add_audit_log,
+    get_role_clearance,
+    resolve_authorized_user,
+    surname_key,
+)
+from app.services.document_store import get_document_from_disk
 from app.services.ollama_client import chat_with_ollama, extract_json_object, wrap_untrusted_context
 
 
@@ -64,16 +71,23 @@ async def generate_meeting_prep(
     if not topic:
         raise HTTPException(status_code=400, detail="Укажите тему совещания.")
 
-    effective_role = req.userRole or current_user.role
+    authorized_user = resolve_authorized_user(
+        db,
+        req.userRole,
+        "PREP_ACCESS_DENIED",
+    )
+    effective_role = authorized_user.role
     clearance = get_role_clearance(effective_role)
 
-    # 1. RBAC проверка выбранных документов
-    allowed_docs: List[DBDocument] = []
+    # 1. RBAC проверка выбранных документов из папки documents
+    allowed_docs: List[DocumentItem] = []
     blocked_ids: List[str] = []
     if req.selectedDocIds:
-        requested_docs = db.query(DBDocument).filter(DBDocument.id.in_(req.selectedDocIds)).all()
-        for doc in requested_docs:
-            if doc.min_clearance >= clearance:
+        for doc_id in req.selectedDocIds:
+            doc = get_document_from_disk(doc_id)
+            if not doc:
+                continue
+            if doc.minClearance >= clearance:
                 allowed_docs.append(doc)
             else:
                 blocked_ids.append(doc.id)

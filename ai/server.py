@@ -9,9 +9,16 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# Перенаправляем кэш моделей на диск D:
-os.environ["HF_HOME"] = "D:\\huggingface"
-WHISPER_DOWNLOAD_ROOT = "D:\\whisper_models"
+# Настройка кэша моделей (используем D:\, если диск есть, иначе стандартный кэш или env)
+if os.getenv("HF_HOME"):
+    os.environ["HF_HOME"] = os.getenv("HF_HOME", "")
+elif os.path.exists("D:\\"):
+    os.environ["HF_HOME"] = "D:\\huggingface"
+
+WHISPER_DOWNLOAD_ROOT = os.getenv(
+    "WHISPER_DOWNLOAD_ROOT",
+    "D:\\whisper_models" if os.path.exists("D:\\") else "",
+) or None
 
 # Автоподключение CUDA DLL (если есть nvidia-*-cu12)
 try:
@@ -105,6 +112,23 @@ class MeetingAnalysisResult(BaseModel):
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ STT
 # ==========================================
 def load_audio_as_numpy(audio_path, target_sr=16000):
+    try:
+        import av
+
+        with av.open(audio_path, mode="r") as container:
+            resampler = av.audio.resampler.AudioResampler(format="flt", layout="mono", rate=target_sr)
+            chunks = []
+            for packet in container.demux(audio=0):
+                for frame in packet.decode():
+                    for out_frame in resampler.resample(frame):
+                        chunks.append(np.asarray(out_frame.to_ndarray(), dtype=np.float32).reshape(-1))
+            for out_frame in resampler.resample(None):
+                chunks.append(np.asarray(out_frame.to_ndarray(), dtype=np.float32).reshape(-1))
+        if chunks:
+            return np.concatenate(chunks).astype(np.float32, copy=False)
+    except Exception:
+        pass
+
     sr, data = wavfile.read(audio_path)
     if len(data.shape) > 1:
         data = data.mean(axis=1)
@@ -125,12 +149,26 @@ def load_audio_as_numpy(audio_path, target_sr=16000):
 
     return data
 
+
+_WHISPER_CACHE: Dict[str, Any] = {}
+
+
 def run_whisper(audio_path: str, model_size="medium"):
     from faster_whisper import WhisperModel
     audio_numpy = load_audio_as_numpy(audio_path, target_sr=16000)
 
     def try_decode(m_size, device, compute_type):
-        m = WhisperModel(m_size, device=device, compute_type=compute_type, download_root=WHISPER_DOWNLOAD_ROOT)
+        key = f"{m_size}:{device}:{compute_type}"
+        m = _WHISPER_CACHE.get(key)
+        if m is None:
+            kwargs: Dict[str, Any] = {"device": device, "compute_type": compute_type}
+            if WHISPER_DOWNLOAD_ROOT:
+                kwargs["download_root"] = WHISPER_DOWNLOAD_ROOT
+            try:
+                m = WhisperModel(m_size, local_files_only=True, **kwargs)
+            except Exception:
+                m = WhisperModel(m_size, **kwargs)
+            _WHISPER_CACHE[key] = m
         segs, _ = m.transcribe(
             audio_numpy,
             beam_size=5,
@@ -139,7 +177,11 @@ def run_whisper(audio_path: str, model_size="medium"):
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=400)
         )
-        return list(segs)
+        seg_list = list(segs)
+        if not seg_list:
+            segs_nv, _ = m.transcribe(audio_numpy, beam_size=5, language="ru", initial_prompt=CORPORATE_PROMPT, vad_filter=False)
+            seg_list = list(segs_nv)
+        return seg_list
 
     segments = None
     for current_model in [model_size, "small"]:
@@ -197,9 +239,39 @@ async def transcribe_endpoint(file: UploadFile = File(...)):
             "segments_count": len(segs),
             "duration_sec": elapsed
         }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Ошибка STT Whisper: {exc}")
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+class GenerateRequest(BaseModel):
+    prompt: str
+    system: Optional[str] = "Ты — корпоративный AI-ассистент ООО «Фотопринт»."
+    temperature: Optional[float] = 0.2
+
+
+@app.post("/api/v1/ai/generate")
+async def generate_text_endpoint(req: GenerateRequest):
+    """Универсальный текстовый вызов Qwen 2.5 для RAG, повестки и редактора документов."""
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": req.system or "Ты — корпоративный AI-ассистент ООО «Фотопринт»."},
+                {"role": "user", "content": req.prompt},
+            ],
+            temperature=req.temperature if req.temperature is not None else 0.2,
+        )
+        return {
+            "response": (resp.choices[0].message.content or "").strip(),
+            "model": MODEL_NAME,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации LLM: {str(e)}")
+
 
 @app.post("/api/v1/ai/analyze-transcript", response_model=MeetingAnalysisResult)
 async def analyze_transcript_endpoint(req: AnalyzeTranscriptRequest):
@@ -271,6 +343,10 @@ async def process_audio_meeting(file: UploadFile = File(...), title: str = Form(
         res = await analyze_transcript_endpoint(req)
         res.processing_time_sec = round(time.time() - t0, 2)
         return res
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Ошибка обработки аудио: {exc}")
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)

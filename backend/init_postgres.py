@@ -8,11 +8,12 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from app.config import settings
-from app.db.models import Base, DBUser, DBDocument, DBMeeting, DBTask, DBCalendarSlot, DBAuditLog, DBKPIMetric
+from app.db.models import Base, DBUser, DBMeeting, DBTask, DBCalendarSlot, DBAuditLog, DBKPIMetric
 from app.db.storage import (
-    INITIAL_USERS, INITIAL_DOCUMENTS, INITIAL_METRICS,
+    INITIAL_USERS, INITIAL_METRICS,
     INITIAL_SLOTS, INITIAL_TASKS, INITIAL_MEETINGS, INITIAL_AUDIT
 )
+from app.services.document_store import seed_documents_directory
 
 PASSWORDS_TO_TRY = [
     settings.POSTGRES_PASSWORD,
@@ -141,19 +142,9 @@ def try_connect():
         Session = sessionmaker(bind=engine_app)
         session = Session()
 
-        # 3. Сидируем 20 регламентов и данные
-        print(f"\n[3/3] Наполнение базы 20 регламентами компании и данными...")
-        session.query(DBDocument).delete()
-        for doc in INITIAL_DOCUMENTS:
-            session.add(DBDocument(
-                id=doc.id,
-                title=doc.title,
-                category=doc.category,
-                date=doc.date,
-                min_clearance=doc.minClearance,
-                summary=doc.summary,
-                content=doc.content
-            ))
+        # 3. Сидируем 20 регламентов в папку documents и данные в PostgreSQL
+        print(f"\n[3/3] Наполнение папки documents (20 регламентов) и базы данных...")
+        doc_count = seed_documents_directory(force=True)
 
         session.query(DBUser).delete()
         for _, u in INITIAL_USERS.items():
@@ -204,11 +195,10 @@ def try_connect():
             ))
 
         session.commit()
-        doc_count = session.query(DBDocument).count()
         task_count = session.query(DBTask).count()
-        print(f"[+] База PostgreSQL полностью готова!")
-        print(f"    - Документов регламентов: {doc_count} (все 20 загружены)")
-        print(f"    - Задач в реестре:         {task_count}")
+        print(f"[+] База PostgreSQL и папка documents полностью готовы!")
+        print(f"    - Документов в папке documents: {doc_count} (все 20 загружены)")
+        print(f"    - Задач в реестре:              {task_count}")
         session.close()
 
         # Обновляем .env файл бэкенда

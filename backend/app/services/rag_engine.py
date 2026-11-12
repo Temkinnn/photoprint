@@ -3,9 +3,9 @@ from typing import List, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.db.models import DBDocument
-from app.schemas import RAGResponse, Citation, UserRole
+from app.schemas import DocumentItem, RAGResponse, Citation, UserRole
 from app.services.audit import get_role_clearance, add_audit_log, get_active_user
+from app.services.document_store import get_restricted_doc_ids, list_documents_from_disk
 from app.services.ollama_client import chat_with_ollama, wrap_untrusted_context
 
 FINANCE_SENSITIVE_KEYWORDS = [
@@ -60,8 +60,8 @@ async def execute_rag_search(db: Session, query: str, requested_role: UserRole) 
     query_lower = query.lower()
 
     # Проверка на попытку несанкционированного доступа к закрытым данным (уровень 1 и уровень 2)
-    explicit_restricted_id = db.query(DBDocument.id).filter(DBDocument.min_clearance < user_clearance).all()
-    hits_restricted_id = any(doc_id.lower() in query_lower for (doc_id,) in explicit_restricted_id)
+    explicit_restricted_ids = get_restricted_doc_ids(user_clearance)
+    hits_restricted_id = any(doc_id.lower() in query_lower for doc_id in explicit_restricted_ids)
     hits_finance_kw = user_clearance > 1 and any(kw in query_lower for kw in FINANCE_SENSITIVE_KEYWORDS)
     hits_prod_kw = user_clearance > 2 and any(kw in query_lower for kw in PRODUCTION_RESTRICTED_KEYWORDS)
 
@@ -86,14 +86,10 @@ async def execute_rag_search(db: Session, query: str, requested_role: UserRole) 
             status="access_denied",
         )
 
-    # RBAC-фильтрация документов на уровне SQL-запроса ДО передачи в контекст LLM (AI-02)
-    allowed_docs: List[DBDocument] = (
-        db.query(DBDocument)
-        .filter(DBDocument.min_clearance >= user_clearance)
-        .all()
-    )
+    # RBAC-фильтрация документов из папки documents ДО передачи в контекст LLM (AI-02)
+    allowed_docs: List[DocumentItem] = list_documents_from_disk(min_clearance=user_clearance)
 
-    matching_docs: List[Tuple[DBDocument, int]] = []
+    matching_docs: List[Tuple[DocumentItem, int]] = []
     if any(kw in query_lower for kw in OVERVIEW_KEYWORDS):
         matching_docs = [(doc, 1) for doc in allowed_docs[:5]]
     else:

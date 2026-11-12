@@ -1,67 +1,38 @@
 import difflib
-import uuid
-from datetime import datetime
 from typing import List
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.models import DBDocument, DBDocumentVersion, DBUser
+from app.db.models import DBUser
 from app.schemas import (
     DocumentCommitRequest,
     DocumentDiffLine,
     DocumentDraftRequest,
     DocumentDraftResponse,
     DocumentItem,
-    DocumentVersionItem,
 )
 from app.services.audit import add_audit_log, get_role_clearance
+from app.services.document_store import (
+    create_document_on_disk,
+    get_document_from_disk,
+    get_version_from_disk,
+    update_document_on_disk,
+)
 from app.services.ollama_client import chat_with_ollama, extract_json_object, wrap_untrusted_context
 
 
-def to_document_item(doc: DBDocument) -> DocumentItem:
-    """Преобразует ORM-модель документа в Pydantic-схему."""
-    return DocumentItem(
-        id=doc.id,
-        title=doc.title,
-        category=doc.category,
-        date=doc.date,
-        minClearance=doc.min_clearance,
-        summary=doc.summary,
-        content=doc.content,
-        version=doc.version or 1,
-    )
-
-
-def to_version_item(ver: DBDocumentVersion) -> DocumentVersionItem:
-    """Преобразует запись истории версий документа в Pydantic-схему."""
-    return DocumentVersionItem(
-        id=ver.id,
-        documentId=ver.document_id,
-        versionNumber=ver.version_number,
-        title=ver.title,
-        category=ver.category,
-        date=ver.date,
-        minClearance=ver.min_clearance,
-        summary=ver.summary,
-        content=ver.content,
-        changeNote=ver.change_note or "",
-        changedBy=ver.changed_by,
-        createdAt=ver.created_at,
-    )
-
-
-def enforce_document_clearance(db: Session, doc: DBDocument, user: DBUser, action: str) -> None:
+def enforce_document_clearance(db: Session, doc: DocumentItem, user: DBUser, action: str) -> None:
     """Проверяет уровень допуска роли к документу (AI-02) и пишет ACCESS_DENIED при нарушении."""
     user_clearance = get_role_clearance(user.role)
-    if doc.min_clearance < user_clearance:
+    if doc.minClearance < user_clearance:
         add_audit_log(
             db,
             action="ACCESS_DENIED",
             target=f"{doc.id} ({doc.title})",
             status="blocked",
             details=(
-                f"Отказ в операции '{action}': уровень допуска документа ({doc.min_clearance}) "
+                f"Отказ в операции '{action}': уровень допуска документа ({doc.minClearance}) "
                 f"выше прав роли {user.role} ({user_clearance})"
             ),
             user=user,
@@ -94,7 +65,7 @@ async def generate_document_draft(
     req: DocumentDraftRequest,
     current_user: DBUser,
 ) -> DocumentDraftResponse:
-    """Генерирует проект нового документа или новой редакции через LLM без записи в БД (AI-03)."""
+    """Генерирует проект нового документа или новой редакции через LLM без записи на диск (AI-03)."""
     instruction = (req.instruction or "").strip()
     if not instruction:
         raise HTTPException(status_code=400, detail="Опишите, что нужно создать или изменить в документе.")
@@ -102,14 +73,14 @@ async def generate_document_draft(
     user_clearance = get_role_clearance(current_user.role)
     existing_doc = None
     if req.documentId:
-        existing_doc = db.query(DBDocument).filter(DBDocument.id == req.documentId).first()
+        existing_doc = get_document_from_disk(req.documentId)
         if not existing_doc:
             raise HTTPException(status_code=404, detail="Редактируемый документ не найден.")
         enforce_document_clearance(db, existing_doc, current_user, "AI_DRAFT_EDIT")
 
     mode = "edit" if existing_doc else "create"
     target_clearance = max(
-        req.minClearance if req.minClearance in (1, 2, 3) else (existing_doc.min_clearance if existing_doc else user_clearance),
+        req.minClearance if req.minClearance in (1, 2, 3) else (existing_doc.minClearance if existing_doc else user_clearance),
         user_clearance,
     )
 
@@ -181,7 +152,7 @@ async def generate_document_draft(
         status="success",
         details=(
             f"Сформирован черновик ({'правка' if existing_doc else 'новый документ'}) "
-            "для предпросмотра diff до подтверждения записи в БД (AI-03)."
+            "для предпросмотра diff до подтверждения сохранения в папку documents (AI-03)."
         ),
         user=current_user,
     )
@@ -208,7 +179,7 @@ def commit_document_change(
     req: DocumentCommitRequest,
     current_user: DBUser,
 ) -> DocumentItem:
-    """Явно подтверждает и сохраняет новый документ или новую версию в PostgreSQL (AI-03, AI-07)."""
+    """Явно подтверждает и сохраняет новый документ или новую версию в папку documents (AI-03, AI-07)."""
     title = (req.title or "").strip()
     category = (req.category or "").strip() or "Общие регламенты"
     summary = (req.summary or "").strip()
@@ -220,94 +191,54 @@ def commit_document_change(
 
     user_clearance = get_role_clearance(current_user.role)
     safe_clearance = max(req.minClearance if req.minClearance in (1, 2, 3) else user_clearance, user_clearance)
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     if req.mode == "edit" and req.documentId:
-        db_doc = db.query(DBDocument).filter(DBDocument.id == req.documentId).first()
-        if not db_doc:
+        existing_doc = get_document_from_disk(req.documentId)
+        if not existing_doc:
             raise HTTPException(status_code=404, detail="Документ для обновления не найден.")
-        enforce_document_clearance(db, db_doc, current_user, "COMMIT_DOCUMENT_VERSION")
+        enforce_document_clearance(db, existing_doc, current_user, "COMMIT_DOCUMENT_VERSION")
 
-        next_version = (db_doc.version or 1) + 1
-        db_doc.title = title
-        db_doc.category = category
-        db_doc.date = today_str
-        db_doc.min_clearance = safe_clearance
-        db_doc.summary = summary
-        db_doc.content = content
-        db_doc.version = next_version
-
-        note = (req.changeNote or "").strip() or f"Обновление текста до версии v{next_version}"
-        db_ver = DBDocumentVersion(
-            id=f"ver-{db_doc.id}-v{next_version}-{uuid.uuid4().hex[:4]}",
-            document_id=db_doc.id,
-            version_number=next_version,
+        note = (req.changeNote or "").strip() or f"Обновление текста до версии v{(existing_doc.version or 1) + 1}"
+        updated_doc = update_document_on_disk(
+            doc_id=existing_doc.id,
             title=title,
             category=category,
-            date=today_str,
             min_clearance=safe_clearance,
             summary=summary,
             content=content,
-            change_note=note,
             changed_by=current_user.name,
-            created_at=now_str,
+            change_note=note,
+            action_tag="edit",
         )
-        db.add(db_ver)
-        db.commit()
-        db.refresh(db_doc)
-
         add_audit_log(
             db,
             action="EDIT_DOCUMENT_VERSION",
-            target=f"{db_doc.id} v{next_version} ({db_doc.title})",
+            target=f"{updated_doc.id} v{updated_doc.version} ({updated_doc.title})",
             status="success",
-            details=f"Подтверждена новая версия документа v{next_version}: {note}",
+            details=f"Подтверждена новая версия файла документа v{updated_doc.version} в папке documents: {note}",
             user=current_user,
         )
-        return to_document_item(db_doc)
-
-    new_doc_id = f"doc-{uuid.uuid4().hex[:6]}"
-    db_doc = DBDocument(
-        id=new_doc_id,
-        title=title,
-        category=category,
-        date=today_str,
-        min_clearance=safe_clearance,
-        summary=summary,
-        content=content,
-        version=1,
-    )
-    db.add(db_doc)
+        return updated_doc
 
     note = (req.changeNote or "").strip() or "Создание первичной редакции документа v1"
-    db_ver = DBDocumentVersion(
-        id=f"ver-{new_doc_id}-v1",
-        document_id=new_doc_id,
-        version_number=1,
+    created_doc = create_document_on_disk(
         title=title,
         category=category,
-        date=today_str,
         min_clearance=safe_clearance,
         summary=summary,
         content=content,
-        change_note=note,
         changed_by=current_user.name,
-        created_at=now_str,
+        change_note=note,
     )
-    db.add(db_ver)
-    db.commit()
-    db.refresh(db_doc)
-
     add_audit_log(
         db,
         action="CREATE_DOCUMENT",
-        target=f"{db_doc.id} v1 ({db_doc.title})",
+        target=f"{created_doc.id} v1 ({created_doc.title})",
         status="success",
-        details=f"Создан и подтверждён новый документ (допуск {safe_clearance}): {note}",
+        details=f"Создан и сохранён файл нового документа в папку documents (допуск {safe_clearance}): {note}",
         user=current_user,
     )
-    return to_document_item(db_doc)
+    return created_doc
 
 
 def rollback_document_version(
@@ -316,56 +247,35 @@ def rollback_document_version(
     version_id: str,
     current_user: DBUser,
 ) -> DocumentItem:
-    """Откатывает документ к выбранной версии с записью новой ревизии (append-only, AI-07)."""
-    db_doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
-    if not db_doc:
+    """Откатывает документ к выбранной версии с записью новой ревизии в папку documents (append-only, AI-07)."""
+    existing_doc = get_document_from_disk(doc_id)
+    if not existing_doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
-    enforce_document_clearance(db, db_doc, current_user, "ROLLBACK_DOCUMENT_VERSION")
+    enforce_document_clearance(db, existing_doc, current_user, "ROLLBACK_DOCUMENT_VERSION")
 
-    target_ver = (
-        db.query(DBDocumentVersion)
-        .filter(DBDocumentVersion.id == version_id, DBDocumentVersion.document_id == doc_id)
-        .first()
-    )
+    target_ver = get_version_from_disk(doc_id, version_id)
     if not target_ver:
         raise HTTPException(status_code=404, detail="Целевая версия документа не найдена.")
 
-    next_version = (db_doc.version or 1) + 1
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    db_doc.title = target_ver.title
-    db_doc.category = target_ver.category
-    db_doc.date = today_str
-    db_doc.summary = target_ver.summary
-    db_doc.content = target_ver.content
-    db_doc.version = next_version
-
-    note = f"Откат к версии v{target_ver.version_number} от {target_ver.created_at}"
-    db_ver = DBDocumentVersion(
-        id=f"ver-{db_doc.id}-v{next_version}-{uuid.uuid4().hex[:4]}",
-        document_id=db_doc.id,
-        version_number=next_version,
-        title=db_doc.title,
-        category=db_doc.category,
-        date=today_str,
-        min_clearance=db_doc.min_clearance,
-        summary=db_doc.summary,
-        content=db_doc.content,
-        change_note=note,
+    note = f"Откат к версии v{target_ver.versionNumber} от {target_ver.createdAt}"
+    updated_doc = update_document_on_disk(
+        doc_id=doc_id,
+        title=target_ver.title,
+        category=target_ver.category,
+        min_clearance=existing_doc.minClearance,
+        summary=target_ver.summary,
+        content=target_ver.content,
         changed_by=current_user.name,
-        created_at=now_str,
+        change_note=note,
+        action_tag="rollback",
     )
-    db.add(db_ver)
-    db.commit()
-    db.refresh(db_doc)
 
     add_audit_log(
         db,
         action="ROLLBACK_DOCUMENT_VERSION",
-        target=f"{db_doc.id} -> v{next_version}",
+        target=f"{updated_doc.id} -> v{updated_doc.version}",
         status="success",
-        details=f"Выполнен откат документа «{db_doc.title}» к содержимому v{target_ver.version_number} (новая ревизия v{next_version})",
+        details=f"Выполнен откат файла документа «{updated_doc.title}» к содержимому v{target_ver.versionNumber} (новая ревизия v{updated_doc.version})",
         user=current_user,
     )
-    return to_document_item(db_doc)
+    return updated_doc

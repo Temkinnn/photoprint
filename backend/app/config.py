@@ -5,6 +5,7 @@ from typing import List
 
 # Автозагрузка .env файла бэкенда
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = os.path.dirname(backend_dir)
 ENV_PATH = os.path.join(backend_dir, ".env")
 load_dotenv(ENV_PATH)
 
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
+    DOCUMENTS_DIR: str = os.getenv("DOCUMENTS_DIR", os.path.join(project_root, "documents"))
     
     # Database (PostgreSQL 16/18)
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
@@ -38,7 +40,10 @@ class Settings(BaseSettings):
         return url_obj.render_as_string(hide_password=False)
     
     # AI / Ollama & Remote AI Server configuration
+    AI_MODE: str = os.getenv("AI_MODE", "auto").strip().lower()  # auto | local | remote
     AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "")
+    LOCAL_AI_SERVER_URL: str = os.getenv("LOCAL_AI_SERVER_URL", "http://127.0.0.1:8001")
+    WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "medium")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     OLLAMA_EMBED_MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
