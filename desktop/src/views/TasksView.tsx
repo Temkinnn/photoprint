@@ -1,3 +1,4 @@
+// ======================== src/views/TasksView.tsx ========================
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, Plus, CheckCircle2, X } from 'lucide-react';
@@ -45,11 +46,10 @@ export const TasksView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
-      {/* Header */}
       <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between shrink-0">
         <div>
-          <h1 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)]">
-            РЕЕСТР ПОРУЧЕНИЙ И РЕШЕНИЙ
+          <h1 className="text-sm font-semibold text-[var(--text-primary)]">
+            Реестр поручений и решений
           </h1>
           <p className="text-xs text-[var(--text-secondary)]">
             Контроль исполнения производственных и организационных задач
@@ -58,18 +58,16 @@ export const TasksView: React.FC = () => {
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-full transition-all active:scale-95"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-lg transition-opacity"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
           <span>Новое поручение</span>
         </button>
       </div>
 
-      {/* Filter Segmented Track & Search */}
-      <div className="px-6 py-3.5 border-b border-dashed border-[var(--border-dashed)] bg-[var(--bg-card)] shrink-0">
+      <div className="px-6 py-3 border-b border-[var(--border-solid)] bg-[var(--bg-card)] shrink-0">
         <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3">
-          {/* Segmented Control */}
-          <div className="inline-flex items-center p-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
+          <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
             {[
               { id: 'all', label: 'Все', count: tasks.length },
               {
@@ -89,19 +87,17 @@ export const TasksView: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setFilterStatus(tab.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1.5 ${
                     isActive
-                      ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
+                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
+                    className={`font-mono text-[11px] px-1.5 rounded ${
                       tab.alert
                         ? 'bg-[#D71921] text-white'
-                        : isActive
-                        ? 'bg-[var(--bg-canvas)]/20 text-current'
                         : 'text-[var(--text-muted)]'
                     }`}
                   >
@@ -112,21 +108,19 @@ export const TasksView: React.FC = () => {
             })}
           </div>
 
-          {/* Search Input */}
           <div className="w-72 relative">
-            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3.5 top-2.5" />
+            <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Поиск по исполнителю или задаче..."
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full pl-9 pr-4 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
             />
           </div>
         </div>
       </div>
 
-      {/* Tasks List */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-8">
         <div className="max-w-5xl mx-auto w-full space-y-2.5">
           {filteredTasks.length === 0 ? (
@@ -145,11 +139,10 @@ export const TasksView: React.FC = () => {
                     isDone ? 'opacity-55' : ''
                   }`}
                 >
-                  {/* Interactive Check Button */}
                   <button
                     onClick={() => toggleTaskStatus(task.id)}
                     title={isDone ? 'Вернуть в работу' : 'Отметить выполненным'}
-                    className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0 active:scale-90 ${
+                    className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                       isDone
                         ? 'bg-emerald-600 border-emerald-600 text-white'
                         : 'border-[var(--border-dashed)] bg-[var(--bg-elevated)] hover:border-[var(--text-primary)]'
@@ -158,7 +151,7 @@ export const TasksView: React.FC = () => {
                     {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
                   </button>
 
-                  <div className="flex-1 space-y-2 min-w-0">
+                  <div className="flex-1 space-y-1.5 min-w-0">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div
                         className={`text-xs font-semibold leading-snug ${
@@ -170,39 +163,38 @@ export const TasksView: React.FC = () => {
                         {task.title}
                       </div>
 
-                      {/* Flat Non-Clickable Status Pill */}
                       {isDone ? (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          ВЫПОЛНЕНО
+                          Выполнено
                         </span>
                       ) : isOverdue ? (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921]">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-[#D71921]/15 text-[#D71921]">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
-                          ПРОСРОЧЕНО
+                          Просрочено
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                          В РАБОТЕ
+                          В работе
                         </span>
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-secondary)]">
-                      <span className="font-semibold text-[var(--text-primary)]">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                      <span className="font-medium text-[var(--text-primary)]">
                         {task.assigneeName}
                       </span>
                       <span
-                        className={`font-mono ${
-                          isOverdue ? 'text-[#D71921] font-semibold' : 'text-[var(--text-muted)]'
+                        className={`font-mono text-[11px] ${
+                          isOverdue ? 'text-[#D71921] font-medium' : 'text-[var(--text-muted)]'
                         }`}
                       >
                         Срок: {task.deadline}
                       </span>
                       {task.meetingTitle && (
-                        <span className="text-[var(--text-muted)] font-mono text-[10px]">
-                          // {task.meetingTitle}
+                        <span className="text-[var(--text-muted)] font-mono text-[11px]">
+                          {task.meetingTitle}
                         </span>
                       )}
                     </div>
@@ -214,17 +206,16 @@ export const TasksView: React.FC = () => {
         </div>
       </div>
 
-      {/* Create Task Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="nothing-card max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-dashed border-[var(--border-dashed)]">
-              <h3 className="font-dot text-sm uppercase tracking-wider text-[var(--text-primary)]">
-                НОВОЕ ПОРУЧЕНИЕ
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-solid)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                Новое поручение
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
+                className="w-7 h-7 rounded-lg hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -232,8 +223,8 @@ export const TasksView: React.FC = () => {
 
             <form onSubmit={handleCreate} className="space-y-3.5">
               <div>
-                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
-                  ФОРМУЛИРОВКА ЗАДАЧИ
+                <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+                  Формулировка задачи
                 </label>
                 <input
                   type="text"
@@ -241,13 +232,13 @@ export const TasksView: React.FC = () => {
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Что необходимо сделать..."
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
-                  ОТВЕТСТВЕННЫЙ
+                <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+                  Ответственный
                 </label>
                 <input
                   type="text"
@@ -255,13 +246,13 @@ export const TasksView: React.FC = () => {
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                   placeholder="Иванов И.С. (Начальник производства)"
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
-                  СРОК ИСПОЛНЕНИЯ
+                <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1">
+                  Срок исполнения
                 </label>
                 <input
                   type="text"
@@ -269,21 +260,21 @@ export const TasksView: React.FC = () => {
                   value={newDeadline}
                   onChange={(e) => setNewDeadline(e.target.value)}
                   placeholder="2026-11-20"
-                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-dashed border-[var(--border-dashed)]">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[var(--border-solid)]">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                  className="px-3.5 py-2 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-full text-xs font-semibold hover:opacity-90 transition-all"
+                  className="px-4 py-2 bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
                 >
                   Сохранить в реестр
                 </button>

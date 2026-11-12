@@ -34,10 +34,10 @@ import {
   Upload,
   Edit3,
   HelpCircle,
-  MessageSquare,
   Play,
   Pause,
   ArrowUpRight,
+  FileAudio,
 } from 'lucide-react';
 
 const surnameKey = (name: string): string => {
@@ -70,7 +70,7 @@ const DECISION_CATEGORY_META: Record<
     pillClass: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]',
   },
   needs_clarification: {
-    label: 'Требует уточнения',
+    label: 'Уточнить',
     dotColor: 'bg-amber-500',
     pillClass: 'bg-amber-500/15 text-amber-500',
   },
@@ -108,7 +108,6 @@ export const MeetingsView: React.FC = () => {
     uploadMeetingTranscript,
     saveMeetingProtocol,
     protocols,
-    backendOnline,
     calendarSlots,
     scheduledMeetings,
     scheduleMeeting,
@@ -133,6 +132,15 @@ export const MeetingsView: React.FC = () => {
   const standaloneProtocols = protocols.filter(
     (p) => !p.meetingId || !scheduledList.some((m) => m.id === p.meetingId)
   );
+
+  // Explicit ingestion dropzone screen for creating a new protocol from audio/text
+  const [isNewProtocolDropzoneOpen, setIsNewProtocolDropzoneOpen] = useState<boolean>(false);
+  const [newProtocolTitleInput, setNewProtocolTitleInput] = useState<string>('');
+  const [isDraggingAudio, setIsDraggingAudio] = useState<boolean>(false);
+
+  // Variant A: Clean tabs inside the protocol right pane
+  const [protocolTab, setProtocolTab] = useState<'summary' | 'tasks'>('summary');
+  const [expandedTaskIdx, setExpandedTaskIdx] = useState<number | null>(null);
 
   const [showScheduledProtocolWorkspace, setShowScheduledProtocolWorkspace] =
     useState<boolean>(false);
@@ -160,7 +168,7 @@ export const MeetingsView: React.FC = () => {
   const [decisionFilter, setDecisionFilter] = useState<DecisionCategory | 'all'>('all');
   const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
 
-  // Interactive transcript audio mini-player state
+  // Mini audio player state
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const [activeAudioTime, setActiveAudioTime] = useState<string>('00:01');
@@ -184,7 +192,7 @@ export const MeetingsView: React.FC = () => {
   const [isInvitationsOpen, setIsInvitationsOpen] = useState<boolean>(false);
   const [invTab, setInvTab] = useState<'incoming' | 'all'>('incoming');
 
-  // Preparation, Calendar Booking and Preview Confirmation Modal
+  // Meeting Preparation Modal
   const [isPrepModalOpen, setIsPrepModalOpen] = useState<boolean>(false);
   const [prepStep, setPrepStep] = useState<'setup' | 'preview'>('setup');
   const [prepTopic, setPrepTopic] = useState<string>(
@@ -235,6 +243,7 @@ export const MeetingsView: React.FC = () => {
   useEffect(() => {
     if (!audioJob) return;
     if (audioJob.status === 'transcribing') {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(audioJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -247,21 +256,21 @@ export const MeetingsView: React.FC = () => {
           date: audioJob.date,
           transcriptRef: `#audio-${audioJob.filename}`,
           transcriptText:
-            `⏳ Whisper распознаёт аудио «${audioJob.filename}» в фоне...\n\n` +
-            'Можете перейти в «Базу знаний» для демонстрации поиска по регламентам и ролевой защиты. ' +
-            'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
-          summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+            `⏳ Whisper расшифровывает аудио «${audioJob.filename}»...\n\n` +
+            'Вы можете перейти в «Базу знаний» — когда расшифровка завершится, появится уведомление.',
+          summary: 'Выполняется транскрибация аудиозаписи через Whisper...',
           decisions: [],
           risks: [],
           openQuestions: [],
           processingTimeSec: null,
-          modelUsed: 'Whisper STT (в фоне)',
+          modelUsed: 'Whisper STT',
         };
       });
       return;
     }
 
     if (audioJob.status === 'ready' && !audioJob.applied && audioJob.transcriptText) {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(audioJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -274,7 +283,7 @@ export const MeetingsView: React.FC = () => {
         transcriptRef: `#audio-${audioJob.filename}`,
         transcriptText: audioJob.transcriptText,
         summary:
-          'Расшифровка аудио завершена. Проверьте текст стенограммы слева и нажмите «2. AI-анализ».',
+          'Расшифровка аудио завершена. Проверьте текст стенограммы слева и нажмите «Сформировать протокол (ИИ)».',
         decisions: [],
         risks: [],
         openQuestions: [],
@@ -289,6 +298,7 @@ export const MeetingsView: React.FC = () => {
   useEffect(() => {
     if (!analysisJob) return;
     if (analysisJob.status === 'analyzing') {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(analysisJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -307,7 +317,7 @@ export const MeetingsView: React.FC = () => {
           date: analysisJob.date,
           transcriptRef: analysisJob.transcriptRef,
           transcriptText: analysisJob.transcriptText,
-          summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+          summary: '⏳ Qwen 2.5 анализирует стенограмму и выделяет решения и поручения...',
           decisions: [],
           risks: [],
           openQuestions: [],
@@ -325,6 +335,7 @@ export const MeetingsView: React.FC = () => {
         workspaceData.transcriptRef !== analysisJob.transcriptRef ||
         workspaceData.decisions.length === 0)
     ) {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(analysisJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -404,7 +415,7 @@ export const MeetingsView: React.FC = () => {
         'success'
       );
     } catch (err: any) {
-      const message = err?.message || 'Ошибка при генерации повестки через LLM.';
+      const message = err?.message || 'Ошибка при генерации повестки.';
       setPrepError(message);
       showToast('Ошибка генерации повестки', message, 'error');
     } finally {
@@ -436,7 +447,7 @@ export const MeetingsView: React.FC = () => {
         : '';
 
     setInvitationText(
-      `Уважаемые коллеги!\nПриглашаю вас на совещание «${prepTopic.trim()}».\n\n` +
+      `Уважаемые коллеги,\nприглашаю вас на совещание «${prepTopic.trim()}».\n\n` +
         `Дата и время: ${selectedSlot.date}, ${selectedSlot.startTime}–${selectedSlot.endTime}\n` +
         `Участники: ${prepParticipants.join(', ')}\n\n` +
         `Проект повестки:\n${agendaLines}${questionsLines}`
@@ -468,6 +479,7 @@ export const MeetingsView: React.FC = () => {
       });
 
       setSelectedTranscriptId(created.id);
+      setIsNewProtocolDropzoneOpen(false);
       setShowScheduledProtocolWorkspace(false);
       setIsPrepModalOpen(false);
       setPrepStep('setup');
@@ -502,17 +514,19 @@ export const MeetingsView: React.FC = () => {
       processingTimeSec: res.processingTimeSec ?? null,
       modelUsed: res.modelUsed ?? null,
     });
-    setTasksToReview(
-      (res.tasks || []).map((t) => ({
-        title: t.title,
-        assigneeName: t.assigneeName,
-        deadline: t.deadline,
-        sourceQuote: t.sourceQuote,
-        timestamp: t.timestamp || '00:00',
-        status: 'pending_approval' as const,
-      }))
-    );
+    const staged = (res.tasks || []).map((t) => ({
+      title: t.title,
+      assigneeName: t.assigneeName,
+      deadline: t.deadline,
+      sourceQuote: t.sourceQuote,
+      timestamp: t.timestamp || '00:00',
+      status: 'pending_approval' as const,
+    }));
+    setTasksToReview(staged);
+    setExpandedTaskIdx(staged.length > 0 ? 0 : null);
+    setProtocolTab('summary');
     setShowScheduledProtocolWorkspace(true);
+    setIsNewProtocolDropzoneOpen(false);
     setIsEditingTranscript(false);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
@@ -522,7 +536,7 @@ export const MeetingsView: React.FC = () => {
     if (!workspaceData.summary.trim() && workspaceData.decisions.length === 0) {
       showToast(
         'Нечего сохранять',
-        'Сначала выполните анализ стенограммы или аудиозаписи',
+        'Сначала расшифруйте аудио или запустите анализ стенограммы',
         'warning'
       );
       return;
@@ -558,14 +572,14 @@ export const MeetingsView: React.FC = () => {
       showToast(
         'Стенограмма ещё не готова',
         textToAnalyze.startsWith('⏳')
-          ? 'Дождитесь завершения распознавания речи Whisper.'
-          : 'Вставьте текст или загрузите файл стенограммы/аудио',
+          ? 'Дождитесь завершения расшифровки аудио через Whisper'
+          : 'Загрузите аудиозапись или вставьте текст стенограммы слева',
         'warning'
       );
       return;
     }
     if (analysisJob?.status === 'analyzing') {
-      showToast('Анализ уже выполняется', 'Дождитесь завершения текущей обработки.', 'info');
+      showToast('Анализ уже выполняется', 'Дождитесь завершения обработки', 'info');
       return;
     }
     if (audioJob?.status === 'ready') {
@@ -573,7 +587,7 @@ export const MeetingsView: React.FC = () => {
     }
     setWorkspaceData((prev) => ({
       ...prev,
-      summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+      summary: '⏳ Qwen 2.5 анализирует стенограмму и выделяет решения и поручения...',
       decisions: [],
       risks: [],
       openQuestions: [],
@@ -591,30 +605,29 @@ export const MeetingsView: React.FC = () => {
       transcriptText: textToAnalyze,
     });
     showToast(
-      'AI-анализ запущен в фоне',
-      'Можете переключаться между экранами — готовый протокол появится автоматически.',
+      'Анализ стенограммы запущен',
+      'Можете переключаться между экранами — готовый протокол появится автоматически',
       'info'
     );
   };
 
-  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  const startAudioUploadFlow = (file: File) => {
     if (analysisJob && analysisJob.status !== 'analyzing') {
       clearAnalysisJob();
     }
 
     const targetMeeting = selectedMeetingItem;
-    const isAdHoc = !targetMeeting && selectedTranscriptId === 'ad-hoc-new';
+    const isAdHoc = !targetMeeting && (isNewProtocolDropzoneOpen || selectedTranscriptId === 'ad-hoc-new');
     const targetId = targetMeeting ? targetMeeting.id : 'ad-hoc-new';
+    const customTitle = newProtocolTitleInput.trim();
     const title =
       targetMeeting?.title ||
       (isAdHoc
-        ? file.name.replace(/\.[^.]+$/, '')
+        ? customTitle || file.name.replace(/\.[^.]+$/, '')
         : workspaceData.title || file.name.replace(/\.[^.]+$/, ''));
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
 
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId(targetId);
     setShowScheduledProtocolWorkspace(true);
     setShowTranscript(true);
@@ -626,15 +639,14 @@ export const MeetingsView: React.FC = () => {
       date: today,
       transcriptRef: `#audio-${file.name}`,
       transcriptText:
-        `⏳ Whisper распознаёт аудио «${file.name}» в фоне...\n\n` +
-        'Можете перейти в «Базу знаний» для поиска по регламентам. ' +
-        'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
-      summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+        `⏳ Whisper расшифровывает аудио «${file.name}»...\n\n` +
+        'Вы можете перейти в «Базу знаний» — когда расшифровка завершится, появится уведомление.',
+      summary: 'Выполняется транскрибация аудиозаписи через Whisper...',
       decisions: [],
       risks: [],
       openQuestions: [],
       processingTimeSec: null,
-      modelUsed: 'Whisper STT (в фоне)',
+      modelUsed: 'Whisper STT',
     });
     setTasksToReview([]);
 
@@ -646,10 +658,25 @@ export const MeetingsView: React.FC = () => {
       date: today,
     });
     showToast(
-      'Whisper запущен в фоне',
-      `Аудио «${file.name}» расшифровывается. Можно перейти в «Базу знаний» и вернуться позже.`,
+      'Транскрибация запущена',
+      `Аудио «${file.name}» передано в Whisper`,
       'info'
     );
+  };
+
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    startAudioUploadFlow(file);
+  };
+
+  const handleDropAudioFile = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingAudio(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    startAudioUploadFlow(file);
   };
 
   const handleTranscriptFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -658,9 +685,12 @@ export const MeetingsView: React.FC = () => {
     if (!file) return;
 
     const targetMeeting = selectedMeetingItem;
-    const title = targetMeeting?.title || file.name.replace(/\.[^.]+$/, '');
+    const customTitle = newProtocolTitleInput.trim();
+    const title =
+      targetMeeting?.title || customTitle || file.name.replace(/\.[^.]+$/, '');
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
 
+    setIsNewProtocolDropzoneOpen(false);
     setIsAnalyzing(true);
     setAnalyzingLabel('Анализ файла...');
     showToast('Обработка файла', `Чтение «${file.name}» и анализ стенограммы...`, 'info');
@@ -688,19 +718,21 @@ export const MeetingsView: React.FC = () => {
     }
   };
 
-  const handleOpenAdHocProtocol = () => {
+  const handleOpenManualNewProtocol = () => {
     const today = new Date().toISOString().slice(0, 10);
+    const title = newProtocolTitleInput.trim() || 'Новое оперативное совещание';
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId('ad-hoc-new');
     setShowScheduledProtocolWorkspace(true);
+    setShowTranscript(true);
     setWorkspaceData({
       id: `ad-hoc-${Date.now()}`,
-      title: 'Новое оперативное совещание',
+      title,
       date: today,
       transcriptRef: `#transcript-ad-hoc-${today}`,
-      transcriptText:
-        '[00:05] Смирнов А.В.: Коллеги, начинаем разбор по текущему тиражу.\n[00:18] Иванов И.С.: Проблема со сроками на участке печати, нужно утвердить ответственных.',
+      transcriptText: '',
       summary:
-        'Черновик протокола. Загрузите аудио (.ogg/.wav/.mp3), файл стенограммы (.txt/.vtt/.docx) или отредактируйте текст слева и нажмите «2. AI-анализ».',
+        'Вставьте текст стенограммы в левую панель и нажмите «Сформировать протокол (ИИ)».',
       decisions: [],
       risks: [],
       openQuestions: [],
@@ -734,20 +766,15 @@ export const MeetingsView: React.FC = () => {
       });
       setIsEditingTranscript(false);
     } else {
-      const agendaPreview = selectedMeetingItem.agenda
-        .map((a, idx) => `[00:0${idx + 1}] Повестка: ${a}`)
-        .join('\n');
       setWorkspaceData({
         id: selectedMeetingItem.id,
         meetingId: selectedMeetingItem.id,
         title: selectedMeetingItem.title,
         date: selectedMeetingItem.date,
         transcriptRef: `#meeting-${selectedMeetingItem.id}`,
-        transcriptText:
-          agendaPreview ||
-          `[00:00] ${selectedMeetingItem.participants[0] || 'Руководитель'}: Начинаем совещание «${selectedMeetingItem.title}».`,
+        transcriptText: '',
         summary:
-          'Встреча ещё не обработана. Загрузите аудиозапись, файл стенограммы или вставьте текст совещания слева и запустите AI-анализ.',
+          'Вставьте текст стенограммы слева или загрузите аудиозапись для автоматической расшифровки.',
         decisions: [],
         risks: [],
         openQuestions: selectedMeetingItem.openQuestions || [],
@@ -755,6 +782,7 @@ export const MeetingsView: React.FC = () => {
       setIsEditingTranscript(true);
     }
     setTasksToReview([]);
+    setProtocolTab('summary');
     setShowScheduledProtocolWorkspace(true);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
@@ -782,12 +810,14 @@ export const MeetingsView: React.FC = () => {
     if (analysisJob && analysisJob.status !== 'analyzing' && id !== analysisJob.targetId) {
       clearAnalysisJob();
     }
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId(id);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
+    setProtocolTab('summary');
 
     if (id === 'ad-hoc-new') {
-      handleOpenAdHocProtocol();
+      setIsNewProtocolDropzoneOpen(true);
       return;
     }
 
@@ -854,16 +884,16 @@ export const MeetingsView: React.FC = () => {
         risks: found.risks || [],
         openQuestions: [],
       });
-      setTasksToReview(
-        found.stagedTasks.map((t) => ({
-          title: t.title,
-          assigneeName: t.assigneeName,
-          deadline: t.deadline,
-          sourceQuote: t.sourceQuote,
-          timestamp: t.timestamp,
-          status: 'pending_approval' as const,
-        }))
-      );
+      const staged = found.stagedTasks.map((t) => ({
+        title: t.title,
+        assigneeName: t.assigneeName,
+        deadline: t.deadline,
+        sourceQuote: t.sourceQuote,
+        timestamp: t.timestamp,
+        status: 'pending_approval' as const,
+      }));
+      setTasksToReview(staged);
+      setExpandedTaskIdx(null);
       setIsEditingTranscript(false);
     }
   };
@@ -878,36 +908,47 @@ export const MeetingsView: React.FC = () => {
 
   const handleDeleteTask = (index: number) => {
     setTasksToReview((prev) => prev.filter((_, i) => i !== index));
+    if (expandedTaskIdx === index) setExpandedTaskIdx(null);
     showToast('Задача удалена', 'Поручение исключено из черновика', 'info');
   };
 
   const handleAddTask = () => {
-    setTasksToReview((prev) => [
-      ...prev,
-      {
-        title: 'Новое поручение',
-        assigneeName: 'Назначить ответственного',
-        deadline: 'Указать срок',
-        sourceQuote: 'Добавлено вручную',
-        timestamp: '00:00',
-        status: 'pending_approval',
-      },
-    ]);
+    setTasksToReview((prev) => {
+      const next = [
+        ...prev,
+        {
+          title: 'Новое поручение',
+          assigneeName: 'Назначить ответственного',
+          deadline: 'Указать срок',
+          sourceQuote: 'Добавлено вручную',
+          timestamp: '00:00',
+          status: 'pending_approval' as const,
+        },
+      ];
+      setExpandedTaskIdx(next.length - 1);
+      return next;
+    });
+    setProtocolTab('tasks');
   };
 
   const handleAddQuestionToTasks = (question: string) => {
-    setTasksToReview((prev) => [
-      ...prev,
-      {
-        title: `Проработать вопрос: ${question}`,
-        assigneeName: 'Назначить ответственного',
-        deadline: 'Завтра, 18:00',
-        sourceQuote: 'Из открытых вопросов совещания',
-        timestamp: activeAudioTime || '00:00',
-        status: 'pending_approval',
-      },
-    ]);
-    showToast('Добавлено в поручения', 'Вопрос перенесён в список к утверждению ниже', 'success');
+    setTasksToReview((prev) => {
+      const next = [
+        ...prev,
+        {
+          title: `Проработать вопрос: ${question}`,
+          assigneeName: 'Назначить ответственного',
+          deadline: 'Завтра, 18:00',
+          sourceQuote: 'Из открытых вопросов совещания',
+          timestamp: activeAudioTime || '00:00',
+          status: 'pending_approval' as const,
+        },
+      ];
+      setExpandedTaskIdx(next.length - 1);
+      return next;
+    });
+    setProtocolTab('tasks');
+    showToast('Добавлено в поручения', 'Перешли на вкладку утверждения поручений', 'success');
   };
 
   const handleSearchQuestionInKB = async (question: string) => {
@@ -944,6 +985,7 @@ export const MeetingsView: React.FC = () => {
     const protoId = workspaceData.savedProtocolId;
     batchApproveTasks(tasksToReview, workspaceData.title, protoId);
     setTasksToReview([]);
+    setExpandedTaskIdx(null);
   };
 
   const handleReject = () => {
@@ -954,18 +996,13 @@ export const MeetingsView: React.FC = () => {
       'Руководитель отклонил черновик поручений. База данных не изменена.'
     );
     setTasksToReview([]);
+    setExpandedTaskIdx(null);
     showToast('Черновик отклонен', 'Поручения отменены без внесения в реестр', 'warning');
   };
 
   const cycleSpeed = () => {
     setPlaybackSpeed((prev) => (prev === 1 ? 1.5 : prev === 1.5 ? 2 : 1));
   };
-
-  const hasTranscriptReady =
-    workspaceData.transcriptText.trim().length > 0 &&
-    !workspaceData.transcriptText.startsWith('⏳');
-  const hasAnalysisReady =
-    workspaceData.decisions.length > 0 || Boolean(workspaceData.savedProtocolId);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
@@ -988,21 +1025,29 @@ export const MeetingsView: React.FC = () => {
       {/* Top Header */}
       <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)] shrink-0">
-            СОВЕЩАНИЯ И ПРОТОКОЛЫ
+          <h1 className="text-sm font-semibold text-[var(--text-primary)] shrink-0">
+            Совещания и протоколы
           </h1>
 
           <span className="text-[var(--text-muted)]">/</span>
 
-          {/* Meeting Selector Capsule */}
           <div className="relative">
             <select
-              value={selectedTranscriptId}
-              onChange={(e) => handleSelectMeeting(e.target.value)}
-              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs rounded-full px-4 py-1.5 pr-9 focus:outline-none focus:border-[var(--text-primary)] font-medium appearance-none cursor-pointer max-w-[360px]"
+              value={isNewProtocolDropzoneOpen ? 'new-dropzone' : selectedTranscriptId}
+              onChange={(e) => {
+                if (e.target.value === 'new-dropzone') {
+                  setIsNewProtocolDropzoneOpen(true);
+                } else {
+                  handleSelectMeeting(e.target.value);
+                }
+              }}
+              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:border-[var(--text-primary)] font-medium appearance-none cursor-pointer max-w-[360px]"
             >
-              {selectedTranscriptId === 'ad-hoc-new' && (
-                <option value="ad-hoc-new">[Новый протокол] {workspaceData.title}</option>
+              {isNewProtocolDropzoneOpen && (
+                <option value="new-dropzone">+ Загрузка новой записи / стенограммы</option>
+              )}
+              {selectedTranscriptId === 'ad-hoc-new' && !isNewProtocolDropzoneOpen && (
+                <option value="ad-hoc-new">[Черновик] {workspaceData.title}</option>
               )}
               {scheduledList.length > 0 && (
                 <optgroup label="Совещания компании">
@@ -1031,30 +1076,31 @@ export const MeetingsView: React.FC = () => {
                 ))}
               </optgroup>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-3 top-2.5 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-2.5 pointer-events-none" />
           </div>
         </div>
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={handleOpenAdHocProtocol}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-all active:scale-95"
-            title="Создать новый протокол из аудиозаписи или стенограммы"
+            onClick={() => {
+              setNewProtocolTitleInput('');
+              setIsNewProtocolDropzoneOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity"
           >
-            <Mic className="w-3.5 h-3.5 text-[#D71921]" />
-            <span>Новый протокол</span>
+            <Mic className="w-4 h-4" />
+            <span>Загрузить аудио / протокол</span>
           </button>
 
           <button
             onClick={() => setIsInvitationsOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-all active:scale-95"
-            title="Входящие и отправленные приглашения"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
           >
-            <Bell className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+            <Bell className="w-4 h-4 text-[var(--text-secondary)]" />
             <span>Приглашения</span>
             {pendingIncomingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[#D71921] text-white">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#D71921] text-white leading-none">
                 {pendingIncomingCount}
               </span>
             )}
@@ -1062,10 +1108,9 @@ export const MeetingsView: React.FC = () => {
 
           <button
             onClick={openPrepModal}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-all active:scale-95"
-            title="Сформировать повестку и подобрать слот календаря"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>Подготовка встречи</span>
           </button>
         </div>
@@ -1073,202 +1118,318 @@ export const MeetingsView: React.FC = () => {
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
-        {selectedMeetingItem && !showScheduledProtocolWorkspace ? (() => {
-          const meetingInvitations = invitations.filter(
-            (inv) => inv.meetingId === selectedMeetingItem.id
-          );
-          const pSurnames = new Set(selectedMeetingItem.participants.map(surnameKey));
-          const relatedTasks = tasks.filter(
-            (t) =>
-              (t.status === 'active' || t.status === 'overdue') &&
-              pSurnames.has(surnameKey(t.assigneeName))
-          );
+        {isNewProtocolDropzoneOpen ? (
+          /* ========================================================================= */
+          /* CLEAR AUDIO & TRANSCRIPT INGESTION SCREEN (WHISPER ENTRYPOINT)            */
+          /* ========================================================================= */
+          <div className="flex-1 overflow-y-auto p-6 lg:p-10 flex items-center justify-center">
+            <div className="max-w-2xl w-full space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                    Новый протокол совещания
+                  </h2>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                    Загрузите аудиозапись для автоматической расшифровки через Whisper или выберите текстовый файл
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsNewProtocolDropzoneOpen(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Вернуться к архиву</span>
+                </button>
+              </div>
 
-          return (
-            <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-              <div className="max-w-5xl mx-auto space-y-6">
-                {/* Scheduled Meeting Card Header */}
-                <div className="nothing-card p-5 flex flex-wrap items-start justify-between gap-4">
+              {/* Optional Meeting Title */}
+              <div className="nothing-card p-4 space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)] block">
+                  Название совещания (необязательно)
+                </label>
+                <input
+                  type="text"
+                  value={newProtocolTitleInput}
+                  onChange={(e) => setNewProtocolTitleInput(e.target.value)}
+                  placeholder="Например: Планерка цеха по тиражу фотокниг — иначе возьмётся из имени файла"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                />
+              </div>
+
+              {/* Primary Drag & Drop Zone for Audio -> Whisper */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingAudio(true);
+                }}
+                onDragLeave={() => setIsDraggingAudio(false)}
+                onDrop={handleDropAudioFile}
+                onClick={() => audioInputRef.current?.click()}
+                className={`p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-colors text-center space-y-3 ${
+                  isDraggingAudio
+                    ? 'border-[#D71921] bg-[#D71921]/10'
+                    : 'border-[var(--border-dashed)] bg-[var(--bg-card)] hover:border-[var(--text-primary)]'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center mx-auto text-[#D71921]">
+                  <FileAudio className="w-6 h-6" />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    Перетащите аудиозапись сюда или нажмите для выбора файла
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto leading-relaxed">
+                    Поддерживаются форматы <span className="font-mono">.ogg, .wav, .mp3, .m4a, .webm</span>.
+                    Whisper автоматически переведёт речь в стенограмму с таймкодами, а Qwen 2.5 выделит решения и поручения.
+                  </p>
+                </div>
+
+                <div className="pt-1">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)]">
+                    <Mic className="w-4 h-4" />
+                    <span>Выбрать аудиофайл и запустить Whisper</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Two Secondary Options: Text File or Manual Paste */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => transcriptInputRef.current?.click()}
+                  className="nothing-card p-4 text-left hover:border-[var(--text-primary)] transition-colors flex items-start gap-3"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0 text-[var(--text-primary)]">
+                    <Upload className="w-4 h-4" />
+                  </div>
                   <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[var(--text-secondary)]">
-                      {/* Flat Non-Clickable Status */}
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-500 font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                        ЗАПЛАНИРОВАНО
-                      </span>
-                      <span>{selectedMeetingItem.date}</span>
-                      <span>·</span>
-                      <span>{selectedMeetingItem.time}</span>
-                      <span>·</span>
-                      <span>{selectedMeetingItem.durationMinutes} мин</span>
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Загрузить файл стенограммы
                     </div>
-                    <h2 className="text-lg font-bold text-[var(--text-primary)] mt-2">
-                      {selectedMeetingItem.title}
-                    </h2>
-                  </div>
-
-                  {/* Clear Action Buttons */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => audioInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-all disabled:opacity-50"
-                    >
-                      <Mic className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-pulse' : ''}`} />
-                      <span>{busyAnalyzing ? busyLabel : 'Загрузить аудиозапись'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => transcriptInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-all disabled:opacity-50"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Загрузить стенограмму</span>
-                    </button>
-
-                    <button
-                      onClick={handleSwitchToScheduledWorkspace}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-all disabled:opacity-50"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Оформить протокол</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Participants & Agenda */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="nothing-card p-5 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-dot uppercase tracking-wider text-[var(--text-primary)] pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
-                      <Users className="w-4 h-4 text-[var(--text-secondary)]" />
-                      <span>Участники и статусы приглашений</span>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedMeetingItem.participants.map((p) => {
-                        const inv = meetingInvitations.find(
-                          (i) => surnameKey(i.recipientName) === surnameKey(p)
-                        );
-                        return (
-                          <div
-                            key={p}
-                            className="flex items-center justify-between text-xs p-3 rounded-2xl bg-[var(--bg-elevated)]"
-                          >
-                            <span className="font-semibold text-[var(--text-primary)]">{p}</span>
-                            {inv ? (
-                              <span
-                                className={`inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full ${
-                                  inv.status === 'accepted'
-                                    ? 'bg-emerald-500/15 text-emerald-500'
-                                    : inv.status === 'declined'
-                                    ? 'bg-[#D71921]/15 text-[#D71921]'
-                                    : 'bg-amber-500/15 text-amber-500'
-                                }`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    inv.status === 'accepted'
-                                      ? 'bg-emerald-500'
-                                      : inv.status === 'declined'
-                                      ? 'bg-[#D71921]'
-                                      : 'bg-amber-500'
-                                  }`}
-                                />
-                                {inv.status === 'accepted'
-                                  ? 'ПРИНЯТО'
-                                  : inv.status === 'declined'
-                                  ? 'ОТКЛОНЕНО'
-                                  : 'ОЖИДАЕТ ОТВЕТА'}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                                ОРГАНИЗАТОР
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      Готовый текст в формате .txt, .vtt, .srt или .docx
                     </div>
                   </div>
+                </button>
 
-                  <div className="nothing-card p-5 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-dot uppercase tracking-wider text-[var(--text-primary)] pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
-                      <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
-                      <span>Утвержденный проект повестки</span>
-                    </div>
-                    <ul className="space-y-2 text-xs text-[var(--text-primary)]">
-                      {selectedMeetingItem.agenda.map((item, idx) => (
-                        <li key={idx} className="p-3 rounded-2xl bg-[var(--bg-elevated)]">
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
+                <button
+                  type="button"
+                  onClick={handleOpenManualNewProtocol}
+                  className="nothing-card p-4 text-left hover:border-[var(--text-primary)] transition-colors flex items-start gap-3"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0 text-[var(--text-primary)]">
+                    <Edit3 className="w-4 h-4" />
                   </div>
-                </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Вставить текст вручную
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      Открыть пустой редактор стенограммы для вставки текста
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : selectedMeetingItem && !showScheduledProtocolWorkspace ? (
+          (() => {
+            const meetingInvitations = invitations.filter(
+              (inv) => inv.meetingId === selectedMeetingItem.id
+            );
+            const pSurnames = new Set(selectedMeetingItem.participants.map(surnameKey));
+            const relatedTasks = tasks.filter(
+              (t) =>
+                (t.status === 'active' || t.status === 'overdue') &&
+                pSurnames.has(surnameKey(t.assigneeName))
+            );
 
-                {selectedMeetingItem.openQuestions &&
-                  selectedMeetingItem.openQuestions.length > 0 && (
-                    <div className="nothing-card p-5 space-y-2.5">
-                      <div className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                        Открытые вопросы к обсуждению
+            return (
+              <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+                <div className="max-w-5xl mx-auto space-y-5">
+                  {/* Scheduled Meeting Header */}
+                  <div className="nothing-card p-5 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[var(--text-secondary)]">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-sky-500/15 text-sky-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          Запланировано
+                        </span>
+                        <span>{selectedMeetingItem.date}</span>
+                        <span>·</span>
+                        <span>{selectedMeetingItem.time}</span>
+                        <span>·</span>
+                        <span>{selectedMeetingItem.durationMinutes} мин</span>
                       </div>
-                      <ul className="space-y-1.5 text-xs text-amber-500">
-                        {selectedMeetingItem.openQuestions.map((q, idx) => (
-                          <li key={idx} className="p-2.5 rounded-2xl bg-amber-500/10">
-                            {q}
+                      <h2 className="text-base font-semibold text-[var(--text-primary)] mt-2">
+                        {selectedMeetingItem.title}
+                      </h2>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => audioInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity disabled:opacity-50"
+                      >
+                        <Mic className="w-4 h-4" />
+                        <span>
+                          {busyAnalyzing ? busyLabel : 'Загрузить аудио (Whisper)'}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => transcriptInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>Загрузить стенограмму</span>
+                      </button>
+
+                      <button
+                        onClick={handleSwitchToScheduledWorkspace}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-card)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        <span>Ввести вручную</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Participants & Agenda */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="nothing-card p-5 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)] pb-2.5 border-b border-[var(--border-solid)]">
+                        <Users className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <span>Участники и статусы приглашений</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedMeetingItem.participants.map((p) => {
+                          const inv = meetingInvitations.find(
+                            (i) => surnameKey(i.recipientName) === surnameKey(p)
+                          );
+                          return (
+                            <div
+                              key={p}
+                              className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-[var(--bg-elevated)]"
+                            >
+                              <span className="font-medium text-[var(--text-primary)]">{p}</span>
+                              {inv ? (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded ${
+                                    inv.status === 'accepted'
+                                      ? 'bg-emerald-500/15 text-emerald-500'
+                                      : inv.status === 'declined'
+                                      ? 'bg-[#D71921]/15 text-[#D71921]'
+                                      : 'bg-amber-500/15 text-amber-500'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      inv.status === 'accepted'
+                                        ? 'bg-emerald-500'
+                                        : inv.status === 'declined'
+                                        ? 'bg-[#D71921]'
+                                        : 'bg-amber-500'
+                                    }`}
+                                  />
+                                  {inv.status === 'accepted'
+                                    ? 'Принято'
+                                    : inv.status === 'declined'
+                                    ? 'Отклонено'
+                                    : 'Ожидает ответа'}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                                  Организатор
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="nothing-card p-5 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)] pb-2.5 border-b border-[var(--border-solid)]">
+                        <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <span>Утвержденный проект повестки</span>
+                      </div>
+                      <ul className="space-y-2 text-xs text-[var(--text-primary)]">
+                        {selectedMeetingItem.agenda.map((item, idx) => (
+                          <li key={idx} className="p-2.5 rounded-xl bg-[var(--bg-elevated)]">
+                            {item}
                           </li>
                         ))}
                       </ul>
                     </div>
-                  )}
-
-                <div className="nothing-card p-5 space-y-3">
-                  <div className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                    Открытые поручения участников из реестра ({relatedTasks.length})
                   </div>
-                  {relatedTasks.length === 0 ? (
-                    <div className="text-xs text-[var(--text-muted)]">
-                      У выбранных участников нет незавершенных поручений в реестре.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {relatedTasks.map((t) => (
-                        <div
-                          key={t.id}
-                          className="p-3 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div>
-                            <div className="font-semibold text-[var(--text-primary)]">{t.title}</div>
-                            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                              Ответственный: {t.assigneeName} · Срок: {t.deadline}
-                            </div>
-                          </div>
-                          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-secondary)] shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                            {t.status.toUpperCase()}
-                          </span>
+
+                  {selectedMeetingItem.openQuestions &&
+                    selectedMeetingItem.openQuestions.length > 0 && (
+                      <div className="nothing-card p-5 space-y-2.5">
+                        <div className="text-xs font-semibold text-[var(--text-primary)]">
+                          Открытые вопросы к обсуждению
                         </div>
-                      ))}
+                        <ul className="space-y-1.5 text-xs text-amber-500">
+                          {selectedMeetingItem.openQuestions.map((q, idx) => (
+                            <li key={idx} className="p-2.5 rounded-xl bg-amber-500/10">
+                              {q}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                  <div className="nothing-card p-5 space-y-3">
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Открытые поручения участников из реестра ({relatedTasks.length})
                     </div>
-                  )}
+                    {relatedTasks.length === 0 ? (
+                      <div className="text-xs text-[var(--text-muted)]">
+                        У выбранных участников нет незавершенных поручений в реестре
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {relatedTasks.map((t) => (
+                          <div
+                            key={t.id}
+                            className="p-3 rounded-xl bg-[var(--bg-elevated)] flex items-center justify-between gap-3 text-xs"
+                          >
+                            <div>
+                              <div className="font-medium text-[var(--text-primary)]">{t.title}</div>
+                              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                                Ответственный: {t.assigneeName} · Срок: {t.deadline}
+                              </div>
+                            </div>
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-secondary)] shrink-0">
+                              {t.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })() : (
+            );
+          })()
+        ) : (
+          /* ========================================================================= */
+          /* ACTIVE PROTOCOL WORKSPACE (TRANSCRIPT LEFT + VARIANT A TABS RIGHT)        */
+          /* ========================================================================= */
           <>
-            {/* Left Pane: Transcript + Interactive Audio Mini-Player */}
+            {/* Left Pane: Transcript & Audio Player */}
             {showTranscript ? (
-              <div className="w-[430px] border-r border-[var(--border-solid)] flex flex-col bg-[var(--bg-card)] shrink-0 transition-all">
-                {/* Transcript Header */}
-                <div className="p-3.5 px-4 border-b border-dashed border-[var(--border-dashed)] flex items-center justify-between text-xs">
+              <div className="w-[420px] border-r border-[var(--border-solid)] flex flex-col bg-[var(--bg-card)] shrink-0 transition-colors">
+                <div className="p-3.5 px-4 border-b border-[var(--border-solid)] flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    <span className="font-dot uppercase tracking-wider text-[var(--text-primary)]">
-                      СТЕНОГРАММА
-                    </span>
-                    <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
+                    <span className="font-semibold text-[var(--text-primary)]">Стенограмма</span>
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
                       {workspaceData.date}
                     </span>
                   </div>
@@ -1277,71 +1438,60 @@ export const MeetingsView: React.FC = () => {
                     <button
                       onClick={() => audioInputRef.current?.click()}
                       disabled={busyAnalyzing}
-                      title="Загрузить аудио (.ogg, .wav, .mp3)"
-                      className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[#D71921] flex items-center justify-center transition-colors disabled:opacity-40"
+                      title="Загрузить аудио для Whisper"
+                      className="px-2 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center gap-1 transition-colors disabled:opacity-40"
                     >
-                      <Mic className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => transcriptInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      title="Загрузить файл стенограммы (.txt, .vtt, .docx)"
-                      className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors disabled:opacity-40"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
+                      <Mic className="w-3.5 h-3.5 text-[#D71921]" />
+                      <span>Аудио</span>
                     </button>
                     <button
                       onClick={() => setIsEditingTranscript((prev) => !prev)}
-                      title={
-                        isEditingTranscript
-                          ? 'Вернуться к просмотру реплик'
-                          : 'Редактировать текст стенограммы'
-                      }
-                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                      title={isEditingTranscript ? 'Просмотр по репликам' : 'Редактировать текст'}
+                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
                         isEditingTranscript
                           ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)]'
-                          : 'hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          : 'hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
                       }`}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setShowTranscript(false)}
-                      title="Свернуть панель стенограммы"
-                      className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                      title="Свернуть панель"
+                      className="w-7 h-7 rounded-md hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
                     >
                       <PanelLeftClose className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Integrated Audio Mini-Player */}
-                <div className="px-4 py-2.5 border-b border-dashed border-[var(--border-dashed)] bg-[var(--bg-elevated)]/60 flex items-center justify-between gap-3">
+                {/* Audio Mini-Player */}
+                <div className="px-4 py-2.5 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/60 flex items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setIsPlayingAudio((prev) => !prev)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-all active:scale-95 shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity shrink-0"
                   >
                     {isPlayingAudio ? (
                       <>
-                        <Pause className="w-3 h-3" />
+                        <Pause className="w-3.5 h-3.5" />
                         <span>Пауза</span>
                       </>
                     ) : (
                       <>
-                        <Play className="w-3 h-3" />
+                        <Play className="w-3.5 h-3.5" />
                         <span>Слушать</span>
                       </>
                     )}
                   </button>
 
                   <div className="flex-1 flex items-center gap-2 min-w-0">
-                    <span className="font-mono text-[11px] font-semibold text-[#D71921] shrink-0">
+                    <span className="font-mono text-xs font-medium text-[#D71921] shrink-0">
                       {activeAudioTime}
                     </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-[var(--border-solid)] overflow-hidden">
+                    <div className="flex-1 h-1.5 rounded bg-[var(--border-solid)] overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${
+                        className={`h-full transition-all duration-300 ${
                           isPlayingAudio ? 'bg-[#D71921] w-2/3' : 'bg-[var(--text-primary)] w-1/3'
                         }`}
                       />
@@ -1351,8 +1501,7 @@ export const MeetingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={cycleSpeed}
-                    title="Скорость воспроизведения"
-                    className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors shrink-0"
+                    className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)] shrink-0"
                   >
                     {playbackSpeed.toFixed(1)}x
                   </button>
@@ -1360,13 +1509,13 @@ export const MeetingsView: React.FC = () => {
 
                 {isEditingTranscript ? (
                   <div className="flex-1 flex flex-col p-4 gap-2.5">
-                    <div className="text-[11px] text-[var(--text-secondary)] flex items-center justify-between">
+                    <div className="text-xs text-[var(--text-secondary)] flex items-center justify-between">
                       <span>
-                        Формат: <code className="font-mono">[00:15] Спикер: Реплика</code>
+                        Формат: <code className="font-mono">[00:15] Спикер: Текст</code>
                       </span>
                       <button
                         onClick={() => setIsEditingTranscript(false)}
-                        className="px-3 py-1 rounded-full bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold text-[11px]"
+                        className="px-3 py-1 rounded-md bg-[var(--text-primary)] text-[var(--bg-canvas)] font-medium text-xs"
                       >
                         Готово
                       </button>
@@ -1376,8 +1525,8 @@ export const MeetingsView: React.FC = () => {
                       onChange={(e) =>
                         setWorkspaceData((prev) => ({ ...prev, transcriptText: e.target.value }))
                       }
-                      placeholder="Вставьте стенограмму совещания..."
-                      className="flex-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl p-3.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] resize-none leading-relaxed"
+                      placeholder="Вставьте стенограмму совещания или загрузите аудио выше..."
+                      className="flex-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-xl p-3.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] resize-none leading-relaxed"
                     />
                   </div>
                 ) : (
@@ -1386,67 +1535,68 @@ export const MeetingsView: React.FC = () => {
                     id={`transcript-${workspaceData.id}`}
                     className="flex-1 overflow-y-auto p-3.5 space-y-2 select-text"
                   >
-                    {workspaceData.transcriptText.split('\n').map((line, idx) => {
-                      const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s*(.*)$/);
-                      if (match) {
-                        const [, rawTs, speaker, text] = match;
-                        const tsClean = normalizeTs(rawTs);
-                        const isHighlighted =
-                          highlightedTimestamp !== null && tsClean === highlightedTimestamp;
-                        const initials = speaker
-                          .split(' ')
-                          .map((w) => w[0])
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .join('');
+                    {!workspaceData.transcriptText.trim() ? (
+                      <div className="p-6 text-center text-xs text-[var(--text-muted)] space-y-2">
+                        <p>Текст стенограммы пока пуст</p>
+                        <button
+                          onClick={() => audioInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] font-medium"
+                        >
+                          Загрузить аудио для Whisper
+                        </button>
+                      </div>
+                    ) : (
+                      workspaceData.transcriptText.split('\n').map((line, idx) => {
+                        const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s*(.*)$/);
+                        if (match) {
+                          const [, rawTs, speaker, text] = match;
+                          const tsClean = normalizeTs(rawTs);
+                          const isHighlighted =
+                            highlightedTimestamp !== null && tsClean === highlightedTimestamp;
 
-                        return (
-                          <div
-                            key={idx}
-                            data-ts={tsClean}
-                            onClick={() => {
-                              setHighlightedTimestamp(tsClean);
-                              setActiveAudioTime(tsClean);
-                            }}
-                            className={`cursor-pointer px-3.5 py-2.5 rounded-2xl transition-all flex items-start gap-3 ${
-                              isHighlighted
-                                ? 'bg-[#D71921]/10 border border-[#D71921] shadow-sm'
-                                : 'bg-[var(--bg-elevated)]/55 hover:bg-[var(--bg-elevated)] border border-transparent'
-                            }`}
-                          >
-                            <span
-                              className={`font-mono text-[11px] shrink-0 pt-0.5 ${
+                          return (
+                            <div
+                              key={idx}
+                              data-ts={tsClean}
+                              onClick={() => {
+                                setHighlightedTimestamp(tsClean);
+                                setActiveAudioTime(tsClean);
+                              }}
+                              className={`cursor-pointer p-3 rounded-xl transition-colors flex items-start gap-3 ${
                                 isHighlighted
-                                  ? 'text-[#D71921] font-bold'
-                                  : 'text-[var(--text-muted)]'
+                                  ? 'bg-[#D71921]/10 border border-[#D71921]'
+                                  : 'bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-transparent'
                               }`}
                             >
-                              {tsClean}
-                            </span>
+                              <span
+                                className={`font-mono text-xs shrink-0 ${
+                                  isHighlighted
+                                    ? 'text-[#D71921] font-semibold'
+                                    : 'text-[var(--text-muted)]'
+                                }`}
+                              >
+                                {tsClean}
+                              </span>
 
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-mono font-bold bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)]">
-                                  {initials}
-                                </span>
-                                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="text-xs font-semibold text-[var(--text-primary)]">
                                   {speaker}
-                                </span>
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  {text}
+                                </p>
                               </div>
-                              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                {text}
-                              </p>
                             </div>
+                          );
+                        }
+                        if (!line.trim()) return null;
+                        return (
+                          <div key={idx} className="px-3 py-1 text-xs text-[var(--text-muted)]">
+                            {line}
                           </div>
                         );
-                      }
-                      if (!line.trim()) return null;
-                      return (
-                        <div key={idx} className="px-3 py-1 text-xs text-[var(--text-muted)]">
-                          {line}
-                        </div>
-                      );
-                    })}
+                      })
+                    )}
                   </div>
                 )}
               </div>
@@ -1454,26 +1604,26 @@ export const MeetingsView: React.FC = () => {
               <div className="w-12 border-r border-[var(--border-solid)] bg-[var(--bg-card)] flex flex-col items-center py-4 shrink-0">
                 <button
                   onClick={() => setShowTranscript(true)}
-                  title="Развернуть стенограмму встречи"
-                  className="w-8 h-8 rounded-full hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                  title="Показать стенограмму"
+                  className="w-8 h-8 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
                 >
                   <PanelLeftOpen className="w-4 h-4" />
                 </button>
-                <span className="font-dot text-[10px] text-[var(--text-muted)] [writing-mode:vertical-rl] rotate-180 mt-4 tracking-widest uppercase select-none">
-                  СТЕНОГРАММА
+                <span className="text-[11px] font-medium text-[var(--text-muted)] [writing-mode:vertical-rl] rotate-180 mt-4 select-none">
+                  Стенограмма
                 </span>
               </div>
             )}
 
-            {/* Right Pane: Linear Protocol Pipeline & Analysis Cards */}
+            {/* Right Pane: Clean Protocol Header + Variant A Tabs */}
             <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
-              <div className="max-w-5xl mx-auto w-full space-y-6">
+              <div className="max-w-4xl mx-auto w-full space-y-5">
                 {audioJob?.status === 'transcribing' && (
                   <div className="nothing-card p-4 flex items-center gap-3 text-xs">
-                    <Mic className="w-4 h-4 text-[#D71921] animate-pulse shrink-0" />
+                    <Mic className="w-4 h-4 text-[#D71921] shrink-0" />
                     <span>
-                      <strong>Whisper распознаёт «{audioJob.filename}» в фоне.</strong> Можете
-                      переключиться в «Базу знаний» — расшифровка сохранится автоматически.
+                      <strong>Whisper расшифровывает «{audioJob.filename}».</strong> Вы можете
+                      перейти в «Базу знаний» — результат сохранится автоматически.
                     </span>
                   </div>
                 )}
@@ -1483,55 +1633,30 @@ export const MeetingsView: React.FC = () => {
                     <Cpu className="w-4 h-4 text-[#D71921] animate-spin shrink-0" />
                     <span>
                       <strong>
-                        Qwen 2.5 формирует протокол в фоне («{analysisJob.meetingTitle}»).
+                        Qwen 2.5 анализирует стенограмму («{analysisJob.meetingTitle}»).
                       </strong>{' '}
                       Решения и поручения появятся здесь автоматически.
                     </span>
                   </div>
                 )}
 
-                {audioJob?.status !== 'transcribing' &&
-                  analysisJob?.status !== 'analyzing' &&
-                  workspaceData.transcriptRef.startsWith('#audio-') &&
-                  workspaceData.decisions.length === 0 &&
-                  !workspaceData.transcriptText.startsWith('⏳') && (
-                    <div className="nothing-card p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <div>
-                        <strong>
-                          Расшифровка аудио готова (
-                          {workspaceData.transcriptRef.replace('#audio-', '')}).
-                        </strong>{' '}
-                        Проверьте текст слева и запустите извлечение решений.
-                      </div>
-                      <button
-                        onClick={handleRunAiAnalysis}
-                        disabled={busyAnalyzing}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-all disabled:opacity-50"
-                      >
-                        <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
-                        <span>{busyAnalyzing ? busyLabel : 'Запустить AI-анализ'}</span>
-                      </button>
-                    </div>
-                  )}
-
-                {/* Protocol Header + Linear 3-Step Pipeline */}
+                {/* Protocol Header */}
                 <div className="nothing-card p-5 space-y-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1 min-w-[240px]">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--text-muted)]">
-                        <span>№ {workspaceData.savedProtocolId || workspaceData.id}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[var(--text-muted)]">
+                        <span>Протокол № {workspaceData.savedProtocolId || workspaceData.id}</span>
                         <span>·</span>
                         <span>{workspaceData.date}</span>
-                        {/* Flat Non-Clickable Status Badge */}
                         {workspaceData.savedProtocolId ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-semibold">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[11px] font-medium">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            СОХРАНЕНО В БД
+                            Сохранено в БД
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] text-[10px]">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] text-[11px]">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            ЧЕРНОВИК
+                            Черновик
                           </span>
                         )}
                       </div>
@@ -1543,10 +1668,10 @@ export const MeetingsView: React.FC = () => {
                           onChange={(e) =>
                             setWorkspaceData((prev) => ({ ...prev, title: e.target.value }))
                           }
-                          className="w-full max-w-lg mt-1.5 bg-transparent text-lg font-bold text-[var(--text-primary)] border-b border-dashed border-[var(--border-dashed)] focus:border-[var(--text-primary)] focus:outline-none pb-0.5"
+                          className="w-full max-w-lg mt-1.5 bg-transparent text-base font-semibold text-[var(--text-primary)] border-b border-[var(--border-solid)] focus:border-[var(--text-primary)] focus:outline-none pb-0.5"
                         />
                       ) : (
-                        <h2 className="text-lg font-bold text-[var(--text-primary)] mt-1">
+                        <h2 className="text-base font-semibold text-[var(--text-primary)] mt-1">
                           {workspaceData.title}
                         </h2>
                       )}
@@ -1555,7 +1680,7 @@ export const MeetingsView: React.FC = () => {
                     {selectedMeetingItem && (
                       <button
                         onClick={() => setShowScheduledProtocolWorkspace(false)}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
                       >
                         <ArrowLeft className="w-3.5 h-3.5" />
                         <span>Карточка встречи</span>
@@ -1563,425 +1688,503 @@ export const MeetingsView: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Step-by-Step Action Pipeline (Affordance Level 1) */}
-                  <div className="pt-3 border-t border-dashed border-[var(--border-dashed)] flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => audioInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-all disabled:opacity-50"
-                    >
-                      <Mic className="w-3.5 h-3.5 text-[#D71921]" />
-                      <span>1. Аудио (Whisper)</span>
-                      {hasTranscriptReady && <Check className="w-3.5 h-3.5 text-emerald-500" />}
-                    </button>
+                  {/* Clear 3-Button Action Bar */}
+                  <div className="pt-3 border-t border-[var(--border-solid)] flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => audioInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Mic className="w-3.5 h-3.5 text-[#D71921]" />
+                        <span>Расшифровать аудио (Whisper)</span>
+                      </button>
 
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-muted)] hidden sm:block" />
-
-                    <button
-                      onClick={handleRunAiAnalysis}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-all disabled:opacity-50"
-                    >
-                      <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
-                      <span>{busyAnalyzing ? busyLabel : '2. AI-анализ стенограммы'}</span>
-                      {hasAnalysisReady && !busyAnalyzing && (
-                        <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      )}
-                    </button>
-
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-muted)] hidden sm:block" />
+                      <button
+                        onClick={handleRunAiAnalysis}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
+                        <span>{busyAnalyzing ? busyLabel : 'Сформировать протокол (ИИ)'}</span>
+                      </button>
+                    </div>
 
                     <button
                       onClick={handleSaveProtocol}
                       disabled={isSavingProtocol || busyAnalyzing}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-all disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity disabled:opacity-50"
                     >
                       <Bookmark className="w-3.5 h-3.5" />
-                      <span>
-                        {isSavingProtocol ? 'Сохранение...' : '3. Утвердить и сохранить в БД'}
-                      </span>
+                      <span>{isSavingProtocol ? 'Сохранение...' : 'Сохранить протокол в БД'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Meeting Summary */}
-                <div className="nothing-card p-5 space-y-2">
-                  <div className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                    КРАТКОЕ РЕЗЮМЕ ВСТРЕЧИ
+                {/* VARIANT A: Segmented Tab Switcher between "Итоги и решения" and "Поручения" */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border-solid)]">
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('summary')}
+                      className={`px-3.5 py-1.5 rounded-md text-xs transition-colors ${
+                        protocolTab === 'summary'
+                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      Итоги и решения ({workspaceData.decisions.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('tasks')}
+                      className={`px-3.5 py-1.5 rounded-md text-xs transition-colors flex items-center gap-1.5 ${
+                        protocolTab === 'tasks'
+                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <span>Поручения к утверждению</span>
+                      {tasksToReview.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#D71921] text-white leading-none">
+                          {tasksToReview.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    {workspaceData.summary}
-                  </p>
+
+                  {protocolTab === 'summary' && tasksToReview.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('tasks')}
+                      className="text-xs font-medium text-[var(--text-primary)] hover:text-[#D71921] transition-colors flex items-center gap-1"
+                    >
+                      <span>Перейти к утверждению поручений ({tasksToReview.length})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
-                {/* Decisions & Risks Grid */}
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {/* Decisions Card */}
-                  <div className="nothing-card p-5 space-y-3.5">
-                    <div className="flex items-center justify-between pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
-                      <h3 className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                        ИТОГИ И СТАТУСЫ РЕШЕНИЙ
-                      </h3>
-                      <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                        {workspaceData.decisions.length} ПОЗ.
-                      </span>
+                {protocolTab === 'summary' ? (
+                  /* TAB 1: SUMMARY, DECISIONS, RISKS & OPEN QUESTIONS */
+                  <div className="space-y-4">
+                    {/* Summary */}
+                    <div className="nothing-card p-5 space-y-2">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Краткое резюме встречи
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        {workspaceData.summary}
+                      </p>
                     </div>
 
-                    {/* Segmented Filter Control (Affordance Level 2) */}
-                    <div className="flex flex-wrap gap-1 p-1 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-solid)]">
-                      <button
-                        onClick={() => setDecisionFilter('all')}
-                        className={`px-2.5 py-1 rounded-full text-[11px] transition-all ${
-                          decisionFilter === 'all'
-                            ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
-                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
-                      >
-                        Все ({workspaceData.decisions.length})
-                      </button>
-                      {(
-                        [
-                          'resolved',
-                          'proposed',
-                          'discussed',
-                          'needs_clarification',
-                        ] as DecisionCategory[]
-                      ).map((cat) => {
-                        const count = workspaceData.decisions.filter(
-                          (d) => d.category === cat
-                        ).length;
-                        const meta = DECISION_CATEGORY_META[cat];
-                        const isActive = decisionFilter === cat;
-                        return (
+                    {/* Decisions */}
+                    <div className="nothing-card p-5 space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[var(--border-solid)]">
+                        <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                          Итоги и статусы решений
+                        </h3>
+
+                        <div className="inline-flex flex-wrap items-center p-0.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-0.5">
                           <button
-                            key={cat}
-                            onClick={() => setDecisionFilter(cat)}
-                            className={`px-2.5 py-1 rounded-full text-[11px] transition-all ${
-                              isActive
-                                ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                            onClick={() => setDecisionFilter('all')}
+                            className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${
+                              decisionFilter === 'all'
+                                ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
                                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                             }`}
                           >
-                            {meta.label} ({count})
+                            Все ({workspaceData.decisions.length})
                           </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Decision Items */}
-                    <div className="space-y-2.5">
-                      {(() => {
-                        const filtered =
-                          decisionFilter === 'all'
-                            ? workspaceData.decisions
-                            : workspaceData.decisions.filter((d) => d.category === decisionFilter);
-                        if (filtered.length === 0) {
-                          return (
-                            <div className="text-xs text-[var(--text-muted)] py-3 text-center">
-                              В выбранной категории записей нет
-                            </div>
-                          );
-                        }
-                        return filtered.map((d) => {
-                          const meta =
-                            DECISION_CATEGORY_META[d.category] ||
-                            DECISION_CATEGORY_META.discussed;
-                          const tsClean = normalizeTs(d.timestamp);
-                          return (
-                            <div
-                              key={d.id}
-                              className="p-3.5 rounded-2xl bg-[var(--bg-elevated)]/70 space-y-2 text-xs"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                {/* Flat Non-Clickable Status Label (Affordance Level 3) */}
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold ${meta.pillClass}`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dotColor}`} />
-                                  <span>{meta.label.toUpperCase()}</span>
-                                </span>
-
-                                <div className="flex items-center gap-2 text-[11px]">
-                                  {d.speaker && (
-                                    <span className="font-semibold text-[var(--text-secondary)]">
-                                      {d.speaker}
-                                    </span>
-                                  )}
-                                  {/* Explicit Clickable Timestamp Jump Button */}
-                                  {tsClean && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleJumpToTimestamp(tsClean)}
-                                      title="Перейти к реплике в стенограмме"
-                                      className="inline-flex items-center gap-1 font-mono text-[10px] px-2.5 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
-                                    >
-                                      <Play className="w-2.5 h-2.5 text-[#D71921]" />
-                                      <span>{tsClean}</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="leading-snug text-[var(--text-primary)]">
-                                {d.text}
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Right Column: Risks & Actionable Open Questions */}
-                  <div className="space-y-4">
-                    {/* Risks Card */}
-                    <div className="nothing-card p-5 space-y-3">
-                      <div className="flex items-center justify-between pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
-                        <h3 className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                          КАРТА ВЫЯВЛЕННЫХ РИСКОВ
-                        </h3>
-                        <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                          {workspaceData.risks?.length || 0} РИСК(А)
-                        </span>
+                          {(
+                            [
+                              'resolved',
+                              'proposed',
+                              'discussed',
+                              'needs_clarification',
+                            ] as DecisionCategory[]
+                          ).map((cat) => {
+                            const count = workspaceData.decisions.filter(
+                              (d) => d.category === cat
+                            ).length;
+                            const meta = DECISION_CATEGORY_META[cat];
+                            const isActive = decisionFilter === cat;
+                            return (
+                              <button
+                                key={cat}
+                                onClick={() => setDecisionFilter(cat)}
+                                className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${
+                                  isActive
+                                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                }`}
+                              >
+                                {meta.label} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div className="space-y-2.5">
-                        {workspaceData.risks && workspaceData.risks.length > 0 ? (
-                          workspaceData.risks.map((r) => {
-                            const isHigh = r.impact.toLowerCase() === 'high';
+                        {(() => {
+                          const filtered =
+                            decisionFilter === 'all'
+                              ? workspaceData.decisions
+                              : workspaceData.decisions.filter(
+                                  (d) => d.category === decisionFilter
+                                );
+                          if (filtered.length === 0) {
                             return (
-                              <div
-                                key={r.id}
-                                className="p-3.5 rounded-2xl bg-[var(--bg-elevated)]/70 text-xs space-y-1.5"
-                              >
-                                <div className="font-semibold text-[var(--text-primary)] flex items-start justify-between gap-2">
-                                  <span>{r.riskDescription}</span>
-                                  {/* Flat Non-Clickable Severity Tag */}
-                                  <span
-                                    className={`inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
-                                      isHigh
-                                        ? 'bg-[#D71921]/15 text-[#D71921]'
-                                        : 'bg-amber-500/15 text-amber-500'
-                                    }`}
-                                  >
-                                    <span
-                                      className={`w-1.5 h-1.5 rounded-full ${
-                                        isHigh ? 'bg-[#D71921]' : 'bg-amber-500'
-                                      }`}
-                                    />
-                                    {r.impact}
-                                  </span>
-                                </div>
-                                {r.suggestedMitigation && (
-                                  <div className="text-[11px] text-[var(--text-secondary)]">
-                                    Меры: {r.suggestedMitigation}
-                                  </div>
-                                )}
+                              <div className="text-xs text-[var(--text-muted)] py-4 text-center">
+                                В выбранной категории записей нет
                               </div>
                             );
-                          })
+                          }
+                          return filtered.map((d) => {
+                            const meta =
+                              DECISION_CATEGORY_META[d.category] ||
+                              DECISION_CATEGORY_META.discussed;
+                            const tsClean = normalizeTs(d.timestamp);
+                            return (
+                              <div
+                                key={d.id}
+                                className="p-3.5 rounded-xl bg-[var(--bg-elevated)]/70 space-y-2 text-xs"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium ${meta.pillClass}`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dotColor}`} />
+                                    <span>{meta.label}</span>
+                                  </span>
+
+                                  <div className="flex items-center gap-2 text-xs">
+                                    {d.speaker && (
+                                      <span className="font-medium text-[var(--text-secondary)]">
+                                        {d.speaker}
+                                      </span>
+                                    )}
+                                    {tsClean && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleJumpToTimestamp(tsClean)}
+                                        title="Перейти к реплике в стенограмме"
+                                        className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                      >
+                                        <Play className="w-3 h-3 text-[#D71921]" />
+                                        <span>{tsClean}</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="leading-relaxed text-[var(--text-primary)]">
+                                  {d.text}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Risks & Open Questions */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="nothing-card p-5 space-y-3">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-[var(--border-solid)]">
+                          <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                            Выявленные риски
+                          </h3>
+                          <span className="text-xs font-mono text-[var(--text-muted)]">
+                            {workspaceData.risks?.length || 0}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {workspaceData.risks && workspaceData.risks.length > 0 ? (
+                            workspaceData.risks.map((r) => {
+                              const isHigh = r.impact.toLowerCase() === 'high';
+                              return (
+                                <div
+                                  key={r.id}
+                                  className="p-3.5 rounded-xl bg-[var(--bg-elevated)]/70 text-xs space-y-1.5"
+                                >
+                                  <div className="font-semibold text-[var(--text-primary)] flex items-start justify-between gap-2">
+                                    <span>{r.riskDescription}</span>
+                                    <span
+                                      className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded font-medium shrink-0 ${
+                                        isHigh
+                                          ? 'bg-[#D71921]/15 text-[#D71921]'
+                                          : 'bg-amber-500/15 text-amber-500'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                          isHigh ? 'bg-[#D71921]' : 'bg-amber-500'
+                                        }`}
+                                      />
+                                      {r.impact}
+                                    </span>
+                                  </div>
+                                  {r.suggestedMitigation && (
+                                    <div className="text-xs text-[var(--text-secondary)]">
+                                      Меры: {r.suggestedMitigation}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-xs text-[var(--text-muted)]">
+                              Критических рисков не зафиксировано
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="nothing-card p-5 space-y-3">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-[var(--border-solid)]">
+                          <h3 className="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                            <HelpCircle className="w-4 h-4 text-amber-500" />
+                            <span>Открытые вопросы</span>
+                          </h3>
+                          <span className="text-xs font-mono text-[var(--text-muted)]">
+                            {workspaceData.openQuestions?.length || 0}
+                          </span>
+                        </div>
+
+                        {workspaceData.openQuestions && workspaceData.openQuestions.length > 0 ? (
+                          <ul className="space-y-2 text-xs">
+                            {workspaceData.openQuestions.map((q, idx) => (
+                              <li
+                                key={idx}
+                                className="p-3 rounded-xl bg-[var(--bg-elevated)]/70 space-y-2"
+                              >
+                                <div className="leading-relaxed text-[var(--text-primary)]">
+                                  {q}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSearchQuestionInKB(q)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                  >
+                                    <span>Найти в базе знаний</span>
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddQuestionToTasks(q)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                  >
+                                    <Plus className="w-3 h-3 text-[#D71921]" />
+                                    <span>В поручения</span>
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
                         ) : (
                           <div className="text-xs text-[var(--text-muted)]">
-                            Критических рисков не зафиксировано
+                            Нерешённых вопросов не осталось
                           </div>
                         )}
                       </div>
                     </div>
+                  </div>
+                ) : (
+                  /* TAB 2: COMPACT TASKS LIST WITH EXPAND-ON-CLICK EDITING */
+                  <div className="nothing-card p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-solid)]">
+                      <div>
+                        <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                          Поручения к утверждению в реестр
+                        </h3>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                          Нажмите на задачу, чтобы изменить ответственного или срок исполнения
+                        </p>
+                      </div>
 
-                    {/* Actionable Open Questions Card */}
-                    {workspaceData.openQuestions && workspaceData.openQuestions.length > 0 && (
-                      <div className="nothing-card p-5 space-y-3">
-                        <div className="flex items-center justify-between pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
-                          <h3 className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
-                            <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-                            <span>ОТКРЫТЫЕ ВОПРОСЫ К ПРОРАБОТКЕ</span>
-                          </h3>
-                          <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                            {workspaceData.openQuestions.length}
-                          </span>
-                        </div>
-                        <ul className="space-y-2 text-xs">
-                          {workspaceData.openQuestions.map((q, idx) => (
-                            <li
+                      <button
+                        onClick={handleAddTask}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors border border-[var(--border-solid)]"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Добавить задачу</span>
+                      </button>
+                    </div>
+
+                    {tasksToReview.length === 0 ? (
+                      <div className="py-10 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-xl">
+                        Все поручения согласованы и записаны в реестр
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {tasksToReview.map((task, idx) => {
+                          const isUnassigned =
+                            task.assigneeName.includes('уточнения') ||
+                            task.assigneeName.includes('Назначить');
+                          const isNoDeadline =
+                            task.deadline.includes('уточнения') ||
+                            task.deadline.includes('Указать');
+                          const isExpanded = expandedTaskIdx === idx;
+
+                          return (
+                            <div
                               key={idx}
-                              className="p-3 rounded-2xl bg-[var(--bg-elevated)]/70 space-y-2.5"
+                              className="rounded-xl border border-[var(--border-solid)] bg-[var(--bg-elevated)]/50 overflow-hidden"
                             >
-                              <div className="leading-snug text-[var(--text-primary)]">{q}</div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSearchQuestionInKB(q)}
-                                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
-                                >
-                                  <span>Найти в Базе знаний</span>
-                                  <ArrowUpRight className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddQuestionToTasks(q)}
-                                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
-                                >
-                                  <Plus className="w-3 h-3 text-[#D71921]" />
-                                  <span>В поручения</span>
-                                </button>
+                              {/* Compact Row Header */}
+                              <div
+                                onClick={() => setExpandedTaskIdx(isExpanded ? null : idx)}
+                                className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[var(--bg-elevated)] transition-colors"
+                              >
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                                    {task.title}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                    <span
+                                      className={
+                                        isUnassigned
+                                          ? 'text-[#D71921] font-medium'
+                                          : 'text-[var(--text-secondary)]'
+                                      }
+                                    >
+                                      {task.assigneeName}
+                                    </span>
+                                    <span className="text-[var(--text-muted)]">·</span>
+                                    <span
+                                      className={`font-mono ${
+                                        isNoDeadline
+                                          ? 'text-[#D71921] font-medium'
+                                          : 'text-[var(--text-muted)]'
+                                      }`}
+                                    >
+                                      {task.deadline}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {task.timestamp && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleJumpToTimestamp(task.timestamp);
+                                      }}
+                                      className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)]"
+                                    >
+                                      <Play className="w-3 h-3 text-[#D71921]" />
+                                      <span>{normalizeTs(task.timestamp)}</span>
+                                    </button>
+                                  )}
+
+                                  <span className="text-[11px] text-[var(--text-secondary)] px-2 py-1 rounded bg-[var(--bg-card)] border border-[var(--border-solid)]">
+                                    {isExpanded ? 'Свернуть' : 'Изменить'}
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteTask(idx);
+                                    }}
+                                    title="Удалить поручение"
+                                    className="w-7 h-7 rounded-md hover:bg-[#D71921]/15 text-[var(--text-muted)] hover:text-[#D71921] flex items-center justify-center transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                            </li>
-                          ))}
-                        </ul>
+
+                              {/* Expanded Inline Editor */}
+                              {isExpanded && (
+                                <div className="p-4 pt-3 border-t border-[var(--border-solid)] bg-[var(--bg-card)] space-y-3">
+                                  <div>
+                                    <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                      Формулировка поручения
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={task.title}
+                                      onChange={(e) =>
+                                        handleUpdateTask(idx, 'title', e.target.value)
+                                      }
+                                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                        Ответственный
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={task.assigneeName}
+                                        onChange={(e) =>
+                                          handleUpdateTask(idx, 'assigneeName', e.target.value)
+                                        }
+                                        className={`w-full bg-[var(--bg-elevated)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] border focus:outline-none ${
+                                          isUnassigned
+                                            ? 'border-[#D71921]'
+                                            : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
+                                        }`}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                        Срок исполнения
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={task.deadline}
+                                        onChange={(e) =>
+                                          handleUpdateTask(idx, 'deadline', e.target.value)
+                                        }
+                                        className={`w-full bg-[var(--bg-elevated)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] border focus:outline-none ${
+                                          isNoDeadline
+                                            ? 'border-[#D71921]'
+                                            : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {task.sourceQuote && (
+                                    <div className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] p-2.5 rounded-lg">
+                                      Основание в стенограмме: «{task.sourceQuote}»
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        <div className="pt-3 flex items-center justify-end gap-2.5">
+                          <button
+                            onClick={handleReject}
+                            className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-elevated)] rounded-lg transition-colors"
+                          >
+                            Отклонить черновик
+                          </button>
+
+                          <button
+                            onClick={handleApprove}
+                            className="px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-lg transition-opacity flex items-center gap-2"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            <span>Утвердить в реестр ({tasksToReview.length})</span>
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* Staged Tasks Registry (Human-in-the-Loop) */}
-                <div className="nothing-card p-5 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-dashed border-[var(--border-dashed)]">
-                    <div>
-                      <h3 className="font-dot text-sm uppercase tracking-wider text-[var(--text-primary)]">
-                        ПОРУЧЕНИЯ К УТВЕРЖДЕНИЮ В РЕЕСТР
-                      </h3>
-                      <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                        Проверьте ответственного и срок исполнения перед фиксацией в журнале задач
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleAddTask}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-full transition-colors border border-[var(--border-solid)]"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Добавить задачу</span>
-                    </button>
-                  </div>
-
-                  {tasksToReview.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-2xl">
-                      Все поручения согласованы и записаны в реестр.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {tasksToReview.map((task, idx) => {
-                        const isUnassigned =
-                          task.assigneeName.includes('уточнения') ||
-                          task.assigneeName.includes('Назначить');
-                        const isNoDeadline =
-                          task.deadline.includes('уточнения') || task.deadline.includes('Указать');
-
-                        return (
-                          <div
-                            key={idx}
-                            className="bg-[var(--bg-elevated)]/65 p-4 rounded-2xl border border-[var(--border-solid)] space-y-3"
-                          >
-                            {/* Task Title */}
-                            <div className="flex items-start justify-between gap-3">
-                              <input
-                                type="text"
-                                value={task.title}
-                                onChange={(e) => handleUpdateTask(idx, 'title', e.target.value)}
-                                className="flex-1 bg-transparent font-semibold text-xs text-[var(--text-primary)] border-b border-dashed border-transparent hover:border-[var(--border-dashed)] focus:border-[var(--text-primary)] focus:outline-none pb-0.5"
-                              />
-                              <button
-                                onClick={() => handleDeleteTask(idx)}
-                                className="w-7 h-7 rounded-full hover:bg-[#D71921]/15 text-[var(--text-muted)] hover:text-[#D71921] flex items-center justify-center transition-colors"
-                                title="Удалить поручение"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-
-                            {/* Assignee & Deadline Inputs */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-[11px] font-mono text-[var(--text-secondary)]">
-                                    ОТВЕТСТВЕННЫЙ
-                                  </label>
-                                  {isUnassigned && (
-                                    <span className="text-[10px] text-[#D71921] font-mono font-semibold">
-                                      ● ТРЕБУЕТСЯ НАЗНАЧЕНИЕ
-                                    </span>
-                                  )}
-                                </div>
-                                <input
-                                  type="text"
-                                  value={task.assigneeName}
-                                  onChange={(e) =>
-                                    handleUpdateTask(idx, 'assigneeName', e.target.value)
-                                  }
-                                  className={`w-full bg-[var(--bg-card)] px-3.5 py-2 rounded-full text-xs text-[var(--text-primary)] border focus:outline-none ${
-                                    isUnassigned
-                                      ? 'border-[#D71921]'
-                                      : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
-                                  }`}
-                                />
-                              </div>
-
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-[11px] font-mono text-[var(--text-secondary)]">
-                                    СРОК ИСПОЛНЕНИЯ
-                                  </label>
-                                  {isNoDeadline && (
-                                    <span className="text-[10px] text-[#D71921] font-mono font-semibold">
-                                      ● УКАЖИТЕ ДЕДЛАЙН
-                                    </span>
-                                  )}
-                                </div>
-                                <input
-                                  type="text"
-                                  value={task.deadline}
-                                  onChange={(e) =>
-                                    handleUpdateTask(idx, 'deadline', e.target.value)
-                                  }
-                                  className={`w-full bg-[var(--bg-card)] px-3.5 py-2 rounded-full text-xs text-[var(--text-primary)] border focus:outline-none ${
-                                    isNoDeadline
-                                      ? 'border-[#D71921]'
-                                      : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
-                                  }`}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Source Quote + Jump Button */}
-                            {task.sourceQuote && (
-                              <div className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-card)] px-3.5 py-2 rounded-2xl flex items-center justify-between gap-2 italic">
-                                <span>Основание: «{task.sourceQuote}»</span>
-                                {task.timestamp && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleJumpToTimestamp(task.timestamp)}
-                                    title="Найти реплику в стенограмме"
-                                    className="inline-flex items-center gap-1 font-mono not-italic shrink-0 px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] font-semibold transition-colors"
-                                  >
-                                    <Play className="w-2.5 h-2.5 text-[#D71921]" />
-                                    <span>{normalizeTs(task.timestamp)}</span>
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Explicit Approval Bar */}
-                      <div className="pt-3 flex items-center justify-end gap-2.5">
-                        <button
-                          onClick={handleReject}
-                          className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-full transition-colors"
-                        >
-                          Отклонить все
-                        </button>
-
-                        <button
-                          onClick={handleApprove}
-                          className="px-5 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-full transition-all flex items-center gap-2 active:scale-95"
-                        >
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                          <span>Утвердить в реестр ({tasksToReview.length}) →</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </>
@@ -1994,23 +2197,23 @@ export const MeetingsView: React.FC = () => {
       {isPrepModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="nothing-card max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between pb-3.5 border-b border-dashed border-[var(--border-dashed)]">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[var(--border-solid)]">
               <div>
-                <div className="text-[11px] font-mono text-[var(--text-muted)] mb-1">
+                <div className="text-xs font-mono text-[var(--text-muted)] mb-1">
                   {prepStep === 'setup'
-                    ? 'ШАГ 1 ИЗ 2 // ПОВЕСТКА, ДОКУМЕНТЫ И СЛОТЫ'
-                    : 'ШАГ 2 ИЗ 2 // ПРЕДПРОСМОТР ПРИГЛАШЕНИЯ'}
+                    ? 'Шаг 1 из 2 · Повестка, документы и слоты'
+                    : 'Шаг 2 из 2 · Предпросмотр приглашения'}
                 </div>
-                <h2 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)]">
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
                   {prepStep === 'setup'
-                    ? 'ПОДГОТОВКА СОВЕЩАНИЯ И КАЛЕНДАРЬ'
-                    : 'ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ ВСТРЕЧИ'}
+                    ? 'Подготовка совещания и подбор слота календаря'
+                    : 'Подтверждение создания встречи'}
                 </h2>
               </div>
 
               <button
                 onClick={() => setIsPrepModalOpen(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2020,21 +2223,21 @@ export const MeetingsView: React.FC = () => {
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1.5">
-                      ТЕМА ВСТРЕЧИ
+                    <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                      Тема встречи
                     </label>
                     <input
                       type="text"
                       value={prepTopic}
                       onChange={(e) => setPrepTopic(e.target.value)}
-                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-4 py-2.5 rounded-full text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-3.5 py-2 rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1.5">
-                        УЧАСТНИКИ ({prepParticipants.length})
+                      <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                        Участники ({prepParticipants.length})
                       </label>
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {participantsCatalog.map((p) => {
@@ -2043,7 +2246,7 @@ export const MeetingsView: React.FC = () => {
                           return (
                             <label
                               key={p.id}
-                              className={`flex items-start gap-2.5 p-2.5 rounded-2xl border cursor-pointer transition-colors text-xs ${
+                              className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors text-xs ${
                                 checked
                                   ? 'bg-[var(--bg-elevated)] border-[var(--text-primary)] text-[var(--text-primary)]'
                                   : 'bg-[var(--bg-elevated)]/40 border-[var(--border-solid)] text-[var(--text-secondary)]'
@@ -2059,12 +2262,12 @@ export const MeetingsView: React.FC = () => {
                                 <div className="font-semibold flex items-center gap-1.5">
                                   <span>{p.shortName}</span>
                                   {isSelf && (
-                                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[var(--text-primary)] text-[var(--bg-canvas)]">
-                                      ВЫ
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--text-primary)] text-[var(--bg-canvas)]">
+                                      Вы
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-[var(--text-muted)] truncate">
+                                <div className="text-[11px] text-[var(--text-muted)] truncate">
                                   {p.roleTitle}
                                 </div>
                               </div>
@@ -2075,8 +2278,8 @@ export const MeetingsView: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1.5">
-                        ДОКУМЕНТЫ БАЗЫ ({selectedDocIds.length}/{documents.length})
+                      <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                        Документы базы ({selectedDocIds.length}/{documents.length})
                       </label>
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {documents.map((doc) => {
@@ -2084,7 +2287,7 @@ export const MeetingsView: React.FC = () => {
                           return (
                             <label
                               key={doc.id}
-                              className={`flex items-start gap-2.5 p-2.5 rounded-2xl border cursor-pointer transition-colors text-xs ${
+                              className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors text-xs ${
                                 checked
                                   ? 'bg-[var(--bg-elevated)] border-[var(--text-primary)] text-[var(--text-primary)]'
                                   : 'bg-[var(--bg-elevated)]/40 border-[var(--border-solid)] text-[var(--text-secondary)]'
@@ -2097,10 +2300,10 @@ export const MeetingsView: React.FC = () => {
                                 className="mt-0.5 rounded"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-semibold leading-snug line-clamp-2">
+                                <div className="text-xs font-medium leading-snug line-clamp-2">
                                   {doc.title}
                                 </div>
-                                <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5">
+                                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
                                   {doc.category} · {doc.date}
                                 </div>
                               </div>
@@ -2115,32 +2318,32 @@ export const MeetingsView: React.FC = () => {
                     type="button"
                     onClick={handleGenerateAgenda}
                     disabled={isAiGeneratingAgenda}
-                    className="w-full py-2.5 px-4 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-solid)] flex items-center justify-center gap-2 text-xs font-semibold text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                    className="w-full py-2 px-4 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-solid)] flex items-center justify-center gap-2 text-xs font-semibold text-[var(--text-primary)] transition-colors disabled:opacity-50"
                   >
-                    <Cpu className={`w-3.5 h-3.5 ${isAiGeneratingAgenda ? 'animate-spin' : ''}`} />
+                    <Cpu className={`w-4 h-4 ${isAiGeneratingAgenda ? 'animate-spin' : ''}`} />
                     <span>
                       {isAiGeneratingAgenda
-                        ? 'Формирование повестки и проверка открытых задач...'
-                        : 'Сформировать проект повестки и вопросы (AI)'}
+                        ? 'Формирование повестки и проверка задач...'
+                        : 'Сформировать проект повестки и вопросы'}
                     </span>
                   </button>
 
                   {prepError && (
-                    <div className="p-3 rounded-2xl bg-[#D71921]/10 border border-[#D71921]/30 text-xs text-[#D71921] flex items-start gap-2">
+                    <div className="p-3 rounded-xl bg-[#D71921]/10 border border-[#D71921]/30 text-xs text-[#D71921] flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>{prepError}</span>
                     </div>
                   )}
 
-                  <div className="p-4 rounded-2xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-3">
-                    <div className="text-xs font-bold text-[var(--text-primary)]">
-                      Проект повестки:
+                  <div className="p-4 rounded-xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-3">
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Проект повестки
                     </div>
 
                     {generatedAgenda.agenda.length === 0 ? (
-                      <div className="text-xs text-[var(--text-muted)] italic">
+                      <div className="text-xs text-[var(--text-muted)]">
                         Нажмите кнопку выше, чтобы сформировать повестку по выбранным документам и
-                        открытым задачам из реестра.
+                        открытым задачам из реестра
                       </div>
                     ) : (
                       <ul className="text-xs text-[var(--text-primary)] space-y-1">
@@ -2151,25 +2354,25 @@ export const MeetingsView: React.FC = () => {
                     )}
 
                     {generatedAgenda.openTasks.length > 0 && (
-                      <div className="pt-2 border-t border-dashed border-[var(--border-dashed)]">
-                        <div className="text-xs font-bold text-[var(--text-primary)] mb-1.5">
-                          Открытые задачи участников:
+                      <div className="pt-2 border-t border-[var(--border-solid)]">
+                        <div className="text-xs font-semibold text-[var(--text-primary)] mb-1.5">
+                          Открытые задачи участников
                         </div>
                         <div className="space-y-1.5">
                           {generatedAgenda.openTasks.map((task) => (
                             <div
                               key={task.id}
-                              className="p-2.5 rounded-xl bg-[var(--bg-card)] flex items-center justify-between gap-2 text-[11px]"
+                              className="p-2.5 rounded-lg bg-[var(--bg-card)] flex items-center justify-between gap-2 text-xs"
                             >
                               <div className="min-w-0">
-                                <div className="font-semibold text-[var(--text-primary)] truncate">
+                                <div className="font-medium text-[var(--text-primary)] truncate">
                                   {task.title}
                                 </div>
-                                <div className="text-[var(--text-muted)] font-mono">
+                                <div className="text-[var(--text-muted)] font-mono text-[11px]">
                                   {task.assigneeName} · до {task.deadline}
                                 </div>
                               </div>
-                              <span className="px-2 py-0.5 rounded-full font-mono text-[10px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shrink-0">
+                              <span className="px-2 py-0.5 rounded font-mono text-[11px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shrink-0">
                                 {task.status}
                               </span>
                             </div>
@@ -2179,9 +2382,9 @@ export const MeetingsView: React.FC = () => {
                     )}
 
                     {generatedAgenda.openQuestions.length > 0 && (
-                      <div className="pt-2 border-t border-dashed border-[var(--border-dashed)]">
-                        <div className="text-xs font-bold text-[var(--text-primary)] mb-1">
-                          Открытые вопросы к обсуждению:
+                      <div className="pt-2 border-t border-[var(--border-solid)]">
+                        <div className="text-xs font-semibold text-[var(--text-primary)] mb-1">
+                          Открытые вопросы к обсуждению
                         </div>
                         <ul className="text-xs text-amber-500 space-y-1 font-medium">
                           {generatedAgenda.openQuestions.map((q, i) => (
@@ -2194,13 +2397,13 @@ export const MeetingsView: React.FC = () => {
                 </div>
 
                 {/* Calendar Slots */}
-                <div className="space-y-3 pt-3 border-t border-dashed border-[var(--border-dashed)]">
+                <div className="space-y-3 pt-3 border-t border-[var(--border-solid)]">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
-                      СВОБОДНЫЕ СЛОТЫ В КАЛЕНДАРЕ
+                    <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                      Свободные слоты в календаре
                     </h3>
-                    <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                      ДОСТУПНО {calendarSlots.filter((s) => s.isAvailable).length} ИЗ{' '}
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
+                      Доступно {calendarSlots.filter((s) => s.isAvailable).length} из{' '}
                       {calendarSlots.length}
                     </span>
                   </div>
@@ -2219,7 +2422,7 @@ export const MeetingsView: React.FC = () => {
                           type="button"
                           disabled={!slot.isAvailable}
                           onClick={() => slot.isAvailable && setSelectedSlotId(slot.id)}
-                          className={`p-3.5 rounded-2xl text-left transition-all text-xs flex flex-col justify-between gap-1.5 border ${
+                          className={`p-3 rounded-xl text-left transition-colors text-xs flex flex-col justify-between gap-1.5 border ${
                             !slot.isAvailable
                               ? 'opacity-45 cursor-not-allowed border-[var(--border-solid)] bg-[var(--bg-elevated)]/40'
                               : isSelected
@@ -2228,33 +2431,33 @@ export const MeetingsView: React.FC = () => {
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="font-semibold text-[var(--text-primary)]">
+                            <span className="font-medium text-[var(--text-primary)]">
                               {slot.date}
                             </span>
                             {!slot.isAvailable ? (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921]">
-                                ЗАНЯТО
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#D71921]/15 text-[#D71921]">
+                                Занято
                               </span>
                             ) : (
                               isSelected && <Check className="w-3.5 h-3.5 text-[#D71921]" />
                             )}
                           </div>
 
-                          <div className="font-dot text-sm text-[var(--text-primary)]">
+                          <div className="font-mono text-sm font-semibold text-[var(--text-primary)]">
                             {slot.startTime} – {slot.endTime}
                           </div>
 
                           {!slot.isAvailable ? (
-                            <div className="text-[10px] text-[var(--text-muted)]">
+                            <div className="text-[11px] text-[var(--text-muted)]">
                               Слот забронирован
                             </div>
                           ) : busySelected.length === 0 ? (
-                            <div className="text-[10px] text-emerald-500 font-medium">
-                              ● Все участники свободны
+                            <div className="text-[11px] text-emerald-500 font-medium">
+                              Все участники свободны
                             </div>
                           ) : (
-                            <div className="text-[10px] text-amber-500 font-medium">
-                              ● Занят(ы): {busySelected.join(', ')}
+                            <div className="text-[11px] text-amber-500 font-medium">
+                              Занят(ы): {busySelected.join(', ')}
                             </div>
                           )}
                         </button>
@@ -2263,11 +2466,11 @@ export const MeetingsView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-dashed border-[var(--border-dashed)]">
+                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[var(--border-solid)]">
                   <button
                     type="button"
                     onClick={() => setIsPrepModalOpen(false)}
-                    className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-full transition-colors"
+                    className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-lg transition-colors"
                   >
                     Отмена
                   </button>
@@ -2276,7 +2479,7 @@ export const MeetingsView: React.FC = () => {
                     type="button"
                     onClick={handleProceedToPreview}
                     disabled={!selectedSlot || !selectedSlot.isAvailable}
-                    className="px-5 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-full flex items-center gap-1.5 transition-all disabled:opacity-50"
+                    className="px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-lg flex items-center gap-1.5 transition-opacity disabled:opacity-50"
                   >
                     <span>Далее: предпросмотр приглашения</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -2285,20 +2488,20 @@ export const MeetingsView: React.FC = () => {
               </>
             ) : (
               <div className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-[var(--text-primary)] flex items-start gap-2.5">
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-[var(--text-primary)] flex items-start gap-2.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <div className="leading-relaxed text-[11px]">
+                  <div className="leading-relaxed text-xs">
                     <strong>Подтверждение действия:</strong> проверьте детали события и текст
-                    приглашения. Запись в календарь и рассылка выполнятся после нажатия кнопки ниже.
+                    приглашения. Запись в календарь и рассылка выполнятся после подтверждения.
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)]">
-                    <div className="text-[10px] font-mono text-[var(--text-muted)] mb-1">
-                      СОБЫТИЕ И ВРЕМЯ
+                  <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)]">
+                    <div className="text-[11px] text-[var(--text-muted)] mb-1">
+                      Событие и время
                     </div>
-                    <div className="font-bold text-[var(--text-primary)]">{prepTopic}</div>
+                    <div className="font-semibold text-[var(--text-primary)]">{prepTopic}</div>
                     <div className="text-[var(--text-secondary)] mt-1 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5" />
                       <span>
@@ -2307,14 +2510,14 @@ export const MeetingsView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)]">
-                    <div className="text-[10px] font-mono text-[var(--text-muted)] mb-1">
-                      ПОЛУЧАТЕЛИ ПРИГЛАШЕНИЙ
+                  <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)]">
+                    <div className="text-[11px] text-[var(--text-muted)] mb-1">
+                      Получатели приглашений
                     </div>
                     {prepParticipants.filter((p) => surnameKey(p) !== currentUserSurname).length ===
                     0 ? (
-                      <div className="text-amber-500 text-[11px]">
-                        Другие участники не выбраны — встреча создастся только в вашем календаре.
+                      <div className="text-amber-500 text-xs">
+                        Другие участники не выбраны — встреча создастся только в вашем календаре
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-1.5 mt-1">
@@ -2323,7 +2526,7 @@ export const MeetingsView: React.FC = () => {
                           .map((recipient) => (
                             <span
                               key={recipient}
-                              className="px-2.5 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-primary)] text-[11px] font-medium"
+                              className="px-2.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-primary)] text-xs font-medium"
                             >
                               {recipient}
                             </span>
@@ -2334,22 +2537,22 @@ export const MeetingsView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1.5">
-                    ТЕКСТ ПИСЬМА-ПРИГЛАШЕНИЯ
+                  <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                    Текст письма-приглашения
                   </label>
                   <textarea
                     rows={7}
                     value={invitationText}
                     onChange={(e) => setInvitationText(e.target.value)}
-                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] p-3.5 rounded-2xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] leading-relaxed"
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] p-3.5 rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] leading-relaxed"
                   />
                 </div>
 
-                <div className="pt-3 flex items-center justify-between gap-2.5 border-t border-dashed border-[var(--border-dashed)]">
+                <div className="pt-3 flex items-center justify-between gap-2.5 border-t border-[var(--border-solid)]">
                   <button
                     type="button"
                     onClick={() => setPrepStep('setup')}
-                    className="px-4 py-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-full flex items-center gap-1.5 transition-colors"
+                    className="px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-lg flex items-center gap-1.5 transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Назад</span>
@@ -2359,7 +2562,7 @@ export const MeetingsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsPrepModalOpen(false)}
-                      className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-full transition-colors"
+                      className="px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-lg transition-colors"
                     >
                       Отмена
                     </button>
@@ -2368,7 +2571,7 @@ export const MeetingsView: React.FC = () => {
                       type="button"
                       disabled={isCreatingMeeting}
                       onClick={handleConfirmMeetingCreation}
-                      className="px-5 py-2 text-xs font-semibold bg-[#D71921] hover:brightness-110 text-white rounded-full flex items-center gap-1.5 transition-all disabled:opacity-50"
+                      className="px-4 py-2 text-xs font-semibold bg-[#D71921] hover:brightness-110 text-white rounded-lg flex items-center gap-1.5 transition-opacity disabled:opacity-50"
                     >
                       <Mail className="w-3.5 h-3.5" />
                       <span>
@@ -2391,31 +2594,31 @@ export const MeetingsView: React.FC = () => {
       {isInvitationsOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="nothing-card max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-start justify-between pb-3 border-b border-dashed border-[var(--border-dashed)]">
+            <div className="flex items-start justify-between pb-3 border-b border-[var(--border-solid)]">
               <div>
-                <div className="text-[11px] font-mono text-[var(--text-muted)]">
-                  ПРОФИЛЬ: {currentUser.name}
+                <div className="text-xs text-[var(--text-muted)]">
+                  Профиль: {currentUser.name}
                 </div>
-                <h2 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)]">
-                  ПРИГЛАШЕНИЯ НА СОВЕЩАНИЯ
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                  Приглашения на совещания
                 </h2>
               </div>
 
               <button
                 onClick={() => setIsInvitationsOpen(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="inline-flex items-center p-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
+            <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
               <button
                 type="button"
                 onClick={() => setInvTab('incoming')}
-                className={`px-3.5 py-1.5 rounded-full text-xs transition-all ${
+                className={`px-3 py-1 rounded-md text-xs transition-colors ${
                   invTab === 'incoming'
-                    ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -2424,9 +2627,9 @@ export const MeetingsView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setInvTab('all')}
-                className={`px-3.5 py-1.5 rounded-full text-xs transition-all ${
+                className={`px-3 py-1 rounded-md text-xs transition-colors ${
                   invTab === 'all'
-                    ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -2438,10 +2641,10 @@ export const MeetingsView: React.FC = () => {
               const list = invTab === 'incoming' ? incomingInvitations : invitations;
               if (list.length === 0) {
                 return (
-                  <div className="py-10 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-2xl">
+                  <div className="py-10 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-xl">
                     {invTab === 'incoming'
-                      ? 'У текущей роли пока нет входящих приглашений.'
-                      : 'Отправленных приглашений пока нет.'}
+                      ? 'У текущей роли пока нет входящих приглашений'
+                      : 'Отправленных приглашений пока нет'}
                   </div>
                 );
               }
@@ -2451,23 +2654,23 @@ export const MeetingsView: React.FC = () => {
                   {list.map((inv) => (
                     <div
                       key={inv.id}
-                      className="p-4 rounded-2xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-2.5 text-xs"
+                      className="p-4 rounded-xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-2.5 text-xs"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-bold text-[var(--text-primary)]">
+                          <div className="font-semibold text-[var(--text-primary)]">
                             {inv.meetingTitle}
                           </div>
                           <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
                             {inv.date} · {inv.time} · Организатор: {inv.organizerName}
                           </div>
                           <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                            Получатель: <span className="font-semibold">{inv.recipientName}</span>
+                            Получатель: <span className="font-medium">{inv.recipientName}</span>
                           </div>
                         </div>
 
                         <span
-                          className={`inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full shrink-0 ${
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded shrink-0 ${
                             inv.status === 'accepted'
                               ? 'bg-emerald-500/15 text-emerald-500'
                               : inv.status === 'declined'
@@ -2485,14 +2688,14 @@ export const MeetingsView: React.FC = () => {
                             }`}
                           />
                           {inv.status === 'accepted'
-                            ? 'ПРИНЯТО'
+                            ? 'Принято'
                             : inv.status === 'declined'
-                            ? 'ОТКЛОНЕНО'
-                            : 'ОЖИДАЕТ'}
+                            ? 'Отклонено'
+                            : 'Ожидает'}
                         </span>
                       </div>
 
-                      <div className="p-3 rounded-xl bg-[var(--bg-card)] whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">
+                      <div className="p-3 rounded-lg bg-[var(--bg-card)] whitespace-pre-wrap text-xs text-[var(--text-secondary)]">
                         {inv.messageText}
                       </div>
 
@@ -2501,14 +2704,14 @@ export const MeetingsView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => respondToInvitation(inv.id, 'declined')}
-                            className="px-3.5 py-1.5 rounded-full text-xs font-medium bg-[#D71921]/15 hover:bg-[#D71921] text-[#D71921] hover:text-white transition-colors"
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D71921]/15 hover:bg-[#D71921] text-[#D71921] hover:text-white transition-colors"
                           >
                             Отклонить
                           </button>
                           <button
                             type="button"
                             onClick={() => respondToInvitation(inv.id, 'accepted')}
-                            className="px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
                           >
                             Принять приглашение
                           </button>

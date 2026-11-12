@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -9,13 +9,13 @@
     --bg-canvas: #f4f4f2;
     --bg-card: #ffffff;
     --bg-elevated: #ecece8;
-    --bg-hover: #e3e3de;
-    --border-solid: #d8d8d2;
-    --border-dashed: #c5c5bd;
+    --bg-hover: #e4e4df;
+    --border-solid: #dcdcd6;
+    --border-dashed: #c4c4bc;
     --dot-color: #d6d6d0;
-    --text-primary: #0f0f10;
-    --text-secondary: #525258;
-    --text-muted: #8a8a92;
+    --text-primary: #111113;
+    --text-secondary: #525259;
+    --text-muted: #86868f;
     --accent-red: #d71921;
     --scrollbar-track: #f4f4f2;
     --scrollbar-thumb: #c8c8c0;
@@ -25,13 +25,13 @@
     --bg-canvas: #000000;
     --bg-card: #0d0d0f;
     --bg-elevated: #151518;
-    --bg-hover: #1e1e23;
-    --border-solid: #242429;
-    --border-dashed: #303038;
+    --bg-hover: #1d1d22;
+    --border-solid: #232329;
+    --border-dashed: #32323a;
     --dot-color: #1f1f24;
-    --text-primary: #f5f5f7;
-    --text-secondary: #9a9aa2;
-    --text-muted: #63636b;
+    --text-primary: #f4f4f6;
+    --text-secondary: #9a9aa3;
+    --text-muted: #62626b;
     --accent-red: #d71921;
     --scrollbar-track: #000000;
     --scrollbar-thumb: #26262c;
@@ -49,6 +49,7 @@
 
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
   }
 
   ::-webkit-scrollbar {
@@ -60,31 +61,31 @@
   }
   ::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: 9999px;
+    border-radius: 3px;
   }
 }
 
 @layer utilities {
   .font-dot {
     font-family: 'DotGothic16', 'JetBrains Mono', monospace;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
   }
 
   .nothing-grid {
     background-color: var(--bg-canvas);
     background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
-    background-size: 18px 18px;
+    background-size: 16px 16px;
   }
 
   .nothing-card {
     background-color: var(--bg-card);
     border: 1px solid var(--border-solid);
-    border-radius: 20px;
+    border-radius: 16px;
   }
 
   .nothing-card-dashed {
     background-color: var(--bg-card);
     border: 1px dashed var(--border-dashed);
-    border-radius: 20px;
+    border-radius: 16px;
   }
 }
