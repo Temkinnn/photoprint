@@ -517,7 +517,7 @@ export const MeetingScheduleView: React.FC = () => {
                   Тема совещания:
                 </label>
                 <div className="font-bold text-neutral-950 dark:text-white text-sm leading-snug p-2.5 rounded bg-neutral-50 dark:bg-[#171922] border border-neutral-200 dark:border-[#262b3a]">
-                  {meetingDraft.topic || 'Оперативное совещание руководящего состава'}
+                  {meetingDraft.topic || 'Совещание (тема не указана)'}
                 </div>
               </div>
 
@@ -588,15 +588,21 @@ export const MeetingScheduleView: React.FC = () => {
                   Приглашенные участники ({meetingDraft.participants.length}):
                 </label>
                 <div className="space-y-1 p-2 rounded bg-neutral-50 dark:bg-[#171922] border border-neutral-200 dark:border-[#262b3a] max-h-24 overflow-y-auto">
-                  {meetingDraft.participants.map((p, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs text-neutral-800 dark:text-neutral-200">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                        <span>{p}</span>
-                      </div>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Готов</span>
+                  {meetingDraft.participants.length === 0 ? (
+                    <div className="text-[11px] text-neutral-400 py-1">
+                      Участники не выбраны. Выберите на шаге подготовки встречи.
                     </div>
-                  ))}
+                  ) : (
+                    meetingDraft.participants.map((p, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs text-neutral-800 dark:text-neutral-200">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          <span>{p}</span>
+                        </div>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Готов</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -606,9 +612,15 @@ export const MeetingScheduleView: React.FC = () => {
                   Проект повестки:
                 </label>
                 <div className="text-[11px] text-neutral-600 dark:text-neutral-300 p-2 rounded bg-neutral-50 dark:bg-[#171922] border border-neutral-200 dark:border-[#262b3a] max-h-24 overflow-y-auto space-y-1">
-                  {meetingDraft.agenda.map((ag, idx) => (
-                    <div key={idx} className="truncate">• {ag}</div>
-                  ))}
+                  {meetingDraft.agenda.length === 0 ? (
+                    <div className="text-[11px] text-neutral-400 py-1 italic">
+                      Повестка пока не сформирована.
+                    </div>
+                  ) : (
+                    meetingDraft.agenda.map((ag, idx) => (
+                      <div key={idx} className="truncate">• {ag}</div>
+                    ))
+                  )}
                 </div>
               </div>
 

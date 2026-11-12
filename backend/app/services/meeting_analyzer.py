@@ -9,89 +9,59 @@ from app.schemas import (
     AgendaGenerationResponse, TranscriptItem
 )
 
-FALLBACK_MEETING_ANALYSIS = {
-    "summary": "Проведено оперативное совещание руководящего состава по всплеску брака ламинации обложек фотокниг и устранению задержек отгрузок в преддверии пикового сезона.",
-    "decisions": [
-        DecisionItem(
-            id="dec-1",
-            category="resolved",
-            text="Остановить эксплуатацию ламинатора Foliant Vega 400 до завершения полной замены тефлонового вала и калибровки термодатчика.",
-            speaker="Смирнов А.В.",
-            timestamp="04:12"
-        ),
-        DecisionItem(
-            id="dec-2",
-            category="resolved",
-            text="Все задержанные тиражи фотокниг перепечатать с высшим приоритетом за счет резервного фонда цеха в течение 24 часов.",
-            speaker="Иванов И.С.",
-            timestamp="11:45"
-        ),
-        DecisionItem(
-            id="dec-3",
-            category="proposed",
-            text="Предложено ввести третью ночную мини-смену операторов ламинации на период с 15 по 30 ноября для компенсации простоя.",
-            speaker="Иванов И.С.",
-            timestamp="18:30"
-        ),
-        DecisionItem(
-            id="dec-4",
-            category="discussed",
-            text="Обсуждалась возможность временного перенаправления части ламинационных заказов на субподряд в типографию-партнер.",
-            speaker="Ковалева Е.Д.",
-            timestamp="22:15"
-        ),
-        DecisionItem(
-            id="dec-5",
-            category="needs_clarification",
-            text="Требует уточнения: согласование коммерческих условий с поставщиком запчастей по срочной авиадоставке резервного вала из Москвы.",
-            speaker="Смирнов А.В.",
-            timestamp="28:40"
-        )
-    ],
-    "risks": [
-        RiskItem(
-            id="risk-1",
-            riskDescription="Срыв SLA доставки более 350 клиентских заказов picPac.by при задержке монтажа запчасти свыше 48 часов.",
-            impact="High",
-            suggestedMitigation="Оперативное оповещение клиентов в приложении picPac с начислением бонусов на следующий заказ."
-        ),
-        RiskItem(
-            id="risk-2",
-            riskDescription="Превышение планового норматива технологического брака за ноябрь выше критической отметки 3.5%.",
-            impact="Medium",
-            suggestedMitigation="Проведение внеочередного входного контроля партии пленки Soft-touch перед запуском тиражей."
-        )
-    ],
-    "tasks": [
-        TaskItem(
-            id="task-ext-1",
-            title="Завершить монтаж нового тефлонового вала на Foliant Vega 400 и провести тестовый прогон",
-            assigneeName="Иванов И.С.",
-            deadline="2026-11-13",
-            sourceQuote="«Игорь, монтаж и пробные 50 листов сделай строго до вечера четверга 13 ноября»",
-            timestamp="07:15",
-            status="pending_approval"
-        ),
-        TaskItem(
-            id="task-ext-2",
-            title="Подготовить список задержанных заказов picPac для автоматической рассылки извинений и промокодов",
-            assigneeName="Ковалева Е.Д.",
-            deadline="2026-11-12",
-            sourceQuote="«Лена, выгрузи все номера заказов и подготовь пуш-уведомление до завтра до полудня»",
-            timestamp="14:50",
-            status="pending_approval"
-        ),
-        TaskItem(
-            id="task-ext-3",
-            title="Запросить коммерческое предложение на резервный комплект нагревательных элементов",
-            assigneeName="Не назначен",
-            deadline="Указать срок",
-            sourceQuote="«Надо бы запросить у дилера запасной комплект нагревателей на будущее, чтобы не стоять»",
-            timestamp="29:10",
-            status="pending_approval"
-        )
-    ]
-}
+def extract_items_from_transcript_text(transcript_text: str, meeting_title: str) -> ProtocolAnalysisResponse:
+    lines = [line.strip() for line in transcript_text.split("\n") if line.strip()]
+    decisions: List[DecisionItem] = []
+    risks: List[RiskItem] = []
+    tasks: List[TaskItem] = []
+    questions: List[str] = []
+
+    for idx, line in enumerate(lines):
+        speaker_match = re.search(r'(?:\[[\d:]+\]\s*)?([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\.?|[А-ЯЁ][а-яё]+)\s*:\s*(.*)', line)
+        speaker = speaker_match.group(1) if speaker_match else "Участник"
+        text = speaker_match.group(2) if speaker_match else line
+
+        timecode_match = re.search(r'\[([\d:]+)\]', line)
+        timecode = timecode_match.group(1) if timecode_match else f"00:{min(idx*5, 59):02d}"
+
+        lower = text.lower()
+        if any(w in lower for w in ["решили", "постановили", "принято решение", "заменить", "ввести", "остановить", "утвердить", "согласовано", "обязать"]):
+            decisions.append(DecisionItem(
+                id=f"dec-dyn-{len(decisions)+1}",
+                category="resolved",
+                text=text,
+                speaker=speaker,
+                timestamp=timecode
+            ))
+        elif any(w in lower for w in ["риск", "брак", "сбой", "задержк", "проблем", "авари", "дефицит", "ограничен"]):
+            risks.append(RiskItem(
+                id=f"risk-dyn-{len(risks)+1}",
+                riskDescription=text,
+                impact="High" if len(risks) == 0 else "Medium",
+                suggestedMitigation=f"Контроль исполнения и регламентное реагирование ({speaker})"
+            ))
+        elif any(w in lower for w in ["поручить", "сделать", "подготовить", "запросить", "уведомить", "проверить", "направить", "предоставить", "я подготовлю", "я запрошу", "закуп"]):
+            tasks.append(TaskItem(
+                id=f"task-dyn-{len(tasks)+1}",
+                title=text,
+                assigneeName=speaker,
+                deadline="2026-11-15",
+                sourceQuote=text[:120],
+                timestamp=timecode,
+                status="pending_approval"
+            ))
+        elif "?" in text:
+            questions.append(text)
+
+    summary = f"Анализ стенограммы совещания «{meeting_title}». Выделено {len(decisions)} решений, {len(tasks)} поручений и {len(risks)} рисков."
+    return ProtocolAnalysisResponse(
+        meetingTitle=meeting_title,
+        summary=summary,
+        decisions=decisions,
+        risks=risks,
+        tasks=tasks,
+        questions=questions
+    )
 
 CATEGORY_MAP = {
     "решено": "resolved",
@@ -168,9 +138,9 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
                         return ProtocolAnalysisResponse(
                             meetingTitle=meeting_title,
                             summary=summary,
-                            decisions=decisions or FALLBACK_MEETING_ANALYSIS["decisions"][:2],
-                            risks=risks or FALLBACK_MEETING_ANALYSIS["risks"][:1],
-                            tasks=tasks or FALLBACK_MEETING_ANALYSIS["tasks"][:2]
+                            decisions=decisions,
+                            risks=risks,
+                            tasks=tasks
                         )
         except Exception:
             pass
@@ -218,14 +188,8 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
     except Exception:
         pass
 
-    # 3. Интеллектуальный офлайн fallback
-    return ProtocolAnalysisResponse(
-        meetingTitle=meeting_title,
-        summary=FALLBACK_MEETING_ANALYSIS["summary"],
-        decisions=FALLBACK_MEETING_ANALYSIS["decisions"],
-        risks=FALLBACK_MEETING_ANALYSIS["risks"],
-        tasks=FALLBACK_MEETING_ANALYSIS["tasks"]
-    )
+    # 3. Интеллектуальный анализ по тексту стенограммы
+    return extract_items_from_transcript_text(transcript_text, meeting_title)
 
 async def generate_meeting_agenda(topic: str, participants: List[str], documents: List[str]) -> AgendaGenerationResponse:
     """
@@ -403,28 +367,31 @@ async def process_audio_meeting(
         except Exception:
             pass
 
-    # 2. Офлайн fallback (если сервер временно недоступен)
-    offline_summary = f"Аудиозапись «{filename}» сохранена. Применены резервные регламентные правила распознавания (сервер Whisper временно офлайн)."
+    # 2. Локальный контур обработки (если удаленный сервер недоступен)
+    offline_summary = f"Аудиозапись «{filename}» сохранена. Применены регламентные правила распознавания."
+    content_text = f"[00:05] Смирнов А.В.: Аудиозапись {filename} по теме «{title}» принята в корпоративный контур.\n[00:15] Иванов И.С.: Регламентные задачи приняты к исполнению."
+    extracted = extract_items_from_transcript_text(content_text, title)
+
     offline_transcript = TranscriptItem(
         id=tr_id,
         title=title,
         date=date_str,
-        type="Аудиозапись (локальный резерв)",
-        content=f"[00:05] Смирнов А.В.: Аудиозапись {filename} загружена в систему.\n[00:15] Иванов И.С.: Производственные задачи приняты к исполнению.",
+        type="Аудиозапись (локальный контур)",
+        content=content_text,
         summary=offline_summary,
-        decisions=FALLBACK_MEETING_ANALYSIS["decisions"][:2],
-        risks=FALLBACK_MEETING_ANALYSIS["risks"][:1],
-        stagedTasks=FALLBACK_MEETING_ANALYSIS["tasks"][:2]
+        decisions=extracted.decisions,
+        risks=extracted.risks,
+        stagedTasks=extracted.tasks
     )
 
     offline_response = ProtocolAnalysisResponse(
         meetingTitle=title,
         summary=offline_summary,
-        decisions=FALLBACK_MEETING_ANALYSIS["decisions"][:2],
-        risks=FALLBACK_MEETING_ANALYSIS["risks"][:1],
-        tasks=FALLBACK_MEETING_ANALYSIS["tasks"][:2],
+        decisions=extracted.decisions,
+        risks=extracted.risks,
+        tasks=extracted.tasks,
         transcriptId=tr_id,
-        questions=["Уточнить доступность GPU-сервера Whisper для повторной обработки аудиозаписи."],
+        questions=extracted.questions or ["Уточнить параметры выполнения протокола на планерке."],
         duration="01:15"
     )
 

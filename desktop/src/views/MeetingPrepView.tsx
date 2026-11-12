@@ -180,6 +180,10 @@ export const MeetingPrepView: React.FC = () => {
   };
 
   const handleProceedToScheduling = () => {
+    if (!topic.trim()) {
+      showToast('Укажите тему', 'Тема совещания обязательна для подготовки встречи', 'warning');
+      return;
+    }
     setMeetingDraft((prev) => ({
       ...prev,
       topic,
@@ -451,17 +455,23 @@ export const MeetingPrepView: React.FC = () => {
                 </span>
               </div>
 
-              <div className="space-y-2">
-                {meetingDraft.openQuestions.map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-md bg-amber-50/40 dark:bg-amber-950/15 border border-amber-200/60 dark:border-amber-900/40 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2.5"
-                  >
-                    <span className="text-amber-600 dark:text-amber-400 font-bold shrink-0">?</span>
-                    <span className="leading-relaxed">{q.replace(/^[•\s]+/, '')}</span>
-                  </div>
-                ))}
-              </div>
+              {meetingDraft.openQuestions.length === 0 ? (
+                <div className="py-4 text-center text-xs text-neutral-400">
+                  Список открытых вопросов будет автоматически сформирован нейросетью.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {meetingDraft.openQuestions.map((q, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-md bg-amber-50/40 dark:bg-amber-950/15 border border-amber-200/60 dark:border-amber-900/40 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2.5"
+                    >
+                      <span className="text-amber-600 dark:text-amber-400 font-bold shrink-0">?</span>
+                      <span className="leading-relaxed">{q.replace(/^[•\s]+/, '')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* OPEN TASKS BLOCK */}
@@ -478,38 +488,46 @@ export const MeetingPrepView: React.FC = () => {
                 </span>
               </div>
 
-              <div className="space-y-2">
-                {meetingDraft.openTasks.map((t, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-md bg-neutral-50 dark:bg-[#171922] border border-neutral-200/80 dark:border-[#262b3a] text-xs text-neutral-800 dark:text-neutral-200 flex items-center gap-2.5"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="leading-relaxed font-medium">{t}</span>
-                  </div>
-                ))}
-              </div>
+              {meetingDraft.openTasks.length === 0 ? (
+                <div className="py-4 text-center text-xs text-neutral-400">
+                  Список задач будет извлечен из нормативных регламентов после генерации.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {meetingDraft.openTasks.map((t, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-md bg-neutral-50 dark:bg-[#171922] border border-neutral-200/80 dark:border-[#262b3a] text-xs text-neutral-800 dark:text-neutral-200 flex items-center gap-2.5"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="leading-relaxed font-medium">{t}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ACTION BANNER */}
-            <div className="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/40 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold text-sky-950 dark:text-sky-200">
-                  Повестка, вопросы и задачи готовы к согласованию
+            {meetingDraft.agenda.length > 0 && (
+              <div className="p-4 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/40 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-sky-950 dark:text-sky-200">
+                    Повестка, вопросы и задачи готовы к согласованию
+                  </div>
+                  <div className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
+                    Подберите свободное время в календаре и подтвердите создание встречи.
+                  </div>
                 </div>
-                <div className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
-                  Подберите свободное время в календаре и подтвердите создание встречи.
-                </div>
-              </div>
 
-              <button
-                onClick={handleProceedToScheduling}
-                className="px-4 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
-              >
-                <span>Перейти к созданию встречи</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <button
+                  onClick={handleProceedToScheduling}
+                  className="px-4 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                >
+                  <span>Перейти к созданию встречи</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -110,28 +110,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentRole, setCurrentRole] = useState<UserRole>('ROLE_DIRECTOR');
   const [activeTab, setActiveTab] = useState<string>('meeting_prep');
   const [meetingDraft, setMeetingDraft] = useState<MeetingDraft>({
-    topic: 'Ввод в эксплуатацию ЦПМ Canon imagePRESS V1000',
-    participants: [
-      'Смирнов А.В. (Ген. директор)',
-      'Иванов И.С. (Нач. производства)',
-    ],
-    documents: [
-      'Техкарта оборудования и требования к электропитанию',
-      'План производства и загрузка цеха на Q4',
-    ],
-    agenda: [
-      '1. Оценка готовности производственной площадки и электропитания 380В (15 мин)',
-      '2. Согласование графика поставки и шеф-монтажа с инженерами «Кэнон-Ру» (20 мин)',
-      '3. План переобучения операторов дневной и ночной смен (15 мин)',
-    ],
-    openQuestions: [
-      '• Выделена ли стабильная силовая линия 380В / 32А без просадок напряжения?',
-      '• Получен ли допуск инженеров поставщика на режимную территорию предприятия?',
-    ],
-    openTasks: [
-      'Подготовить акт осмотра кабельной трассы распределительного щита цеха',
-      'Запросить сертификаты соответствия на силовые разъемы Mennekes',
-    ],
+    topic: '',
+    participants: [],
+    documents: [],
+    agenda: [],
+    openQuestions: [],
+    openTasks: [],
   });
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);

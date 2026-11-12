@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { TaskItem } from '../types';
 import {
@@ -33,59 +33,38 @@ export const MeetingProtocolView: React.FC = () => {
   } = useApp();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>(transcripts[0]?.id || 'tr-01');
+  const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>('');
   const [showFullTranscript, setShowFullTranscript] = useState<boolean>(true);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState<boolean>(false);
+  const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>([]);
 
-  const currentTranscript = transcripts.find((t) => t.id === selectedTranscriptId) || transcripts[0] || {
-    id: 'tr-01',
-    title: 'Внеплановое совещание по всплеску брака в цехе',
-    date: '2026-11-10',
-    duration: '42 мин',
-    content: 'Иванов И.С.: Зафиксирован сбой оптического датчика УФ-лака...',
-    decisions: [
-      { id: 'd-1', category: 'resolved', text: 'Заменить оптический датчик вязкости УФ-лакировки до конца недели.' },
-      { id: 'd-2', category: 'resolved', text: 'Ввести двойной выборочный контроль первых 50 листов тиража.' }
-    ],
-    risks: [
-      { id: 'r-1', riskDescription: 'Превышение лимита брака до 3.5% в ночную смену', impact: 'High', suggestedMitigation: 'Остановка секции лака при вязкости выше 45с' },
-      { id: 'r-2', riskDescription: 'Срыв сроков печати фотокниг премиум-линейки', impact: 'Medium', suggestedMitigation: 'Резервирование мощностей машины Canon V1000' }
-    ],
-    questions: [
-      'Согласован ли аварийный бюджет 65 000 руб. на закупку запасных датчиков?',
-      'Требуется ли вызов инженера сервисной службы поставщика лака?'
-    ],
-    stagedTasks: [
-      {
-        title: 'Закупка запасного оптического датчика УФ-линии',
-        assigneeName: 'Иванов И.С.',
-        deadline: '2026-11-14',
-        sourceQuote: 'Иванов: я запрошу счет у поставщика до четверга',
-        timestamp: '00:14:20',
-        status: 'pending_approval'
-      },
-      {
-        title: 'Уведомить клиентов о смещении отгрузки тиража на 4 часа',
-        assigneeName: 'Ковалева Е.Д.',
-        deadline: '2026-11-11',
-        sourceQuote: 'Ковалева: мы подготовим рассылку и персональные звонки',
-        timestamp: '00:28:10',
-        status: 'pending_approval'
-      }
-    ]
-  };
+  // Automatically select first transcript when transcripts load from backend
+  useEffect(() => {
+    if (!selectedTranscriptId && transcripts.length > 0) {
+      setSelectedTranscriptId(transcripts[0].id);
+    }
+  }, [transcripts, selectedTranscriptId]);
 
-  const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>(
-    (currentTranscript.stagedTasks || []).map((t) => ({
-      title: t.title,
-      assigneeName: t.assigneeName,
-      deadline: t.deadline,
-      sourceQuote: t.sourceQuote,
-      timestamp: t.timestamp || '00:00',
-      status: 'pending_approval' as const
-    }))
-  );
+  const currentTranscript = transcripts.find((t) => t.id === selectedTranscriptId) || transcripts[0] || null;
+
+  // Reactively populate tasksToReview when current transcript changes or loads
+  useEffect(() => {
+    if (currentTranscript && currentTranscript.stagedTasks) {
+      setTasksToReview(
+        currentTranscript.stagedTasks.map((t) => ({
+          title: t.title,
+          assigneeName: t.assigneeName,
+          deadline: t.deadline,
+          sourceQuote: t.sourceQuote,
+          timestamp: t.timestamp || '00:00',
+          status: 'pending_approval' as const
+        }))
+      );
+    } else {
+      setTasksToReview([]);
+    }
+  }, [currentTranscript?.id]);
 
   const handleSelectTranscript = (id: string) => {
     setSelectedTranscriptId(id);
@@ -105,6 +84,7 @@ export const MeetingProtocolView: React.FC = () => {
   };
 
   const handleRunAiAnalysis = async () => {
+    if (!currentTranscript) return;
     setIsAnalyzing(true);
     showToast('AI-Анализ встречи', 'Обработка расшифровки нейросетевым модулем...', 'info');
 
@@ -179,6 +159,7 @@ export const MeetingProtocolView: React.FC = () => {
   };
 
   const handleSaveProtocol = () => {
+    if (!currentTranscript) return;
     const protocolRef = `#transcript-${currentTranscript.id}`;
     logAudit(
       'SAVE_PROTOCOL',
@@ -194,6 +175,7 @@ export const MeetingProtocolView: React.FC = () => {
   };
 
   const handleApproveAllTasks = async () => {
+    if (!currentTranscript) return;
     if (tasksToReview.length === 0) {
       showToast('Нет задач', 'Все задачи уже подтверждены', 'info');
       return;
@@ -204,6 +186,7 @@ export const MeetingProtocolView: React.FC = () => {
   };
 
   const handleApproveSingleTask = async (taskIndex: number) => {
+    if (!currentTranscript) return;
     const task = tasksToReview[taskIndex];
     if (!task) return;
     await batchApproveTasks([task], currentTranscript.title);
@@ -261,10 +244,48 @@ export const MeetingProtocolView: React.FC = () => {
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* CONTROL TOOLBAR: SELECT TRANSCRIPT & ACTIONS                              */}
-        {/* ========================================================================= */}
-        <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Empty state when no transcripts exist */}
+        {!currentTranscript ? (
+          <div className="p-12 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex items-center justify-center mx-auto text-sky-500">
+              <FileText className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
+                Расшифровки совещаний не найдены
+              </h3>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
+                Загрузите аудиозапись совещания (.wav, .ogg, .mp3) для распознавания речи через Whisper STT и автоматического извлечения поручений нейросетью Qwen 2.5.
+              </p>
+            </div>
+            <div className="pt-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAudioFileChange}
+                accept="audio/*,.wav,.ogg,.mp3,.m4a"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingAudio}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isUploadingAudio ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+                <span>{isUploadingAudio ? 'Whisper STT распознавание...' : 'Загрузить аудиозапись встречи'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* CONTROL TOOLBAR: SELECT TRANSCRIPT & ACTIONS                              */}
+            {/* ========================================================================= */}
+            <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-sky-500" />
@@ -532,7 +553,9 @@ export const MeetingProtocolView: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
+      </>
+    )}
+  </div>
+</div>
+);
 };
