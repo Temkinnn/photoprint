@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { MOCK_DOCUMENTS } from '../mock/mockData';
 import { RAGMessage } from '../types';
 import {
   Send,
@@ -9,18 +8,10 @@ import {
 } from 'lucide-react';
 
 export const KnowledgeBaseView: React.FC = () => {
-  const { currentRole, currentUser, canAccessDocument, logAudit, showToast, queryRAG } = useApp();
+  const { queryRAG, documents, ragMessages, setRagMessages } = useApp();
 
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<RAGMessage[]>([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: `Здравствуйте, ${currentUser.name}! Задайте вопрос по внутренним регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
-      timestamp: '14:00',
-    },
-  ]);
 
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
 
@@ -49,20 +40,20 @@ export const KnowledgeBaseView: React.FC = () => {
       timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setRagMessages((prev) => [...prev, userMessage]);
     setInputQuery('');
     setIsLoading(true);
 
     try {
       const assistantMessage = await queryRAG(queryText);
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch {
-      setMessages((prev) => [
+      setRagMessages((prev) => [...prev, assistantMessage]);
+    } catch (err: any) {
+      setRagMessages((prev) => [
         ...prev,
         {
           id: 'err-' + Date.now(),
           sender: 'assistant',
-          text: 'В доступных регламентах компании «Фотопринт» прямых оснований не найдено (AI-05).',
+          text: err?.message || 'Ошибка обращения к локальной LLM или базе регламентов.',
           timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
           status: 'needs_clarification',
         },
@@ -86,13 +77,13 @@ export const KnowledgeBaseView: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#1a1d25] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#262a36]">
-          {MOCK_DOCUMENTS.length} регламентов в базе
+          {documents.length} доступных регламентов
         </div>
       </div>
 
       {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl mx-auto w-full">
-        {messages.map((msg) => (
+        {ragMessages.map((msg) => (
           <div
             key={msg.id}
             className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
@@ -149,6 +140,13 @@ export const KnowledgeBaseView: React.FC = () => {
             <div className="text-[10px] font-mono text-neutral-400 mt-1 px-1">{msg.timestamp}</div>
           </div>
         ))}
+        {isLoading && (
+          <div className="flex flex-col items-start">
+            <div className="rounded-lg p-3.5 text-xs bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] text-neutral-500 dark:text-neutral-400 font-mono">
+              Поиск по регламентам и генерация ответа нейросетью...
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Search Bar & Quick Prompts */}
@@ -185,7 +183,8 @@ export const KnowledgeBaseView: React.FC = () => {
             />
             <button
               type="submit"
-              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 text-xs font-semibold rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+              disabled={isLoading || !inputQuery.trim()}
+              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 text-xs font-semibold rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0 disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Запросить</span>

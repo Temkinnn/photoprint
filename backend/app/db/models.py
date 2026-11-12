@@ -4,6 +4,13 @@ from datetime import datetime
 
 Base = declarative_base()
 
+class DBAppState(Base):
+    __tablename__ = "app_state"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(String(255), nullable=False)
+
+
 class DBUser(Base):
     __tablename__ = "users"
 
@@ -61,6 +68,24 @@ class DBCalendarSlot(Base):
     date = Column(String(32), nullable=False)
     is_available = Column(Boolean, default=True)
     participants_free = Column(JSON, default=list)
+
+
+class DBMeetingInvitation(Base):
+    __tablename__ = "meeting_invitations"
+
+    id = Column(String(64), primary_key=True)
+    meeting_id = Column(String(64), nullable=False)
+    meeting_title = Column(String(512), nullable=False)
+    date = Column(String(32), nullable=False)
+    time = Column(String(32), nullable=False)
+    organizer_name = Column(String(255), nullable=False)
+    recipient_id = Column(String(64), nullable=False)
+    recipient_name = Column(String(255), nullable=False)
+    recipient_role = Column(String(64), nullable=True)
+    agenda = Column(JSON, default=list)
+    message_text = Column(Text, nullable=False)
+    status = Column(String(32), default="pending")  # pending, accepted, declined
+    created_at = Column(String(64), default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 class DBAuditLog(Base):
     __tablename__ = "audit_logs"

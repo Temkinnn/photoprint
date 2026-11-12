@@ -5,6 +5,18 @@ from app.config import settings
 from app.schemas import (
     ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
 )
+from app.services.ollama_client import TUNNEL_HEADERS
+
+CATEGORY_MAP = {
+    "решено": "resolved",
+    "resolved": "resolved",
+    "предложено": "proposed",
+    "proposed": "proposed",
+    "обсуждалось": "discussed",
+    "discussed": "discussed",
+    "требует уточнения": "needs_clarification",
+    "needs_clarification": "needs_clarification",
+}
 
 FALLBACK_MEETING_ANALYSIS = {
     "summary": "Проведено оперативное совещание руководящего состава по всплеску брака ламинации обложек фотокниг и устранению задержек отгрузок в преддверии пикового сезона.",
@@ -113,6 +125,59 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
    Поля: "id", "title", "assigneeName", "deadline", "sourceQuote", "timestamp".
 
 Верни ТОЛЬКО валидный JSON без лишнего текста."""
+
+    ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")
+    if ai_server:
+        try:
+            async with httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT_SECONDS, follow_redirects=True) as client:
+                resp = await client.post(
+                    f"{ai_server}/api/v1/ai/analyze-transcript",
+                    headers=TUNNEL_HEADERS,
+                    json={"transcript": transcript_text, "meeting_title": meeting_title},
+                )
+                if resp.status_code == 200:
+                    parsed = resp.json()
+                    decisions = [
+                        DecisionItem(
+                            id=f"dec-{idx + 1}",
+                            category=CATEGORY_MAP.get((d.get("category") or "").strip().lower(), "discussed"),
+                            text=d.get("text", ""),
+                            speaker=d.get("speaker"),
+                            timestamp=d.get("timestamp"),
+                        )
+                        for idx, d in enumerate(parsed.get("decisions", []))
+                    ]
+                    risks = [
+                        RiskItem(
+                            id=f"risk-{idx + 1}",
+                            riskDescription=r.get("risk", ""),
+                            impact="High" if idx == 0 else "Medium",
+                            suggestedMitigation="Требуется контроль руководителя",
+                        )
+                        for idx, r in enumerate(parsed.get("identified_risks", []))
+                        if r.get("risk")
+                    ]
+                    tasks = [
+                        TaskItem(
+                            id=t.get("temp_id") or f"task-ext-{idx + 1}",
+                            title=t.get("title", ""),
+                            assigneeName=t.get("assignee") or "Требует уточнения",
+                            deadline=t.get("deadline") or "Требует уточнения",
+                            sourceQuote=t.get("source_quote") or "",
+                            timestamp=t.get("timestamp"),
+                            status="pending_approval",
+                        )
+                        for idx, t in enumerate(parsed.get("tasks", []))
+                    ]
+                    return ProtocolAnalysisResponse(
+                        meetingTitle=parsed.get("meeting_title") or meeting_title,
+                        summary=f"Обработано удаленным AI-сервером (Qwen 2.5): выделено решений — {len(decisions)}, поручений — {len(tasks)}, рисков — {len(risks)}.",
+                        decisions=decisions,
+                        risks=risks,
+                        tasks=tasks,
+                    )
+        except Exception:
+            pass
 
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:

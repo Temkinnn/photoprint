@@ -5,7 +5,8 @@ from typing import List
 
 # Автозагрузка .env файла бэкенда
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(backend_dir, ".env"))
+ENV_PATH = os.path.join(backend_dir, ".env")
+load_dotenv(ENV_PATH)
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Photoprint Executive AI Assistant"
@@ -36,10 +37,13 @@ class Settings(BaseSettings):
         )
         return url_obj.render_as_string(hide_password=False)
     
-    # AI / Ollama configuration
+    # AI / Ollama & Remote AI Server configuration
+    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     OLLAMA_EMBED_MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
+    OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60.0"))
+    ALLOW_FALLBACK: bool = os.getenv("ALLOW_FALLBACK", "false").lower() == "true"
     
     # CORS
     CORS_ORIGINS: List[str] = [
@@ -55,7 +59,7 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
-        env_file = ".env"
+        env_file = ENV_PATH
         extra = "allow"
 
 settings = Settings()

@@ -97,6 +97,37 @@ class MeetingItem(BaseModel):
     openQuestions: Optional[List[str]] = []
     protocolId: Optional[str] = None
 
+class ParticipantOption(BaseModel):
+    id: str
+    name: str
+    shortName: str
+    roleTitle: str
+    department: str
+    role: Optional[UserRole] = None
+    isSystemUser: bool = True
+
+class OpenTaskSummary(BaseModel):
+    id: str
+    title: str
+    assigneeName: str
+    deadline: str
+    status: TaskStatus
+    meetingTitle: Optional[str] = None
+
+class PrepareAgendaRequest(BaseModel):
+    topic: str
+    participants: List[str] = []
+    selectedDocIds: List[str] = []
+    userRole: Optional[UserRole] = None
+
+class PrepareAgendaResponse(BaseModel):
+    agenda: List[str]
+    openTasks: List[OpenTaskSummary]
+    openQuestions: List[str]
+    usedDocuments: List[str]
+    blockedDocuments: List[str] = []
+    modelUsed: str
+
 class CreateMeetingRequest(BaseModel):
     title: str
     date: str
@@ -104,6 +135,27 @@ class CreateMeetingRequest(BaseModel):
     durationMinutes: int = 45
     participants: List[str]
     agenda: List[str]
+    openQuestions: List[str] = []
+    slotId: Optional[str] = None
+    invitationText: Optional[str] = None
+
+class MeetingInvitationItem(BaseModel):
+    id: str
+    meetingId: str
+    meetingTitle: str
+    date: str
+    time: str
+    organizerName: str
+    recipientId: str
+    recipientName: str
+    recipientRole: Optional[UserRole] = None
+    agenda: List[str] = []
+    messageText: str
+    status: Literal['pending', 'accepted', 'declined']
+    createdAt: str
+
+class RespondInvitationRequest(BaseModel):
+    status: Literal['accepted', 'declined']
 
 class ProtocolAnalysisRequest(BaseModel):
     transcriptText: str

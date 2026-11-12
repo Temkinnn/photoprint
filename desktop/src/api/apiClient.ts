@@ -10,6 +10,10 @@ import {
   RAGMessage,
   DecisionItem,
   RiskItem,
+  ParticipantOption,
+  PrepareAgendaResponse,
+  MeetingInvitationItem,
+  AIStatusInfo,
 } from '../types';
 
 export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -43,7 +47,7 @@ export interface BackendHealth {
   database?: string;
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 4000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -57,6 +61,16 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
     clearTimeout(id);
     throw error;
   }
+}
+
+async function parseErrorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    if (typeof data?.detail === 'string') return data.detail;
+  } catch {
+    // ignore JSON parse failure
+  }
+  return `HTTP ${res.status}`;
 }
 
 export const apiClient = {
@@ -90,20 +104,45 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async getUsers(): Promise<ParticipantOption[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/users`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 
   // 2. Meetings & Calendar
   async getMeetings(): Promise<MeetingItem[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 
   async getCalendarSlots(): Promise<CalendarSlot[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/calendar/slots`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async prepareAgenda(params: {
+    topic: string;
+    participants: string[];
+    selectedDocIds: string[];
+    userRole: UserRole;
+  }): Promise<PrepareAgendaResponse> {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/meetings/prepare-agenda`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      90000
+    );
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 
@@ -114,6 +153,9 @@ export const apiClient = {
     durationMinutes?: number;
     participants: string[];
     agenda: string[];
+    openQuestions?: string[];
+    slotId?: string;
+    invitationText?: string;
   }): Promise<MeetingItem> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/create`, {
       method: 'POST',
@@ -123,7 +165,23 @@ export const apiClient = {
         durationMinutes: params.durationMinutes || 45,
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async getInvitations(): Promise<MeetingInvitationItem[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/invitations`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async respondInvitation(invId: string, status: 'accepted' | 'declined'): Promise<MeetingInvitationItem> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/invitations/${invId}/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 
@@ -203,9 +261,9 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, userRole }),
       },
-      35000
+      75000
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     const data = await res.json();
     return {
       id: data.id || `rag-${Date.now()}`,
@@ -255,6 +313,12 @@ export const apiClient = {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/system/reset-demo`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+  },
+
+  async getAiStatus(): Promise<AIStatusInfo> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/system/ai-status`, {}, 7000);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
   },
 };

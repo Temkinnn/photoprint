@@ -15,8 +15,7 @@ if exist "..\.venv\Scripts\activate.bat" (
 )
 
 set PYTHONPATH=.
-echo [i] База данных: SQLite fallback (photoprint.db) / PostgreSQL 16
-echo [i] Ollama URL: http://localhost:11434 (qwen2.5:7b)
+echo [i] База данных и Ollama URL читаются из backend\.env (по умолчанию PostgreSQL / http://localhost:11434)
 echo [i] Сервер FastAPI запускается на http://127.0.0.1:8000
 echo [i] Swagger Docs: http://127.0.0.1:8000/docs
 echo --------------------------------------------------------

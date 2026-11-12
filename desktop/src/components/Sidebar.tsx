@@ -19,9 +19,11 @@ export const Sidebar: React.FC = () => {
     theme,
     toggleTheme,
     currentUser,
+    currentRole,
     activeTab,
     setActiveTab,
     tasks,
+    invitations,
     logout,
     resetDemoData,
     backendOnline,
@@ -30,12 +32,16 @@ export const Sidebar: React.FC = () => {
   } = useApp();
 
   const activeTasksCount = tasks.filter((t) => t.status === 'active' || t.status === 'overdue').length;
+  const pendingInvitationsCount = invitations.filter(
+    (inv) => inv.recipientRole === currentRole && inv.status === 'pending'
+  ).length;
 
   const navigation = [
     {
       id: 'meetings',
       label: 'Совещания',
       icon: CalendarDays,
+      badge: pendingInvitationsCount > 0 ? pendingInvitationsCount : undefined,
     },
     {
       id: 'knowledge_base',

@@ -277,12 +277,29 @@ INITIAL_METRICS: List[KPIMetric] = [
     )
 ]
 
+EXTRA_STAFF: List[Dict[str, str]] = [
+    {
+        "id": "u-4",
+        "name": "Петрова Анна Михайловна",
+        "shortName": "Петрова А.М.",
+        "roleTitle": "Руководитель отдела снабжения",
+        "department": "Отдел закупок и логистики",
+    },
+    {
+        "id": "u-5",
+        "name": "Соколов Дмитрий Андреевич",
+        "shortName": "Соколов Д.А.",
+        "roleTitle": "Главный инженер",
+        "department": "Инженерная служба",
+    },
+]
+
 INITIAL_SLOTS: List[CalendarSlot] = [
-    CalendarSlot(id="cs-1", date="2026-11-12", startTime="10:00", endTime="10:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С."]),
+    CalendarSlot(id="cs-1", date="2026-11-12", startTime="10:00", endTime="10:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Петрова А.М."]),
     CalendarSlot(id="cs-2", date="2026-11-12", startTime="11:30", endTime="12:15", isAvailable=False, participantsFree=["Ковалева Е.Д."]),
-    CalendarSlot(id="cs-3", date="2026-11-12", startTime="14:00", endTime="14:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."]),
-    CalendarSlot(id="cs-4", date="2026-11-12", startTime="16:00", endTime="16:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Ковалева Е.Д."]),
-    CalendarSlot(id="cs-5", date="2026-11-13", startTime="11:00", endTime="11:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д."])
+    CalendarSlot(id="cs-3", date="2026-11-12", startTime="14:00", endTime="14:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д.", "Петрова А.М.", "Соколов Д.А."]),
+    CalendarSlot(id="cs-4", date="2026-11-12", startTime="16:00", endTime="16:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Ковалева Е.Д.", "Соколов Д.А."]),
+    CalendarSlot(id="cs-5", date="2026-11-13", startTime="11:00", endTime="11:45", isAvailable=True, participantsFree=["Смирнов А.В.", "Иванов И.С.", "Ковалева Е.Д.", "Петрова А.М.", "Соколов Д.А."])
 ]
 
 INITIAL_TASKS: List[TaskItem] = [

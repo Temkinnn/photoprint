@@ -1,15 +1,15 @@
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, init_tables
 from app.db.models import (
-    DBUser, DBDocument, DBMeeting, DBTask, 
-    DBCalendarSlot, DBAuditLog, DBKPIMetric
+    DBAppState, DBUser, DBDocument, DBMeeting, DBTask,
+    DBCalendarSlot, DBAuditLog, DBKPIMetric, DBMeetingInvitation
 )
 from app.db.storage import (
     INITIAL_USERS, INITIAL_DOCUMENTS, INITIAL_METRICS,
     INITIAL_SLOTS, INITIAL_TASKS, INITIAL_MEETINGS, INITIAL_AUDIT
 )
 
-def seed_database(db: Session = None):
+def seed_database(db: Session = None, force: bool = False):
     init_tables()
     should_close = False
     if db is None:
@@ -17,12 +17,27 @@ def seed_database(db: Session = None):
         should_close = True
 
     try:
-        # Проверяем, есть ли уже данные
-        if db.query(DBUser).first() is not None:
+        if force:
+            db.query(DBAuditLog).delete()
+            db.query(DBMeetingInvitation).delete()
+            db.query(DBTask).delete()
+            db.query(DBMeeting).delete()
+            db.query(DBCalendarSlot).delete()
+            db.query(DBKPIMetric).delete()
+            db.query(DBDocument).delete()
+            db.query(DBUser).delete()
+            db.query(DBAppState).delete()
+            db.commit()
+        elif db.query(DBUser).first() is not None:
+            if db.query(DBAppState).filter(DBAppState.key == "current_role").first() is None:
+                db.add(DBAppState(key="current_role", value="ROLE_DIRECTOR"))
+                db.commit()
             print("База данных уже инициализирована. Сидирование пропущено.")
             return
 
         print("Сидирование базы данных начальным датасетом ООО «Фотопринт»...")
+
+        db.add(DBAppState(key="current_role", value="ROLE_DIRECTOR"))
 
         # 1. Пользователи
         for role_key, u in INITIAL_USERS.items():

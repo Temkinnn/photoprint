@@ -9,6 +9,9 @@ import {
   RAGMessage,
   CalendarSlot,
   MeetingItem,
+  ParticipantOption,
+  PrepareAgendaResponse,
+  MeetingInvitationItem,
 } from '../types';
 import {
   MOCK_USERS,
@@ -63,9 +66,18 @@ interface AppContextType {
   isSyncing: boolean;
   syncWithBackend: () => Promise<void>;
   queryRAG: (queryText: string) => Promise<RAGMessage>;
+  ragMessages: RAGMessage[];
+  setRagMessages: React.Dispatch<React.SetStateAction<RAGMessage[]>>;
   analyzeMeetingTranscript: (text: string, title: string) => Promise<ProtocolAnalysisResult | null>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
+  participantsCatalog: ParticipantOption[];
+  invitations: MeetingInvitationItem[];
+  prepareMeetingAgenda: (params: {
+    topic: string;
+    participants: string[];
+    selectedDocIds: string[];
+  }) => Promise<PrepareAgendaResponse>;
   scheduleMeeting: (params: {
     title: string;
     date: string;
@@ -73,8 +85,27 @@ interface AppContextType {
     durationMinutes?: number;
     participants: string[];
     agenda: string[];
-  }) => Promise<void>;
+    openQuestions?: string[];
+    slotId?: string;
+    invitationText?: string;
+  }) => Promise<MeetingItem>;
+  respondToInvitation: (invId: string, status: 'accepted' | 'declined') => Promise<void>;
 }
+
+const DEFAULT_PARTICIPANTS: ParticipantOption[] = [
+  { id: 'u-1', name: 'Смирнов Алексей Викторович', shortName: 'Смирнов А.В.', roleTitle: 'Генеральный директор', department: 'Дирекция', role: 'ROLE_DIRECTOR', isSystemUser: true },
+  { id: 'u-2', name: 'Иванов Игорь Сергеевич', shortName: 'Иванов И.С.', roleTitle: 'Начальник производства', department: 'Производственный цех', role: 'ROLE_PRODUCTION_HEAD', isSystemUser: true },
+  { id: 'u-3', name: 'Ковалева Елена Дмитриевна', shortName: 'Ковалева Е.Д.', roleTitle: 'Руководитель клиентского сервиса', department: 'Служба заботы picPac.by', role: 'ROLE_SUPPORT_HEAD', isSystemUser: true },
+  { id: 'u-4', name: 'Петрова Анна Михайловна', shortName: 'Петрова А.М.', roleTitle: 'Руководитель отдела снабжения', department: 'Отдел закупок и логистики', role: null, isSystemUser: false },
+  { id: 'u-5', name: 'Соколов Дмитрий Андреевич', shortName: 'Соколов Д.А.', roleTitle: 'Главный инженер', department: 'Инженерная служба', role: null, isSystemUser: false },
+];
+
+const buildWelcomeRagMessage = (userName: string): RAGMessage => ({
+  id: 'welcome',
+  sender: 'assistant',
+  text: `Здравствуйте, ${userName}! Задайте вопрос по внутренним регламентам, допускам брака или стандартам клиентского сервиса picPac.by.`,
+  timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+});
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -112,12 +143,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS);
   const [calendarSlots, setCalendarSlots] = useState<CalendarSlot[]>(MOCK_CALENDAR_SLOTS);
   const [scheduledMeetings, setScheduledMeetings] = useState<MeetingItem[]>([]);
+  const [participantsCatalog, setParticipantsCatalog] = useState<ParticipantOption[]>(DEFAULT_PARTICIPANTS);
+  const [invitations, setInvitations] = useState<MeetingInvitationItem[]>([]);
 
   // Backend connection state
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   const currentUser = MOCK_USERS[currentRole];
+  const [ragMessages, setRagMessages] = useState<RAGMessage[]>(() => [
+    buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name),
+  ]);
 
   const showToast = useCallback((title: string, message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString() + Math.random().toString();
@@ -161,13 +197,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setBackendOnline(true);
 
         // Fetch live entities concurrently
-        const [liveTasks, liveMetrics, liveAudit, liveDocs, liveSlots, liveMeetings] = await Promise.allSettled([
+        const [
+          liveTasks,
+          liveMetrics,
+          liveAudit,
+          liveDocs,
+          liveSlots,
+          liveMeetings,
+          liveUsers,
+          liveInvitations,
+        ] = await Promise.allSettled([
           apiClient.getTasks(),
           apiClient.getMetrics(),
           apiClient.getAuditLogs(),
           apiClient.getDocuments(),
           apiClient.getCalendarSlots(),
           apiClient.getMeetings(),
+          apiClient.getUsers(),
+          apiClient.getInvitations(),
         ]);
 
         if (liveTasks.status === 'fulfilled' && liveTasks.value.length > 0) {
@@ -179,7 +226,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (liveAudit.status === 'fulfilled' && liveAudit.value.length > 0) {
           setAuditLogs(liveAudit.value);
         }
-        if (liveDocs.status === 'fulfilled' && liveDocs.value.length > 0) {
+        if (liveDocs.status === 'fulfilled') {
           setDocuments(liveDocs.value);
         }
         if (liveSlots.status === 'fulfilled' && liveSlots.value.length > 0) {
@@ -187,6 +234,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         if (liveMeetings.status === 'fulfilled') {
           setScheduledMeetings(liveMeetings.value);
+        }
+        if (liveUsers.status === 'fulfilled' && liveUsers.value.length > 0) {
+          setParticipantsCatalog(liveUsers.value);
+        }
+        if (liveInvitations.status === 'fulfilled') {
+          setInvitations(liveInvitations.value);
         }
       } else {
         setBackendOnline(false);
@@ -211,15 +264,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentRole(role);
     setIsAuthenticated(true);
     const targetUser = MOCK_USERS[role];
+    setRagMessages([buildWelcomeRagMessage(targetUser.name)]);
 
     if (backendOnline) {
       try {
         await apiClient.switchRole(role);
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch {
         // fallback
       }
+    } else {
+      const clearance = role === 'ROLE_DIRECTOR' ? 1 : role === 'ROLE_PRODUCTION_HEAD' ? 2 : 3;
+      setDocuments(MOCK_DOCUMENTS.filter((d) => d.minClearance >= clearance));
     }
 
     logAudit(
@@ -239,15 +295,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const setRole = async (newRole: UserRole) => {
     setCurrentRole(newRole);
     const targetUser = MOCK_USERS[newRole];
+    setRagMessages([buildWelcomeRagMessage(targetUser.name)]);
 
     if (backendOnline) {
       try {
         await apiClient.switchRole(newRole);
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch {
         // fallback
       }
+    } else {
+      const clearance = newRole === 'ROLE_DIRECTOR' ? 1 : newRole === 'ROLE_PRODUCTION_HEAD' ? 2 : 3;
+      setDocuments(MOCK_DOCUMENTS.filter((d) => d.minClearance >= clearance));
     }
 
     logAudit(
@@ -372,6 +431,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const prepareMeetingAgenda = async (params: {
+    topic: string;
+    participants: string[];
+    selectedDocIds: string[];
+  }): Promise<PrepareAgendaResponse> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Запустите сервер FastAPI и проверьте подключение к Ollama.');
+    }
+    const result = await apiClient.prepareAgenda({
+      ...params,
+      userRole: currentRole,
+    });
+    try {
+      const freshLogs = await apiClient.getAuditLogs();
+      if (freshLogs.length > 0) setAuditLogs(freshLogs);
+    } catch {
+      // ignore audit refresh error
+    }
+    return result;
+  };
+
   const scheduleMeeting = async (params: {
     title: string;
     date: string;
@@ -379,7 +459,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     durationMinutes?: number;
     participants: string[];
     agenda: string[];
-  }) => {
+    openQuestions?: string[];
+    slotId?: string;
+    invitationText?: string;
+  }): Promise<MeetingItem> => {
+    if (backendOnline) {
+      const liveMeeting = await apiClient.createMeeting(params);
+      await syncWithBackend();
+      showToast(
+        'Встреча подтверждена и создана',
+        `Слот ${params.date} (${params.time}) забронирован, приглашения отправлены.`,
+        'success'
+      );
+      return liveMeeting;
+    }
+
     const newMeeting: MeetingItem = {
       id: `m-sched-${Date.now()}`,
       title: params.title,
@@ -389,31 +483,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       participants: params.participants,
       agenda: params.agenda,
       status: 'scheduled',
-      openQuestions: [],
+      openQuestions: params.openQuestions || [],
     };
-
     setScheduledMeetings((prev) => [newMeeting, ...prev]);
-
-    if (backendOnline) {
-      try {
-        const liveMeeting = await apiClient.createMeeting(params);
-        setScheduledMeetings((prev) =>
-          prev.map((m) => (m.id === newMeeting.id ? liveMeeting : m))
-        );
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
-      } catch {
-        // keep local
-      }
+    if (params.slotId) {
+      setCalendarSlots((prev) =>
+        prev.map((s) => (s.id === params.slotId ? { ...s, isAvailable: false } : s))
+      );
     }
-
     logAudit(
       'SCHEDULE_MEETING',
       `Meeting: ${params.title}`,
       'SUCCESS',
-      `Пользователь подтвердил создание встречи на ${params.date} ${params.time}`
+      `Локальное подтверждение встречи на ${params.date} ${params.time}`
     );
     showToast('Встреча запланирована', `Событие создано на ${params.date} в ${params.time}`, 'success');
+    return newMeeting;
+  };
+
+  const respondToInvitation = async (invId: string, status: 'accepted' | 'declined') => {
+    if (backendOnline) {
+      const updated = await apiClient.respondInvitation(invId, status);
+      setInvitations((prev) => prev.map((inv) => (inv.id === invId ? updated : inv)));
+      const freshLogs = await apiClient.getAuditLogs();
+      if (freshLogs.length > 0) setAuditLogs(freshLogs);
+    } else {
+      setInvitations((prev) => prev.map((inv) => (inv.id === invId ? { ...inv, status } : inv)));
+    }
+    showToast(
+      status === 'accepted' ? 'Приглашение принято' : 'Приглашение отклонено',
+      status === 'accepted' ? 'Участие во встрече подтверждено' : 'Организатор увидит ваш отказ',
+      status === 'accepted' ? 'success' : 'warning'
+    );
   };
 
   const analyzeMeetingTranscript = async (
@@ -436,12 +537,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (backendOnline) {
       try {
         const res = await apiClient.queryKnowledgeBase(queryText, currentRole);
-        // Refresh audit logs because backend logged the search or security block
         const freshLogs = await apiClient.getAuditLogs();
         if (freshLogs.length > 0) setAuditLogs(freshLogs);
         return res;
-      } catch {
-        // Fallback to local below
+      } catch (err: any) {
+        try {
+          const freshLogs = await apiClient.getAuditLogs();
+          if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        } catch {
+          // ignore
+        }
+        throw new Error(err?.message || 'Ошибка обращения к LLM / базе знаний на бэкенде.');
       }
     }
 
@@ -528,8 +634,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (backendOnline) {
       try {
         await apiClient.resetDemo();
+        setCurrentRole('ROLE_DIRECTOR');
+        setRagMessages([buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name)]);
         await syncWithBackend();
-        showToast('Демо сброшено', 'База данных и аудит на бэкенде сброшены к эталону', 'info');
+        showToast('Демо сброшено', 'База данных, календарь, приглашения и аудит сброшены к эталону', 'info');
         return;
       } catch {
         // fallback to local
@@ -538,7 +646,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setTasks(INITIAL_TASKS);
     setAuditLogs(INITIAL_AUDIT_LOG);
+    setCalendarSlots(MOCK_CALENDAR_SLOTS);
+    setScheduledMeetings([]);
+    setInvitations([]);
     setCurrentRole('ROLE_DIRECTOR');
+    setRagMessages([buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name)]);
     logAudit(
       'RESET_DEMO',
       'System',
@@ -579,10 +691,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isSyncing,
         syncWithBackend,
         queryRAG,
+        ragMessages,
+        setRagMessages,
         analyzeMeetingTranscript,
         calendarSlots,
         scheduledMeetings,
+        participantsCatalog,
+        invitations,
+        prepareMeetingAgenda,
         scheduleMeeting,
+        respondToInvitation,
       }}
     >
       {children}

@@ -110,3 +110,57 @@ export interface AuditLogEntry {
   status: 'SUCCESS' | 'REJECTED' | 'ACCESS_DENIED' | 'PENDING';
   details: string;
 }
+
+export interface ParticipantOption {
+  id: string;
+  name: string;
+  shortName: string;
+  roleTitle: string;
+  department: string;
+  role?: UserRole | null;
+  isSystemUser: boolean;
+}
+
+export interface OpenTaskSummary {
+  id: string;
+  title: string;
+  assigneeName: string;
+  deadline: string;
+  status: TaskStatus;
+  meetingTitle?: string | null;
+}
+
+export interface PrepareAgendaResponse {
+  agenda: string[];
+  openTasks: OpenTaskSummary[];
+  openQuestions: string[];
+  usedDocuments: string[];
+  blockedDocuments: string[];
+  modelUsed: string;
+}
+
+export interface MeetingInvitationItem {
+  id: string;
+  meetingId: string;
+  meetingTitle: string;
+  date: string;
+  time: string;
+  organizerName: string;
+  recipientId: string;
+  recipientName: string;
+  recipientRole?: UserRole | null;
+  agenda: string[];
+  messageText: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+}
+
+export interface AIStatusInfo {
+  ollamaOnline: boolean;
+  ollamaUrl: string;
+  configuredModel: string;
+  availableModels: string[];
+  allowFallback: boolean;
+  databaseBackend: string;
+  error?: string | null;
+}
