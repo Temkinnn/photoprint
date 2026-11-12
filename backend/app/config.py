@@ -42,7 +42,7 @@ class Settings(BaseSettings):
         return url_obj.render_as_string(hide_password=False)
     
     # AI Server (Developer 2 remote GPU: Whisper + Qwen 2.5)
-    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "https://mighty-bikes-hammer.loca.lt")
+    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "https://salty-news-tan.loca.lt")
     AI_SERVER_BYPASS_HEADER: str = "true"
 
     # AI / Ollama configuration (local fallback)
