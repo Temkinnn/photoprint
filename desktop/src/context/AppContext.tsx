@@ -600,6 +600,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const postJsonWithTimeout = async <T,>(
+    path: string,
+    payload: Record<string, unknown>,
+    timeoutMs: number
+  ): Promise<T> => {
+    const apiBase =
+      ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined) || 'http://127.0.0.1:8000';
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody?.detail) detail = String(errBody.detail);
+        } catch {
+          // ignore
+        }
+        throw new Error(detail);
+      }
+      return (await res.json()) as T;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error(`Таймаут ожидания ответа от сервера (${Math.round(timeoutMs / 1000)} сек).`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timerId);
+    }
+  };
+
   const analyzeMeetingTranscript = async (
     transcriptText: string,
     meetingTitle: string,
@@ -608,7 +645,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!backendOnline) {
       throw new Error('Бэкенд недоступен. Запустите сервер FastAPI для AI-анализа.');
     }
-    const result = await apiClient.analyzeTranscript({ transcriptText, meetingTitle, meetingId });
+    const result = await postJsonWithTimeout<ProtocolAnalysisResult>(
+      '/api/v1/meetings/analyze-transcript',
+      { transcriptText, meetingTitle, meetingId },
+      180000
+    );
     await refreshAuditLogsSafe();
     return result;
   };
@@ -865,17 +906,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (backendOnline) {
       try {
-        const res = await apiClient.queryKnowledgeBase(queryText, currentRole);
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        const res = await postJsonWithTimeout<RAGMessage>(
+          '/api/v1/rag/query',
+          { query: queryText, userRole: currentRole },
+          120000
+        );
+        await refreshAuditLogsSafe();
         return res;
       } catch (err: any) {
-        try {
-          const freshLogs = await apiClient.getAuditLogs();
-          if (freshLogs.length > 0) setAuditLogs(freshLogs);
-        } catch {
-          // ignore
-        }
+        await refreshAuditLogsSafe();
         throw new Error(err?.message || 'Ошибка обращения к LLM / базе знаний на бэкенде.');
       }
     }

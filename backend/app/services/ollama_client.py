@@ -9,20 +9,82 @@ TUNNEL_HEADERS = {"Bypass-Tunnel-Reminder": "true"}
 _EMBED_HINTS = ("embed", "bge-m3", "nomic-embed", "mxbai-embed", "all-minilm")
 
 
+def _repair_json_text(text: str) -> str:
+    """Чинит типичные ошибки JSON от локальных LLM: неэкранированные кавычки внутри строк и обрыв в конце."""
+    out: List[str] = []
+    stack: List[str] = []
+    in_string = False
+    escaped = False
+    n = len(text)
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                out.append(ch)
+                escaped = False
+                continue
+            if ch == "\\":
+                out.append(ch)
+                escaped = True
+                continue
+            if ch == '"':
+                j = i + 1
+                while j < n and text[j] in " \t\r\n":
+                    j += 1
+                next_ch = text[j] if j < n else ""
+                if next_ch in (",", "}", "]", ":", ""):
+                    in_string = False
+                    out.append(ch)
+                else:
+                    out.append('\\"')
+                continue
+            if ch in ("\n", "\r"):
+                out.append("\\n")
+                continue
+            out.append(ch)
+        else:
+            out.append(ch)
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                stack.append("}")
+            elif ch == "[":
+                stack.append("]")
+            elif ch in ("}", "]") and stack and stack[-1] == ch:
+                stack.pop()
+
+    if in_string:
+        out.append('"')
+    joined = "".join(out).rstrip()
+    joined = re.sub(r",\s*$", "", joined)
+    while stack:
+        joined += stack.pop()
+    return joined
+
+
 def extract_json_object(raw_text: str) -> Dict[str, Any]:
-    """Извлекает JSON-объект из ответа модели (включая markdown-блоки ```json)."""
+    """Извлекает JSON-объект из ответа модели (включая markdown-блоки ```json и починку кавычек)."""
     cleaned = raw_text.strip()
     fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
     if fence_match:
         cleaned = fence_match.group(1).strip()
 
+    brace_idx = cleaned.find("{")
+    if brace_idx > 0:
+        cleaned = cleaned[brace_idx:]
+
+    for candidate in (cleaned,):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    brace_match = re.search(r"\{[\s\S]*\}", cleaned)
+    target = brace_match.group(0) if brace_match else cleaned
     try:
-        return json.loads(cleaned)
+        return json.loads(target)
     except json.JSONDecodeError:
-        brace_match = re.search(r"\{[\s\S]*\}", cleaned)
-        if brace_match:
-            return json.loads(brace_match.group(0))
-        raise
+        return json.loads(_repair_json_text(target))
 
 
 def _is_embedding_model(name: str) -> bool:
@@ -105,11 +167,33 @@ def _build_ai_server_payload(
     }
 
 
+async def unload_local_ollama_model() -> None:
+    """Выгружает чат-модель Ollama из VRAM (keep_alive=0), чтобы освободить GPU под Whisper."""
+    base_url = (settings.OLLAMA_BASE_URL or "http://localhost:11434").strip().rstrip("/")
+    chosen_model = settings.OLLAMA_MODEL
+    try:
+        async with httpx.AsyncClient(timeout=2.0, follow_redirects=True) as client:
+            ps_resp = await client.get(f"{base_url}/api/ps")
+            loaded = (
+                [m.get("name") for m in ps_resp.json().get("models", []) if m.get("name")]
+                if ps_resp.status_code == 200
+                else [chosen_model]
+            )
+            for model_name in loaded:
+                await client.post(
+                    f"{base_url}/api/chat",
+                    json={"model": model_name, "messages": [], "keep_alive": 0},
+                )
+    except Exception:
+        pass
+
+
 async def chat_with_ollama(
     messages: List[Dict[str, str]],
     expect_json: bool = False,
     temperature: float = 0.2,
     timeout: Optional[float] = None,
+    num_predict: Optional[int] = None,
 ) -> str:
     """
     Универсальный клиент LLM:
@@ -120,7 +204,7 @@ async def chat_with_ollama(
     - AI_MODE=remote: только удаленный AI_SERVER_URL.
     """
     mode = _ai_mode()
-    req_timeout = timeout or settings.OLLAMA_TIMEOUT_SECONDS
+    req_timeout = timeout or max(settings.OLLAMA_TIMEOUT_SECONDS, 120.0)
     ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")
     local_ai_server = (settings.LOCAL_AI_SERVER_URL or "").strip().rstrip("/")
 
@@ -159,11 +243,17 @@ async def chat_with_ollama(
         )
 
     if target_kind == "local-ollama":
+        max_tokens = num_predict or (750 if expect_json else 280)
+        ctx_size = 2560 if max_tokens > 500 else 2048
         payload: Dict[str, Any] = {
             "model": chosen_model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": temperature},
+            "options": {
+                "temperature": temperature,
+                "num_ctx": ctx_size,
+                "num_predict": max_tokens,
+            },
         }
         if expect_json:
             payload["format"] = "json"
