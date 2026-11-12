@@ -21,12 +21,14 @@ import {
   RotateCcw,
   Shield,
   GitCompare,
+  ArrowUpRight,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const CLEARANCE_LABELS: Record<number, string> = {
-  1: 'Допуск 1 (Директор)',
-  2: 'Допуск 2 (Цех + Директор)',
-  3: 'Допуск 3 (Общий)',
+  1: 'LVL-1 · ДИРЕКТОР',
+  2: 'LVL-2 · ЦЕХ + ДИРЕКТОР',
+  3: 'LVL-3 · ОБЩИЙ ДОСТУП',
 };
 
 interface EditorDraftState {
@@ -62,10 +64,13 @@ export const KnowledgeBaseView: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<'rag' | 'docs'>('rag');
   const [inputQuery, setInputQuery] = useState('');
+  const [searchScope, setSearchScope] = useState<'all' | 'production' | 'service' | 'finance'>(
+    'all'
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
 
-  // Stage 3: Document Registry, Diff Preview & Versioning
+  // Document Registry, Diff Preview & Versioning
   const [docSearch, setDocSearch] = useState('');
   const [selectedDocId, setSelectedDocId] = useState<string>(documents[0]?.id || '');
   const [aiInstruction, setAiInstruction] = useState('');
@@ -178,7 +183,11 @@ export const KnowledgeBaseView: React.FC = () => {
 
   const handleGenerateAiDraft = async (mode: 'create' | 'edit') => {
     if (!aiInstruction.trim()) {
-      showToast('Укажите инструкцию', 'Опишите, что нужно создать или изменить в документе', 'warning');
+      showToast(
+        'Укажите инструкцию',
+        'Опишите, что нужно создать или изменить в документе',
+        'warning'
+      );
       return;
     }
     if (mode === 'edit' && !selectedDoc) return;
@@ -190,7 +199,8 @@ export const KnowledgeBaseView: React.FC = () => {
         instruction: aiInstruction.trim(),
         title: draft?.title || (mode === 'edit' ? selectedDoc?.title : undefined),
         category: draft?.category || (mode === 'edit' ? selectedDoc?.category : undefined),
-        minClearance: draft?.minClearance || (mode === 'edit' ? selectedDoc?.minClearance : roleMinClearance),
+        minClearance:
+          draft?.minClearance || (mode === 'edit' ? selectedDoc?.minClearance : roleMinClearance),
       });
       setShowVersions(false);
       setCompareVersion(null);
@@ -209,12 +219,16 @@ export const KnowledgeBaseView: React.FC = () => {
         modelUsed: res.modelUsed,
       });
       showToast(
-        'Черновик готов (AI-03)',
-        'Проверьте изменения в Diff-превью и подтвердите сохранение в папку documents.',
+        'Черновик готов',
+        'Проверьте изменения в Diff-превью и подтвердите сохранение в базу.',
         'info'
       );
     } catch (err: any) {
-      showToast('Ошибка генерации', err?.message || 'Не удалось сформировать черновик через AI', 'error');
+      showToast(
+        'Ошибка генерации',
+        err?.message || 'Не удалось сформировать черновик через AI',
+        'error'
+      );
     } finally {
       setIsGeneratingDraft(false);
     }
@@ -255,7 +269,7 @@ export const KnowledgeBaseView: React.FC = () => {
         'REJECT_DOCUMENT_DRAFT',
         draft.documentId ? `${draft.documentId} (${draft.title})` : `Новый: ${draft.title}`,
         'REJECTED',
-        'Руководитель отклонил черновик изменений документа до сохранения в БД (AI-03).'
+        'Руководитель отклонил черновик изменений документа до сохранения в БД.'
       );
     }
     setDraft(null);
@@ -280,23 +294,39 @@ export const KnowledgeBaseView: React.FC = () => {
     }
   };
 
-  const sampleQuestions = [
+  const starterScenarios = [
     {
-      label: 'Станки: Допуск Delta-E на ЦПМ HP Indigo',
-      text: 'Какое допустимое оптическое отклонение Delta-E установлено для цифровой печати на ЦПМ HP Indigo 7900?',
+      tag: 'ПРОИЗВОДСТВО · ЦПМ',
+      title: 'Допуск Delta-E на HP Indigo 7900',
+      description: 'Нормативы оптического отклонения цвета и калибровки печатной машины',
+      query:
+        'Какое допустимое оптическое отклонение Delta-E установлено для цифровой печати на ЦПМ HP Indigo 7900?',
     },
     {
-      label: 'Финансы (Тест RBAC): План выручки на Q4',
-      text: 'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
+      tag: 'ФИНАНСЫ · ДОПУСК 1',
+      title: 'Бюджет выручки и премий на Q4',
+      description: 'Плановые показатели выручки, ФОТ цеха и лимиты согласования платежей',
+      query:
+        'Какой плановый бюджет выручки и фонд премирования заложен на 4 квартал 2026 года?',
     },
     {
-      label: 'Клиенты: Перепечатка брака в picPac.by',
-      text: 'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
+      tag: 'СЕРВИС · PICPAC.BY',
+      title: 'Регламент перепечатки брака',
+      description: 'Сроки реакции службы заботы и порядок экспресс-перепечатки тиража',
+      query:
+        'В какой срок служба заботы обязана ответить клиенту и как оформить экспресс-перепечатку брака?',
     },
   ];
 
   const handleAsk = async (queryText: string) => {
     if (!queryText.trim() || isLoading) return;
+
+    const scopeHints: Record<typeof searchScope, string> = {
+      all: '',
+      production: '[Раздел: Производство и техкарты] ',
+      service: '[Раздел: Клиентский сервис picPac.by] ',
+      finance: '[Раздел: Финансы и стратегия] ',
+    };
 
     const userMessage: RAGMessage = {
       id: 'user-' + Date.now(),
@@ -310,7 +340,7 @@ export const KnowledgeBaseView: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const assistantMessage = await queryRAG(queryText);
+      const assistantMessage = await queryRAG(`${scopeHints[searchScope]}${queryText}`);
       setRagMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
       setRagMessages((prev) => [
@@ -318,7 +348,7 @@ export const KnowledgeBaseView: React.FC = () => {
         {
           id: 'err-' + Date.now(),
           sender: 'assistant',
-          text: err?.message || 'Ошибка обращения к локальной LLM или базе регламентов.',
+          text: err?.message || 'Ошибка обращения к локальной базе регламентов.',
           timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
           status: 'needs_clarification',
         },
@@ -328,37 +358,45 @@ export const KnowledgeBaseView: React.FC = () => {
     }
   };
 
+  const handleOpenDocumentFromCitation = (docId: string) => {
+    setSelectedDocId(docId);
+    setDraft(null);
+    setShowVersions(false);
+    setActiveSubTab('docs');
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between gap-4 bg-white dark:bg-[#13151b] shrink-0">
+      <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-4 min-w-0">
           <div className="min-w-0">
-            <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight truncate">
-              База знаний и документы ООО «Фотопринт»
+            <h1 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)] truncate">
+              БАЗА ЗНАНИЙ И ДОКУМЕНТЫ
             </h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              RAG-поиск по регламентам, редактирование с Diff-превью и версионирование (AI-03, AI-07)
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              Поиск по регламентам, редактирование с Diff-превью и история версий
             </p>
           </div>
 
-          <div className="flex items-center bg-neutral-100 dark:bg-[#1a1d25] p-0.5 rounded-md border border-neutral-200 dark:border-[#262a36] shrink-0">
+          {/* Segmented Tab Switcher (Affordance Level 2) */}
+          <div className="inline-flex items-center p-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] shrink-0">
             <button
               onClick={() => setActiveSubTab('rag')}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-4 py-1.5 rounded-full text-xs transition-all ${
                 activeSubTab === 'rag'
-                  ? 'bg-white dark:bg-[#111318] text-neutral-950 dark:text-white shadow-sm'
-                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200'
+                  ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
               }`}
             >
               RAG-поиск
             </button>
             <button
               onClick={() => setActiveSubTab('docs')}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-4 py-1.5 rounded-full text-xs transition-all ${
                 activeSubTab === 'docs'
-                  ? 'bg-white dark:bg-[#111318] text-neutral-950 dark:text-white shadow-sm'
-                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200'
+                  ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
               }`}
             >
               Документы и версии ({documents.length})
@@ -366,149 +404,233 @@ export const KnowledgeBaseView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={handleOpenNewDocEditor}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Новый документ</span>
-          </button>
-        </div>
+        <button
+          onClick={handleOpenNewDocEditor}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-all shrink-0 active:scale-95"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>Новый документ</span>
+        </button>
       </div>
 
       {activeSubTab === 'rag' ? (
         <>
-          {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 max-w-3xl mx-auto w-full">
-        {ragMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-          >
-            <div
-              className={`max-w-2xl rounded-lg p-4 text-xs leading-relaxed ${
-                msg.sender === 'user'
-                  ? 'bg-neutral-950 text-white dark:bg-[#1e222d] dark:text-white font-medium'
-                  : msg.status === 'access_denied'
-                  ? 'bg-amber-50 dark:bg-[#1a1813] border border-amber-300 dark:border-amber-800/60 text-amber-950 dark:text-amber-200'
-                  : 'bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] text-neutral-900 dark:text-neutral-200'
-              }`}
-            >
-              <div className="whitespace-pre-wrap">{msg.text}</div>
-
-              {/* Citations Box */}
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#1e222c] space-y-2">
-                  <div className="text-[11px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                    Основание в регламентах:
-                  </div>
-
-                  {msg.citations.map((c) => {
-                    const isExpanded = expandedDocId === c.documentId;
-                    return (
-                      <div
-                        key={c.documentId}
-                        className="bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#202430] rounded-md p-3 text-xs text-neutral-800 dark:text-neutral-300"
-                      >
-                        <div
-                          onClick={() => setExpandedDocId(isExpanded ? null : c.documentId)}
-                          className="flex items-center justify-between cursor-pointer hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-medium"
-                        >
-                          <span className="font-semibold">{c.documentTitle}</span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </div>
-
-                        <div className="text-[11px] font-mono text-neutral-400 mt-0.5">
-                          Редакция от {c.documentDate} · {c.documentId}
-                        </div>
-
-                        {isExpanded && (
-                          <div className="mt-2 pt-2 border-t border-neutral-200/80 dark:border-[#1d2028] text-xs text-neutral-700 dark:text-neutral-300 italic bg-white dark:bg-[#14161c] p-2.5 rounded border border-neutral-100 dark:border-[#1e222c]">
-                            «{c.excerpt}»
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+          {/* RAG Messages Stream */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-5 max-w-3xl mx-auto w-full">
+            {/* Starter Scenario Cards when conversation just began */}
+            {ragMessages.length <= 1 && (
+              <div className="space-y-3 pt-2">
+                <div className="font-dot text-[11px] uppercase tracking-widest text-[var(--text-muted)] px-1">
+                  ТИПОВЫЕ СЦЕНАРИИ ПОИСКА ПО РЕГЛАМЕНТАМ
                 </div>
-              )}
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {starterScenarios.map((sc, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleAsk(sc.query)}
+                      className="text-left nothing-card p-4 flex flex-col justify-between gap-3 hover:border-[var(--text-primary)] transition-all group active:scale-[0.99]"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                            {sc.tag}
+                          </span>
+                          <ArrowUpRight className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[#D71921] transition-colors" />
+                        </div>
+                        <div className="text-xs font-bold text-[var(--text-primary)]">
+                          {sc.title}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-secondary)] leading-snug">
+                          {sc.description}
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-semibold text-[var(--text-primary)] group-hover:text-[#D71921] transition-colors">
+                        Запустить запрос →
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-            <div className="text-[10px] font-mono text-neutral-400 mt-1 px-1">{msg.timestamp}</div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex flex-col items-start">
-            <div className="rounded-lg p-3.5 text-xs bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] text-neutral-500 dark:text-neutral-400 font-mono">
-              Поиск по регламентам и генерация ответа нейросетью...
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Search Bar & Quick Prompts */}
-      <div className="p-4 px-6 border-t border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b]">
-        <div className="max-w-3xl mx-auto space-y-2.5">
-          {/* Quick Prompts */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-            <span className="text-[11px] font-mono text-neutral-400 shrink-0">Запросы:</span>
-            {sampleQuestions.map((sq, i) => (
-              <button
-                key={i}
-                onClick={() => handleAsk(sq.text)}
-                className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1a1d25] dark:hover:bg-[#222632] border border-neutral-200/80 dark:border-[#282d3a] rounded text-[11px] text-neutral-700 dark:text-neutral-300 transition-colors shrink-0"
+            {ragMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
               >
-                {sq.label}
-              </button>
+                <div
+                  className={`max-w-2xl rounded-[22px] p-4 text-xs leading-relaxed ${
+                    msg.sender === 'user'
+                      ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-medium'
+                      : msg.status === 'access_denied'
+                      ? 'nothing-card border-[#D71921]/50 text-[var(--text-primary)]'
+                      : 'nothing-card text-[var(--text-primary)]'
+                  }`}
+                >
+                  {msg.status === 'access_denied' && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921] font-mono text-[10px] font-bold mb-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+                      ДОСТУП ОГРАНИЧЕН МАТРИЦЕЙ RBAC
+                    </div>
+                  )}
+
+                  <div className="whitespace-pre-wrap">{msg.text}</div>
+
+                  {/* Citations with Dual Actions: Expand Excerpt + Open Full Document */}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <div className="mt-3.5 pt-3 border-t border-dashed border-[var(--border-dashed)] space-y-2">
+                      <div className="font-dot text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                        ОСНОВАНИЕ В РЕГЛАМЕНТАХ
+                      </div>
+
+                      {msg.citations.map((c) => {
+                        const isExpanded = expandedDocId === c.documentId;
+                        return (
+                          <div
+                            key={c.documentId}
+                            className="bg-[var(--bg-elevated)]/80 border border-[var(--border-solid)] rounded-2xl p-3 text-xs space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedDocId(isExpanded ? null : c.documentId)}
+                                className="text-left flex-1 min-w-0 group"
+                              >
+                                <div className="font-bold text-[var(--text-primary)] group-hover:text-[#D71921] transition-colors flex items-center gap-1.5">
+                                  <span>{c.documentTitle}</span>
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                                  )}
+                                </div>
+                                <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5">
+                                  Редакция от {c.documentDate} · {c.documentId}
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDocumentFromCitation(c.documentId)}
+                                title="Открыть полный текст документа"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors shrink-0"
+                              >
+                                <span>Открыть</span>
+                                <ArrowUpRight className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <div className="pt-2 border-t border-dashed border-[var(--border-dashed)] text-xs text-[var(--text-secondary)] italic bg-[var(--bg-card)] p-3 rounded-xl">
+                                «{c.excerpt}»
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-[10px] font-mono text-[var(--text-muted)] mt-1 px-2">
+                  {msg.timestamp}
+                </div>
+              </div>
             ))}
+
+            {isLoading && (
+              <div className="flex flex-col items-start">
+                <div className="nothing-card px-4 py-3 text-xs text-[var(--text-secondary)] font-mono flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#D71921] animate-ping" />
+                  <span>Поиск по регламентам и формирование ответа...</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Search Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleAsk(inputQuery);
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={inputQuery}
-              onChange={(e) => setInputQuery(e.target.value)}
-              placeholder="Вопрос по стандартам, браку, допускам Delta-E или регламентам цеха..."
-              className="flex-1 bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#282d3a] rounded-md px-3.5 py-2 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-sky-500"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !inputQuery.trim()}
-              className="px-4 py-2 bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 text-xs font-semibold rounded-md transition-colors shadow-sm flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Запросить</span>
-            </button>
-          </form>
-        </div>
-      </div>
+          {/* Bottom Search Dock with Embedded Domain Scope Selector */}
+          <div className="p-4 px-6 border-t border-dashed border-[var(--border-dashed)] bg-[var(--bg-card)]">
+            <div className="max-w-3xl mx-auto space-y-2.5">
+              {/* Quick Prompt Chips */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+                <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] shrink-0">
+                  БЫСТРЫЙ ЗАПРОС:
+                </span>
+                {starterScenarios.map((sc, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleAsk(sc.query)}
+                    className="px-3 py-1 bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-solid)] rounded-full text-[11px] text-[var(--text-primary)] transition-colors shrink-0"
+                  >
+                    {sc.title}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAsk(inputQuery);
+                }}
+                className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] focus-within:border-[var(--text-primary)] transition-colors"
+              >
+                {/* In-Input Scope Selector */}
+                <div className="relative flex items-center pl-2 shrink-0">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--text-muted)] mr-1.5" />
+                  <select
+                    value={searchScope}
+                    onChange={(e) => setSearchScope(e.target.value as any)}
+                    className="bg-[var(--bg-card)] border border-[var(--border-solid)] rounded-full px-3 py-1 text-[11px] font-medium text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">Все регламенты ({documents.length})</option>
+                    <option value="production">Производство / ЦПМ</option>
+                    <option value="service">Клиентский сервис</option>
+                    <option value="finance">Финансы (Допуск 1)</option>
+                  </select>
+                </div>
+
+                <input
+                  type="text"
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  placeholder="Задайте вопрос по стандартам, допускам Delta-E или регламентам..."
+                  className="flex-1 bg-transparent px-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none min-w-[200px]"
+                />
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputQuery.trim()}
+                  className="px-5 py-2 bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-40 active:scale-95"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Запросить</span>
+                </button>
+              </form>
+            </div>
+          </div>
         </>
       ) : (
+        /* Documents, Diff Preview & Version History */
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Pane: Searchable RBAC Document List */}
-          <div className="w-80 border-r border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#111318] flex flex-col shrink-0">
-            <div className="p-3 border-b border-neutral-200 dark:border-[#212530]">
+          {/* Left Pane: Searchable RBAC Document Registry */}
+          <div className="w-80 border-r border-[var(--border-solid)] bg-[var(--bg-card)] flex flex-col shrink-0">
+            <div className="p-3.5 border-b border-dashed border-[var(--border-dashed)]">
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3.5 top-2.5" />
                 <input
                   type="text"
                   value={docSearch}
                   onChange={(e) => setDocSearch(e.target.value)}
                   placeholder="Поиск документа или категории..."
-                  className="w-full bg-neutral-50 dark:bg-[#171922] border border-neutral-200 dark:border-[#262a36] rounded-md pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full pl-9 pr-4 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {filteredDocs.map((doc) => {
                 const isSelected = !draft && selectedDoc?.id === doc.id;
                 return (
@@ -519,21 +641,37 @@ export const KnowledgeBaseView: React.FC = () => {
                       setDraft(null);
                       setCompareVersion(null);
                     }}
-                    className={`w-full text-left p-2.5 rounded-md border transition-colors space-y-1 ${
+                    className={`w-full text-left p-3.5 rounded-2xl border transition-all space-y-1.5 ${
                       isSelected
-                        ? 'bg-sky-500/10 border-sky-500/40 text-neutral-950 dark:text-white'
-                        : 'bg-white dark:bg-[#14161c] border-neutral-200/70 dark:border-[#202430] hover:border-neutral-300 dark:hover:border-[#2c3242] text-neutral-800 dark:text-neutral-200'
+                        ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] border-[var(--text-primary)] shadow-sm'
+                        : 'bg-[var(--bg-elevated)]/50 hover:bg-[var(--bg-elevated)] border-[var(--border-solid)] text-[var(--text-primary)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-[#1c202a] text-neutral-600 dark:text-neutral-300">
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-semibold ${
+                          isSelected
+                            ? 'bg-[#D71921] text-white'
+                            : 'bg-[var(--bg-card)] text-[var(--text-secondary)]'
+                        }`}
+                      >
                         v{doc.version || 1}
                       </span>
-                      <span className="text-[10px] font-mono text-neutral-400">{doc.date}</span>
+                      <span
+                        className={`text-[10px] font-mono ${
+                          isSelected ? 'opacity-75' : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {doc.date}
+                      </span>
                     </div>
-                    <div className="text-xs font-semibold leading-snug line-clamp-2">{doc.title}</div>
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                      {doc.category} · Уровень {doc.minClearance}
+                    <div className="text-xs font-bold leading-snug line-clamp-2">{doc.title}</div>
+                    <div
+                      className={`text-[10px] font-mono truncate ${
+                        isSelected ? 'opacity-80' : 'text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {doc.category} · LVL-{doc.minClearance}
                     </div>
                   </button>
                 );
@@ -541,53 +679,48 @@ export const KnowledgeBaseView: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Pane: Draft/Diff Editor OR Document Inspector + Version History */}
+          {/* Right Pane: Diff Editor OR Document Inspector */}
           <div className="flex-1 overflow-y-auto p-6 lg:p-8">
             <div className="max-w-4xl mx-auto space-y-5">
               {draft ? (
                 <div className="space-y-4">
                   {/* Draft Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-neutral-200 dark:border-[#212530]">
+                  <div className="nothing-card p-5 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2 text-[11px] font-mono text-sky-600 dark:text-sky-400 font-semibold">
+                      <div className="flex items-center gap-2 text-[11px] font-mono text-[#D71921] font-semibold">
                         <span>
                           {draft.mode === 'create'
-                            ? 'Черновик нового документа (v1)'
-                            : `Черновик изменений (${draft.documentId})`}
+                            ? 'ЧЕРНОВИК НОВОГО ДОКУМЕНТА (V1)'
+                            : `ЧЕРНОВИК ИЗМЕНЕНИЙ (${draft.documentId})`}
                         </span>
-                        {draft.modelUsed && (
-                          <span className="px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-                            {draft.modelUsed}
-                          </span>
-                        )}
                       </div>
-                      <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5">
-                        Предпросмотр изменений (Diff) и подтверждение записи (AI-03)
+                      <h2 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)] mt-1">
+                        ПРЕДПРОСМОТР ИЗМЕНЕНИЙ (DIFF) И ПОДТВЕРЖДЕНИЕ
                       </h2>
                     </div>
 
                     <button
                       onClick={handleDiscardDraft}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
                     >
                       <X className="w-3.5 h-3.5" />
                       <span>Закрыть черновик</span>
                     </button>
                   </div>
 
-                  {/* Optional AI refinement right inside draft */}
-                  <div className="p-3 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] flex flex-wrap items-center gap-2">
+                  {/* AI Refinement Input */}
+                  <div className="nothing-card p-4 flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       value={aiInstruction}
                       onChange={(e) => setAiInstruction(e.target.value)}
                       placeholder="Инструкция для AI (напр.: оформи стандарт по новым допускам Delta-E ≤ 1.8)..."
-                      className="flex-1 min-w-[240px] bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                      className="flex-1 min-w-[240px] bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                     />
                     <button
                       onClick={() => handleGenerateAiDraft(draft.mode)}
                       disabled={isGeneratingDraft || !aiInstruction.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 disabled:opacity-50"
                     >
                       <Cpu className={`w-3.5 h-3.5 ${isGeneratingDraft ? 'animate-spin' : ''}`} />
                       <span>{isGeneratingDraft ? 'Генерация...' : 'Сгенерировать через AI'}</span>
@@ -595,26 +728,28 @@ export const KnowledgeBaseView: React.FC = () => {
                   </div>
 
                   {/* Metadata Inputs */}
-                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="nothing-card p-5 grid grid-cols-1 md:grid-cols-3 gap-3.5">
                     <div className="md:col-span-2">
-                      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                        Название документа
+                      <label className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                        НАЗВАНИЕ ДОКУМЕНТА
                       </label>
                       <input
                         type="text"
                         value={draft.title}
                         onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                        className="mt-1 w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        className="mt-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                        Уровень доступа (RBAC)
+                      <label className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                        УРОВЕНЬ ДОСТУПА (RBAC)
                       </label>
                       <select
                         value={draft.minClearance}
-                        onChange={(e) => setDraft({ ...draft, minClearance: Number(e.target.value) })}
-                        className="mt-1 w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-2.5 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        onChange={(e) =>
+                          setDraft({ ...draft, minClearance: Number(e.target.value) })
+                        }
+                        className="mt-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none"
                       >
                         {[1, 2, 3]
                           .filter((lvl) => lvl >= roleMinClearance)
@@ -626,53 +761,53 @@ export const KnowledgeBaseView: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                        Категория
+                      <label className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                        КАТЕГОРИЯ
                       </label>
                       <input
                         type="text"
                         value={draft.category}
                         onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                        className="mt-1 w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        className="mt-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none"
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                        Краткая аннотация
+                      <label className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                        КРАТКАЯ АННОТАЦИЯ
                       </label>
                       <input
                         type="text"
                         value={draft.summary}
                         onChange={(e) => setDraft({ ...draft, summary: e.target.value })}
                         placeholder="Краткое описание регламента..."
-                        className="mt-1 w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        className="mt-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none"
                       />
                     </div>
                     <div className="md:col-span-3">
-                      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                        Комментарий к версии (для истории AI-07)
+                      <label className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                        КОММЕНТАРИЙ К ВЕРСИИ
                       </label>
                       <input
                         type="text"
                         value={draft.changeNote}
                         onChange={(e) => setDraft({ ...draft, changeNote: e.target.value })}
-                        className="mt-1 w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        className="mt-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none"
                       />
                     </div>
                   </div>
 
-                  {/* Content Editor + Diff Preview Side-by-Side */}
+                  {/* Side-by-Side Editor & Diff */}
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] flex flex-col gap-2">
+                    <div className="nothing-card p-5 flex flex-col gap-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                          Редактируемый текст
+                        <span className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                          РЕДАКТИРУЕМЫЙ ТЕКСТ
                         </span>
                         <button
                           onClick={() => handleRefreshDraftDiff(draft)}
-                          className="flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400 hover:underline font-medium"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]"
                         >
-                          <GitCompare className="w-3 h-3" />
+                          <GitCompare className="w-3 h-3 text-[#D71921]" />
                           <span>Обновить Diff</span>
                         </button>
                       </div>
@@ -681,30 +816,30 @@ export const KnowledgeBaseView: React.FC = () => {
                         value={draft.content}
                         onChange={(e) => setDraft({ ...draft, content: e.target.value })}
                         onBlur={() => handleRefreshDraftDiff(draft)}
-                        className="w-full bg-neutral-50 dark:bg-[#0e1015] border border-neutral-200 dark:border-[#262a36] rounded p-3 text-xs font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-sky-500 leading-relaxed resize-y"
+                        className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl p-3.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] leading-relaxed resize-y"
                       />
                     </div>
 
-                    <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] flex flex-col gap-2">
+                    <div className="nothing-card p-5 flex flex-col gap-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                          Diff-превью (Было → Стало)
+                        <span className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                          DIFF-ПРЕВЬЮ (БЫЛО → СТАЛО)
                         </span>
-                        <span className="text-[10px] font-mono text-neutral-400">
+                        <span className="text-[10px] font-mono text-[var(--text-muted)]">
                           +{draft.diffLines.filter((l) => l.kind === 'added').length} / -
                           {draft.diffLines.filter((l) => l.kind === 'removed').length}
                         </span>
                       </div>
-                      <div className="flex-1 max-h-[300px] overflow-y-auto rounded border border-neutral-200 dark:border-[#222631] bg-neutral-50 dark:bg-[#0e1015] p-2 font-mono text-[11px] space-y-0.5">
+                      <div className="flex-1 max-h-[300px] overflow-y-auto rounded-2xl border border-[var(--border-solid)] bg-[var(--bg-elevated)] p-2.5 font-mono text-[11px] space-y-1">
                         {draft.diffLines.map((line, idx) => (
                           <div
                             key={idx}
-                            className={`px-2 py-0.5 rounded whitespace-pre-wrap ${
+                            className={`px-2.5 py-0.5 rounded-lg whitespace-pre-wrap ${
                               line.kind === 'added'
-                                ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-l-2 border-emerald-500'
+                                ? 'bg-emerald-500/15 text-emerald-500 border-l-2 border-emerald-500'
                                 : line.kind === 'removed'
-                                ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300 border-l-2 border-rose-500 line-through'
-                                : 'text-neutral-600 dark:text-neutral-400'
+                                ? 'bg-[#D71921]/15 text-[#D71921] border-l-2 border-[#D71921] line-through'
+                                : 'text-[var(--text-secondary)]'
                             }`}
                           >
                             {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
@@ -715,22 +850,22 @@ export const KnowledgeBaseView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* AI-03 Explicit Confirmation Bar */}
-                  <div className="p-4 rounded-lg bg-amber-500/[0.06] border border-amber-500/25 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-xs text-neutral-700 dark:text-neutral-300">
-                      Изменения не применены к базе знаний до вашего подтверждения (AI-03).
+                  {/* Confirmation Bar */}
+                  <div className="nothing-card p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-xs text-[var(--text-secondary)]">
+                      Изменения не применены к базе знаний до вашего подтверждения.
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleDiscardDraft}
-                        className="px-3.5 py-1.5 rounded-md text-xs font-medium bg-neutral-100 dark:bg-[#1a1d25] text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-[#232733]"
+                        className="px-4 py-2 rounded-full text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                       >
                         Отклонить черновик
                       </button>
                       <button
                         onClick={handleCommitDraft}
                         disabled={isCommitting}
-                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>
@@ -747,44 +882,43 @@ export const KnowledgeBaseView: React.FC = () => {
               ) : selectedDoc ? (
                 <div className="space-y-5">
                   {/* Document Inspector Header */}
-                  <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-neutral-200 dark:border-[#212530]">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
+                  <div className="nothing-card p-5 flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-[var(--text-muted)]">
                         <span>{selectedDoc.id}</span>
                         <span>·</span>
-                        <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 font-semibold">
-                          Версия v{selectedDoc.version || 1}
+                        <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold">
+                          v{selectedDoc.version || 1}
                         </span>
                         <span>·</span>
                         <span className="inline-flex items-center gap-1">
-                          <Shield className="w-3 h-3" />
-                          {CLEARANCE_LABELS[selectedDoc.minClearance] || `Уровень ${selectedDoc.minClearance}`}
+                          <Shield className="w-3 h-3 text-[#D71921]" />
+                          {CLEARANCE_LABELS[selectedDoc.minClearance] ||
+                            `LVL-${selectedDoc.minClearance}`}
                         </span>
                         <span>·</span>
                         <span>{selectedDoc.date}</span>
                       </div>
-                      <h2 className="text-lg font-bold text-neutral-950 dark:text-white mt-1.5">
+                      <h2 className="text-lg font-bold text-[var(--text-primary)]">
                         {selectedDoc.title}
                       </h2>
-                      <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-                        {selectedDoc.summary}
-                      </p>
+                      <p className="text-xs text-[var(--text-secondary)]">{selectedDoc.summary}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleStartManualEdit(selectedDoc)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b]"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>Редактировать (Diff)</span>
                       </button>
                       <button
                         onClick={() => setShowVersions((prev) => !prev)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-medium border transition-colors ${
                           showVersions
-                            ? 'border-sky-500 bg-sky-500/10 text-sky-700 dark:text-sky-300'
-                            : 'border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b]'
+                            ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] border-transparent font-semibold'
+                            : 'border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
                         }`}
                       >
                         <History className="w-3.5 h-3.5" />
@@ -794,9 +928,9 @@ export const KnowledgeBaseView: React.FC = () => {
                   </div>
 
                   {/* AI Amendment Bar */}
-                  <div className="p-3.5 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2">
-                    <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                      Внести правки с помощью AI-ассистента (с предпросмотром Diff)
+                  <div className="nothing-card p-4 space-y-2.5">
+                    <div className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                      ВНЕСТИ ПРАВКИ С ПОМОЩЬЮ AI (С ПРЕДПРОСМОТРОМ DIFF)
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <input
@@ -804,68 +938,74 @@ export const KnowledgeBaseView: React.FC = () => {
                         value={aiInstruction}
                         onChange={(e) => setAiInstruction(e.target.value)}
                         placeholder="Например: добавь пункт о контроле температуры вала перед запуском смены..."
-                        className="flex-1 min-w-[240px] bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#262a36] rounded px-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                        className="flex-1 min-w-[240px] bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full px-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                       />
                       <button
                         onClick={() => handleGenerateAiDraft('edit')}
                         disabled={isGeneratingDraft || !aiInstruction.trim()}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 disabled:opacity-50"
                       >
                         <Cpu className={`w-3.5 h-3.5 ${isGeneratingDraft ? 'animate-spin' : ''}`} />
-                        <span>{isGeneratingDraft ? 'Подготовка...' : 'Подготовить правку с AI'}</span>
+                        <span>
+                          {isGeneratingDraft ? 'Подготовка...' : 'Подготовить правку с AI'}
+                        </span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Version History Panel (AI-07) */}
+                  {/* Version History Drawer */}
                   {showVersions && (
-                    <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                      <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                        <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                          Журнал версий документа (папка documents, AI-07)
+                    <div className="nothing-card p-5 space-y-3">
+                      <div className="flex items-center justify-between pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
+                        <h3 className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                          ЖУРНАЛ ВЕРСИЙ ДОКУМЕНТА
                         </h3>
-                        <span className="text-[11px] font-mono text-neutral-400">
-                          {versions.length} рев.
+                        <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                          {versions.length} РЕВ.
                         </span>
                       </div>
                       {isLoadingVersions ? (
-                        <div className="text-xs text-neutral-500">Загрузка истории версий...</div>
+                        <div className="text-xs text-[var(--text-muted)]">
+                          Загрузка истории версий...
+                        </div>
                       ) : versions.length === 0 ? (
-                        <div className="text-xs text-neutral-500">История версий пока пуста.</div>
+                        <div className="text-xs text-[var(--text-muted)]">
+                          История версий пока пуста.
+                        </div>
                       ) : (
                         <div className="space-y-2">
                           {versions.map((ver) => (
                             <div
                               key={ver.id}
-                              className="p-2.5 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200/80 dark:border-[#1f232e] flex flex-wrap items-center justify-between gap-2 text-xs"
+                              className="p-3 rounded-2xl bg-[var(--bg-elevated)]/70 flex flex-wrap items-center justify-between gap-2 text-xs"
                             >
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono font-semibold text-sky-700 dark:text-sky-300">
+                                  <span className="font-mono font-bold text-[#D71921]">
                                     v{ver.versionNumber}
                                   </span>
-                                  <span className="text-[11px] text-neutral-500 font-mono">
+                                  <span className="text-[11px] text-[var(--text-muted)] font-mono">
                                     {ver.createdAt}
                                   </span>
-                                  <span className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                                  <span className="text-[11px] text-[var(--text-secondary)]">
                                     · {ver.changedBy}
                                   </span>
                                 </div>
-                                <div className="text-[11px] text-neutral-700 dark:text-neutral-300">
+                                <div className="text-[11px] text-[var(--text-primary)]">
                                   {ver.changeNote}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <button
                                   onClick={() => handleCompareVersion(ver)}
-                                  className="px-2 py-1 rounded text-[11px] border border-neutral-200 dark:border-[#2a2f3d] hover:bg-neutral-100 dark:hover:bg-[#1b1f28]"
+                                  className="px-3 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)]"
                                 >
                                   Diff с текущей
                                 </button>
                                 {ver.versionNumber !== (selectedDoc.version || 1) && (
                                   <button
                                     onClick={() => handleRollback(ver)}
-                                    className="flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-amber-500/15 text-amber-800 dark:text-amber-300 hover:bg-amber-500/25"
+                                    className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-white transition-colors"
                                   >
                                     <RotateCcw className="w-3 h-3" />
                                     <span>Откатить к v{ver.versionNumber}</span>
@@ -878,31 +1018,36 @@ export const KnowledgeBaseView: React.FC = () => {
                       )}
 
                       {compareVersion && (
-                        <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-[#212530] space-y-2">
+                        <div className="mt-3 pt-3 border-t border-dashed border-[var(--border-dashed)] space-y-2">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold">
-                              Сравнение v{compareVersion.versionNumber} → текущая v{selectedDoc.version || 1}
+                            <span className="font-bold text-[var(--text-primary)]">
+                              Сравнение v{compareVersion.versionNumber} → текущая v
+                              {selectedDoc.version || 1}
                             </span>
                             <button
                               onClick={() => setCompareVersion(null)}
-                              className="text-neutral-400 hover:text-neutral-700"
+                              className="w-6 h-6 rounded-full hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <div className="max-h-48 overflow-y-auto rounded bg-neutral-50 dark:bg-[#0e1015] border border-neutral-200 dark:border-[#222631] p-2 font-mono text-[11px] space-y-0.5">
+                          <div className="max-h-48 overflow-y-auto rounded-2xl bg-[var(--bg-elevated)] p-3 font-mono text-[11px] space-y-0.5">
                             {compareDiffLines.map((line, idx) => (
                               <div
                                 key={idx}
                                 className={`px-2 py-0.5 rounded whitespace-pre-wrap ${
                                   line.kind === 'added'
-                                    ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
+                                    ? 'bg-emerald-500/15 text-emerald-500'
                                     : line.kind === 'removed'
-                                    ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300 line-through'
-                                    : 'text-neutral-600 dark:text-neutral-400'
+                                    ? 'bg-[#D71921]/15 text-[#D71921] line-through'
+                                    : 'text-[var(--text-secondary)]'
                                 }`}
                               >
-                                {line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}
+                                {line.kind === 'added'
+                                  ? '+ '
+                                  : line.kind === 'removed'
+                                  ? '- '
+                                  : '  '}
                                 {line.text}
                               </div>
                             ))}
@@ -913,18 +1058,20 @@ export const KnowledgeBaseView: React.FC = () => {
                   )}
 
                   {/* Full Document Text */}
-                  <div className="p-5 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-neutral-100 pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                      <FileText className="w-3.5 h-3.5 text-neutral-500" />
-                      <span>Действующий текст регламента (v{selectedDoc.version || 1})</span>
+                  <div className="nothing-card p-6 space-y-3">
+                    <div className="flex items-center gap-2 font-dot text-xs uppercase tracking-wider text-[var(--text-primary)] pb-2.5 border-b border-dashed border-[var(--border-dashed)]">
+                      <FileText className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                      <span>ДЕЙСТВУЮЩИЙ ТЕКСТ РЕГЛАМЕНТА (V{selectedDoc.version || 1})</span>
                     </div>
-                    <pre className="whitespace-pre-wrap font-sans text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed">
+                    <pre className="whitespace-pre-wrap font-sans text-xs text-[var(--text-primary)] leading-relaxed">
                       {selectedDoc.content}
                     </pre>
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-neutral-500">Документы для вашей роли не найдены.</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  Документы для вашей роли не найдены.
+                </div>
               )}
             </div>
           </div>

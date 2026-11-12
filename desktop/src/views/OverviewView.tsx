@@ -7,14 +7,22 @@ import {
   TrendingDown,
   Minus,
   CheckCircle2,
-  CheckCheck
+  CheckCheck,
 } from 'lucide-react';
 
 export const OverviewView: React.FC = () => {
-  const { kpiMetrics, tasks, toggleTaskStatus, logAudit, showToast, syncWithBackend, isSyncing, backendOnline } = useApp();
+  const {
+    kpiMetrics,
+    tasks,
+    toggleTaskStatus,
+    logAudit,
+    showToast,
+    syncWithBackend,
+    isSyncing,
+    backendOnline,
+  } = useApp();
 
   const [dataFreshnessTime, setDataFreshnessTime] = useState<string>('2026-11-11 15:00:00');
-
   const overdueTasks = tasks.filter((t) => t.status === 'overdue');
 
   const handleRefresh = async () => {
@@ -31,7 +39,9 @@ export const OverviewView: React.FC = () => {
       'REFRESH_DASHBOARD',
       'KPI & Overdue Registry',
       'SUCCESS',
-      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений (Сервер: ${backendOnline ? 'онлайн' : 'офлайн'})`
+      `Синхронизированы 6 витрин KPI и ${overdueTasks.length} просроченных поручений (Сервер: ${
+        backendOnline ? 'онлайн' : 'офлайн'
+      })`
     );
 
     showToast(
@@ -57,28 +67,28 @@ export const OverviewView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-y-auto p-6 lg:p-8 transition-colors">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto w-full space-y-6">
-        {/* Top Control Bar & Executive Title */}
-        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-[#212530]">
+        {/* Header Bar */}
+        <div className="nothing-card p-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-              <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-                Пульс производства и сервиса
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <h1 className="font-dot text-lg uppercase text-[var(--text-primary)] tracking-wider">
+                ПУЛЬС ПРОИЗВОДСТВА И СЕРВИСА
               </h1>
             </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              Оперативный контроль ключевых показателей выработки, брака и согласованных решений
+            <p className="text-xs text-[var(--text-secondary)] mt-1">
+              Оперативный контроль выработки цеха, брака и согласованных решений
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Срез данных (1С / ERP)
+              <div className="text-[10px] font-mono uppercase text-[var(--text-muted)]">
+                СРЕЗ 1С / ERP
               </div>
-              <div className="text-xs font-mono font-medium text-neutral-900 dark:text-neutral-200 tabular-nums">
+              <div className="text-xs font-mono font-semibold text-[var(--text-primary)] tabular-nums">
                 {dataFreshnessTime}
               </div>
             </div>
@@ -86,28 +96,26 @@ export const OverviewView: React.FC = () => {
             <button
               onClick={handleRefresh}
               disabled={isSyncing}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 bg-white dark:bg-[#161820] hover:bg-neutral-100 dark:hover:bg-[#1e222b] border border-neutral-200 dark:border-[#262a36] rounded transition-colors shadow-sm disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-full transition-all active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-neutral-500 ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>{isSyncing ? 'Синхронизация...' : 'Синхронизировать'}</span>
             </button>
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* CONSOLIDATED KPI INSTRUMENTATION DECK (ЕДИНАЯ ПРИБОРНАЯ ПАНЕЛЬ ЦЕХА)     */}
-        {/* ========================================================================= */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-              Сводка ключевых параметров производства и сервиса
+        {/* 6 KPI Modules Grid */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1 text-xs">
+            <span className="font-dot uppercase tracking-wider text-[var(--text-primary)]">
+              ТЕЛЕМЕТРИЯ ЦЕХА (6 ВИТРИН)
             </span>
-            <span className="text-[11px] font-mono text-neutral-400">
-              6 витрин · 1С:УНФ, ERP цеха, CRM picPac
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
+              1С:УНФ · ERP ЦЕХА · CRM PICPAC
             </span>
           </div>
 
-          <div className="border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] rounded-lg overflow-hidden grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-neutral-200 dark:divide-[#212530]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
             {kpiMetrics.map((kpi) => {
               const isNormal = kpi.status === 'normal';
               const isCritical = kpi.status === 'critical';
@@ -115,10 +123,13 @@ export const OverviewView: React.FC = () => {
               return (
                 <div
                   key={kpi.id}
-                  className="p-3.5 flex flex-col justify-between gap-2.5 hover:bg-neutral-50/70 dark:hover:bg-[#181a22] transition-colors"
+                  className="nothing-card p-4 flex flex-col justify-between gap-3 transition-colors"
                 >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400 truncate" title={kpi.name}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="text-[11px] font-medium text-[var(--text-secondary)] truncate"
+                      title={kpi.name}
+                    >
                       {kpi.name}
                     </span>
                     <span
@@ -126,32 +137,31 @@ export const OverviewView: React.FC = () => {
                         isNormal
                           ? 'bg-emerald-500'
                           : isCritical
-                          ? 'bg-rose-500'
+                          ? 'bg-[#D71921]'
                           : 'bg-amber-500'
                       }`}
-                      title={isNormal ? 'Норма' : isCritical ? 'Превышение' : 'Отклонение'}
                     />
                   </div>
 
-                  <div className="my-0.5">
+                  <div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-bold font-mono tracking-tight tabular-nums text-neutral-950 dark:text-white">
+                      <span className="font-dot text-2xl text-[var(--text-primary)] tabular-nums">
                         {kpi.value}
                       </span>
                       {kpi.trend === 'up' ? (
-                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
                       ) : kpi.trend === 'down' ? (
-                        <TrendingDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <TrendingDown className="w-3.5 h-3.5 text-amber-500" />
                       ) : (
-                        <Minus className="w-3.5 h-3.5 text-neutral-400" />
+                        <Minus className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                       )}
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                      Цель: {kpi.target}
+                    <div className="text-[10px] font-mono text-[var(--text-muted)] mt-1">
+                      ЦЕЛЬ: {kpi.target}
                     </div>
                   </div>
 
-                  <div className="text-[10px] font-mono text-neutral-400 pt-1.5 border-t border-neutral-100 dark:border-[#1d2028] flex items-center justify-between">
+                  <div className="text-[10px] font-mono text-[var(--text-muted)] pt-2 border-t border-dashed border-[var(--border-dashed)] flex items-center justify-between">
                     <span className="truncate">{kpi.sourceSystem.split('/')[0]}</span>
                     <span className="shrink-0">{kpi.updatedAt.split(' ')[1]}</span>
                   </div>
@@ -161,137 +171,137 @@ export const OverviewView: React.FC = () => {
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* OVERDUE ACTION LEDGER (РЕЕСТР КРИТИЧЕСКИХ ОТКЛОНЕНИЙ И ПРОСРОЧКИ)        */}
-        {/* ========================================================================= */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-xs text-neutral-900 dark:text-neutral-100">
-                Контроль неисполненных решений
+        {/* Overdue Tasks Control */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2.5">
+              <span className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                КОНТРОЛЬ ПРОСРОЧЕННЫХ РЕШЕНИЙ
               </span>
               {overdueTasks.length > 0 && (
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
-                  {overdueTasks.length} требуют закрытия
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+                  {overdueTasks.length} ТРЕБУЮТ ЗАКРЫТИЯ
                 </span>
               )}
             </div>
-            <span className="text-[11px] text-neutral-400 font-mono">
-              Поручения с истекшим сроком
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
+              РЕЕСТР ИСПОЛНЕНИЯ
             </span>
           </div>
 
           {overdueTasks.length === 0 ? (
-            <div className="p-3.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/40 text-xs text-emerald-900 dark:text-emerald-300 flex items-center gap-2.5">
-              <CheckCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="nothing-card p-4 text-xs text-[var(--text-primary)] flex items-center gap-2.5">
+              <CheckCheck className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>
-                <strong>Все обязательства в графике:</strong> Просроченных решений не зафиксировано.
+                <strong>Все обязательства в графике:</strong> просроченных поручений не зафиксировано.
               </span>
             </div>
           ) : (
-            <div className="border border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] rounded-lg divide-y divide-neutral-200 dark:divide-[#212530] overflow-hidden">
+            <div className="space-y-2.5">
               {overdueTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-neutral-50/50 dark:hover:bg-[#171922] transition-colors"
+                  className="nothing-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                      <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 truncate" title={task.title}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+                        СРОК: {task.deadline}
+                      </span>
+                      <h3 className="text-xs font-bold text-[var(--text-primary)] truncate">
                         {task.title}
                       </h3>
-                      <span className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-700 dark:text-rose-400 shrink-0">
-                        {task.deadline}
-                      </span>
                     </div>
 
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400 italic pl-3 border-l border-neutral-200 dark:border-neutral-800 line-clamp-1">
+                    <div className="text-xs text-[var(--text-secondary)] italic pl-3 border-l-2 border-dashed border-[var(--border-dashed)] line-clamp-1">
                       «{task.sourceQuote}»
                     </div>
 
-                    <div className="flex items-center gap-3 text-[11px] text-neutral-500 dark:text-neutral-400 pl-3">
-                      <span className="text-neutral-800 dark:text-neutral-200 font-medium">{task.assigneeName}</span>
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] pl-3">
+                      <span className="text-[var(--text-primary)] font-medium">
+                        {task.assigneeName}
+                      </span>
                       {task.meetingTitle && (
                         <>
                           <span>·</span>
-                          <span className="font-mono text-[10px] text-neutral-400">{task.meetingTitle}</span>
+                          <span className="font-mono text-[10px]">{task.meetingTitle}</span>
                         </>
                       )}
                     </div>
                   </div>
 
-                  <div className="shrink-0">
-                    <button
-                      onClick={() => handleResolveOverdue(task)}
-                      title="Закрыть задачу прямо из управленческого дашборда"
-                      className="px-3 py-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800/80 rounded transition-colors flex items-center gap-1.5"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Закрыть поручение</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleResolveOverdue(task)}
+                    className="px-4 py-2 text-xs font-semibold bg-[var(--bg-elevated)] hover:bg-emerald-600 text-[var(--text-primary)] hover:text-white border border-[var(--border-solid)] hover:border-emerald-600 rounded-full transition-all flex items-center gap-1.5 shrink-0 active:scale-95"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Закрыть поручение</span>
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* ========================================================================= */}
-        {/* EXECUTIVE SITUATION BRIEF (ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ)                    */}
-        {/* ========================================================================= */}
-        <div className="p-4 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] border-l-4 border-l-sky-500 space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono uppercase tracking-wider text-[11px]">
-              Оперативная сводка дирекции
+        {/* Executive Brief */}
+        <div className="nothing-card p-5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-dot text-xs uppercase tracking-wider text-[var(--text-primary)]">
+              ОПЕРАТИВНАЯ СВОДКА ДИРЕКЦИИ
             </span>
-            <span className="text-[11px] font-mono text-neutral-400">
-              Срез производственного дня · Аналитика
+            <span className="text-[10px] font-mono text-[var(--text-muted)]">
+              DAILY BRIEF // AI-SUMMARY
             </span>
           </div>
-          <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
-            Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак составил{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">3.2%</strong> (порог цеха 2.5%), сдача тиражей в срок снизилась до{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">96.4%</strong>. Служба заботы PicPac удерживает показатель SLA{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">98.2%</strong>. Загрузка основного парка плоттеров и ЦПМ достигла{' '}
-            <strong className="font-semibold text-neutral-950 dark:text-white">87%</strong>, подтверждая необходимость ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Внимание участка послепечатной обработки: из-за аварии датчика УФ-лакировки брак
+            составил <strong className="text-[var(--text-primary)]">3.2%</strong> (порог цеха
+            2.5%), сдача тиражей в срок снизилась до{' '}
+            <strong className="text-[var(--text-primary)]">96.4%</strong>. Служба заботы PicPac
+            удерживает показатель SLA <strong className="text-[var(--text-primary)]">98.2%</strong>.
+            Загрузка основного парка плоттеров и ЦПМ достигла{' '}
+            <strong className="text-[var(--text-primary)]">87%</strong>, подтверждая необходимость
+            ускоренного ввода ЦПМ Canon V1000 к 50-й неделе.
           </p>
         </div>
 
-        {/* ========================================================================= */}
-        {/* CRITICAL OPERATIONAL DECISIONS (КЛЮЧЕВЫЕ ВОПРОСЫ НЕДЕЛИ)                   */}
-        {/* ========================================================================= */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-              Вопросы к согласованию на этой неделе
-            </span>
-            <span className="text-[11px] text-neutral-400 font-mono">Сроки поставки и производственные риски</span>
+        {/* Key Weekly Decisions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="nothing-card p-4 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                ДЕДЛАЙН: 14.11.2026
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                НА СОГЛАСОВАНИИ
+              </span>
+            </div>
+            <div className="font-bold text-[var(--text-primary)]">
+              Закупка запасного комплекта датчиков вязкости для УФ-линии
+            </div>
+            <div className="text-[var(--text-secondary)] text-[11px]">
+              Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
-              <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                Закупка запасного комплекта датчиков вязкости для УФ-линии
-              </div>
-              <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
-                Поставщик «Полиграф-Сервис» (Бюджет 65 000 руб.). Ответственный: Иванов И.С.
-              </div>
-              <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
-                Крайний срок: 14.11.2026
-              </div>
+          <div className="nothing-card p-4 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                ДЕДЛАЙН: 15.11.2026
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                РИСК СКЛАДА
+              </span>
             </div>
-
-            <div className="p-3.5 rounded-lg bg-white dark:bg-[#13151b] border border-neutral-200 dark:border-[#212530] text-xs space-y-1.5">
-              <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                Согласование ставки субаренды упаковочного склада
-              </div>
-              <div className="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
-                Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.
-              </div>
-              <div className="text-[10px] font-mono text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
-                Крайний срок: 15.11.2026
-              </div>
+            <div className="font-bold text-[var(--text-primary)]">
+              Согласование ставки субаренды упаковочного склада
+            </div>
+            <div className="text-[var(--text-secondary)] text-[11px]">
+              Риск дефицита площади упаковки тиражей к декабрю. Ответственный: Смирнов А.В.
             </div>
           </div>
         </div>

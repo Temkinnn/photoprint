@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { CheckSquare, Search, Plus, CheckCircle2, Calendar } from 'lucide-react';
+import { Search, Plus, CheckCircle2, X } from 'lucide-react';
 
 export const TasksView: React.FC = () => {
   const { tasks, toggleTaskStatus, addTask, showToast } = useApp();
@@ -41,65 +41,86 @@ export const TasksView: React.FC = () => {
     showToast('Поручение создано', 'Задача добавлена в реестр', 'success');
   };
 
+  const overdueCount = tasks.filter((t) => t.status === 'overdue').length;
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
       {/* Header */}
-      <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
+      <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight flex items-center gap-2">
-            Реестр поручений и решений
+          <h1 className="font-dot text-base uppercase tracking-wider text-[var(--text-primary)]">
+            РЕЕСТР ПОРУЧЕНИЙ И РЕШЕНИЙ
           </h1>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Контроль исполнения производственных и организационных решений
+          <p className="text-xs text-[var(--text-secondary)]">
+            Контроль исполнения производственных и организационных задач
           </p>
         </div>
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 rounded-md transition-colors shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-full transition-all active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Новое поручение</span>
         </button>
       </div>
 
-      {/* Filter and Search Toolbar */}
-      <div className="p-3.5 px-6 border-b border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] shrink-0">
-        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-1">
+      {/* Filter Segmented Track & Search */}
+      <div className="px-6 py-3.5 border-b border-dashed border-[var(--border-dashed)] bg-[var(--bg-card)] shrink-0">
+        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3">
+          {/* Segmented Control */}
+          <div className="inline-flex items-center p-1 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
             {[
-              { id: 'all', label: 'Все поручения' },
-              { id: 'active', label: 'В работе' },
-              { id: 'overdue', label: 'Просроченные' },
-              { id: 'completed', label: 'Завершенные' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setFilterStatus(tab.id)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                  filterStatus === tab.id
-                    ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold shadow-sm'
-                    : 'bg-neutral-50 dark:bg-[#191c24] text-neutral-600 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white border border-neutral-200/80 dark:border-[#242834]'
-                }`}
-              >
-                <span>{tab.label}</span>
-                {tab.id === 'overdue' && tasks.filter(t => t.status === 'overdue').length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded bg-rose-500 text-white text-[10px] font-mono font-bold">
-                    {tasks.filter(t => t.status === 'overdue').length}
+              { id: 'all', label: 'Все', count: tasks.length },
+              {
+                id: 'active',
+                label: 'В работе',
+                count: tasks.filter((t) => t.status === 'active').length,
+              },
+              { id: 'overdue', label: 'Просроченные', count: overdueCount, alert: overdueCount > 0 },
+              {
+                id: 'completed',
+                label: 'Завершенные',
+                count: tasks.filter((t) => t.status === 'completed').length,
+              },
+            ].map((tab) => {
+              const isActive = filterStatus === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs transition-all flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
+                      tab.alert
+                        ? 'bg-[#D71921] text-white'
+                        : isActive
+                        ? 'bg-[var(--bg-canvas)]/20 text-current'
+                        : 'text-[var(--text-muted)]'
+                    }`}
+                  >
+                    {tab.count}
                   </span>
-                )}
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
+          {/* Search Input */}
           <div className="w-72 relative">
-            <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3.5 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Поиск по исполнителю или названию..."
-              className="w-full bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#252936] rounded-md pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-sky-500"
+              placeholder="Поиск по исполнителю или задаче..."
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-full pl-9 pr-4 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
             />
           </div>
         </div>
@@ -109,7 +130,7 @@ export const TasksView: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-6 lg:p-8">
         <div className="max-w-5xl mx-auto w-full space-y-2.5">
           {filteredTasks.length === 0 ? (
-            <div className="py-12 text-center text-xs text-neutral-400 dark:text-neutral-500 bg-white dark:bg-[#14161c] border border-dashed border-neutral-200 dark:border-[#222631] rounded-lg">
+            <div className="nothing-card-dashed py-12 text-center text-xs text-[var(--text-muted)]">
               Поручений в выбранной категории нет
             </div>
           ) : (
@@ -120,51 +141,68 @@ export const TasksView: React.FC = () => {
               return (
                 <div
                   key={task.id}
-                  className={`p-3.5 rounded-lg border flex items-start gap-3 transition-colors ${
-                    isDone
-                      ? 'bg-neutral-50/60 dark:bg-[#111317] border-neutral-200/70 dark:border-[#1d2028] opacity-60'
-                      : isOverdue
-                      ? 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-[#222631] border-l-4 border-l-rose-500'
-                      : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-[#222631] hover:border-neutral-300 dark:hover:border-[#2c3240]'
+                  className={`nothing-card p-4 flex items-start gap-3.5 transition-opacity ${
+                    isDone ? 'opacity-55' : ''
                   }`}
                 >
+                  {/* Interactive Check Button */}
                   <button
                     onClick={() => toggleTaskStatus(task.id)}
-                    className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                    title={isDone ? 'Вернуть в работу' : 'Отметить выполненным'}
+                    className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0 active:scale-90 ${
                       isDone
                         ? 'bg-emerald-600 border-emerald-600 text-white'
-                        : 'border-neutral-300 dark:border-neutral-600 bg-white dark:bg-[#1a1d25] hover:border-sky-500'
+                        : 'border-[var(--border-dashed)] bg-[var(--bg-elevated)] hover:border-[var(--text-primary)]'
                     }`}
                   >
                     {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
                   </button>
 
-                  <div className="flex-1 space-y-1.5 min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div
-                        className={`text-xs font-medium leading-snug ${
-                          isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-neutral-100'
+                        className={`text-xs font-semibold leading-snug ${
+                          isDone
+                            ? 'line-through text-[var(--text-muted)]'
+                            : 'text-[var(--text-primary)]'
                         }`}
                       >
                         {task.title}
                       </div>
-                      {isOverdue && (
-                        <span className="text-[10px] font-bold font-mono px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-700 dark:text-rose-400 uppercase shrink-0">
-                          Просрочено
+
+                      {/* Flat Non-Clickable Status Pill */}
+                      {isDone ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          ВЫПОЛНЕНО
+                        </span>
+                      ) : isOverdue ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+                          ПРОСРОЧЕНО
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          В РАБОТЕ
                         </span>
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                      <span className="text-neutral-800 dark:text-neutral-200 font-medium">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-secondary)]">
+                      <span className="font-semibold text-[var(--text-primary)]">
                         {task.assigneeName}
                       </span>
-                      <span className={`font-mono ${isOverdue ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-neutral-500'}`}>
+                      <span
+                        className={`font-mono ${
+                          isOverdue ? 'text-[#D71921] font-semibold' : 'text-[var(--text-muted)]'
+                        }`}
+                      >
                         Срок: {task.deadline}
                       </span>
                       {task.meetingTitle && (
-                        <span className="text-neutral-400 font-mono text-[10px]">
-                          [{task.meetingTitle}]
+                        <span className="text-[var(--text-muted)] font-mono text-[10px]">
+                          // {task.meetingTitle}
                         </span>
                       )}
                     </div>
@@ -176,62 +214,78 @@ export const TasksView: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Create Task Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Новое поручение</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="nothing-card max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-dashed border-[var(--border-dashed)]">
+              <h3 className="font-dot text-sm uppercase tracking-wider text-[var(--text-primary)]">
+                НОВОЕ ПОРУЧЕНИЕ
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleCreate} className="space-y-3">
+            <form onSubmit={handleCreate} className="space-y-3.5">
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Формулировка задачи:</label>
+                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
+                  ФОРМУЛИРОВКА ЗАДАЧИ
+                </label>
                 <input
                   type="text"
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Что необходимо сделать..."
-                  className="w-full bg-neutral-50 dark:bg-[#0c0d12] border border-neutral-300 dark:border-[#282d3b] rounded-md p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Ответственный:</label>
+                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
+                  ОТВЕТСТВЕННЫЙ
+                </label>
                 <input
                   type="text"
                   required
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                   placeholder="Иванов И.С. (Начальник производства)"
-                  className="w-full bg-neutral-50 dark:bg-[#0c0d12] border border-neutral-300 dark:border-[#282d3b] rounded-md p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">Срок исполнения:</label>
+                <label className="text-[11px] font-mono text-[var(--text-secondary)] block mb-1">
+                  СРОК ИСПОЛНЕНИЯ
+                </label>
                 <input
                   type="text"
                   required
                   value={newDeadline}
                   onChange={(e) => setNewDeadline(e.target.value)}
                   placeholder="2026-11-20"
-                  className="w-full bg-neutral-50 dark:bg-[#0c0d12] border border-neutral-300 dark:border-[#282d3b] rounded-md p-2.5 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-2xl px-3.5 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-neutral-200 dark:border-[#222631]">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-dashed border-[var(--border-dashed)]">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-neutral-950 text-white dark:bg-white dark:text-neutral-950 rounded-md text-xs font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors shadow-sm"
+                  className="px-5 py-2 bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-full text-xs font-semibold hover:opacity-90 transition-all"
                 >
-                  Сохранить
+                  Сохранить в реестр
                 </button>
               </div>
             </form>
