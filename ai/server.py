@@ -105,6 +105,24 @@ class MeetingAnalysisResult(BaseModel):
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ STT
 # ==========================================
 def load_audio_as_numpy(audio_path, target_sr=16000):
+    """
+    Универсальная загрузка любого аудио (.ogg, .wav, .mp3, .m4a, .flac)
+    через PyAV с ресемплингом в 16 кГц моно для Whisper.
+    """
+    try:
+        import av
+        container = av.open(audio_path)
+        resampler = av.AudioResampler(format='fltp', layout='mono', rate=target_sr)
+        frames = []
+        for frame in container.decode(audio=0):
+            for resampled_frame in resampler.resample(frame):
+                frames.append(resampled_frame.to_ndarray())
+        if frames:
+            return np.concatenate(frames, axis=1).squeeze(0)
+    except Exception as e:
+        print(f"[!] PyAV decode warning: {e}, fallback to wavfile")
+
+    # Резервный метод для стандартных .wav
     sr, data = wavfile.read(audio_path)
     if len(data.shape) > 1:
         data = data.mean(axis=1)
@@ -125,12 +143,19 @@ def load_audio_as_numpy(audio_path, target_sr=16000):
 
     return data
 
-def run_whisper(audio_path: str, model_size="medium"):
+def get_whisper_model_path():
+    snapshot = r"D:\whisper_models\models--Systran--faster-whisper-medium\snapshots\08e178d48790749d25932bbc082711ddcfdfbc4f"
+    if os.path.exists(snapshot):
+        return snapshot
+    return "medium"
+
+def run_whisper(audio_path: str):
     from faster_whisper import WhisperModel
     audio_numpy = load_audio_as_numpy(audio_path, target_sr=16000)
+    model_path = get_whisper_model_path()
 
-    def try_decode(m_size, device, compute_type):
-        m = WhisperModel(m_size, device=device, compute_type=compute_type, download_root=WHISPER_DOWNLOAD_ROOT)
+    def try_decode(m_path, device, compute_type):
+        m = WhisperModel(m_path, device=device, compute_type=compute_type, download_root=WHISPER_DOWNLOAD_ROOT)
         segs, _ = m.transcribe(
             audio_numpy,
             beam_size=5,
@@ -142,17 +167,11 @@ def run_whisper(audio_path: str, model_size="medium"):
         return list(segs)
 
     segments = None
-    for current_model in [model_size, "small"]:
-        try:
-            segments = try_decode(current_model, "cuda", "float16")
-            break
-        except Exception:
-            try:
-                segments = try_decode(current_model, "cpu", "int8")
-                break
-            except Exception:
-                if current_model == "small":
-                    raise
+    try:
+        segments = try_decode(model_path, "cuda", "float16")
+    except Exception as e_cuda:
+        print(f"[i] CUDA inference skipped ({e_cuda}), fallback to CPU int8...")
+        segments = try_decode(model_path, "cpu", "int8")
 
     formatted = []
     for s in segments:
@@ -274,6 +293,33 @@ async def process_audio_meeting(file: UploadFile = File(...), title: str = Form(
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+class GenerateRequest(BaseModel):
+    prompt: str
+    system: Optional[str] = "Ты — корпоративный AI-ассистент ООО «Фотопринт»."
+    temperature: Optional[float] = 0.2
+
+@app.post("/api/v1/ai/generate")
+async def generate_text_endpoint(req: GenerateRequest):
+    """
+    Универсальный эндпоинт генерации текста (Qwen 2.5 7B) для RAG и чата с базой знаний.
+    """
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": req.system},
+                {"role": "user", "content": req.prompt}
+            ],
+            temperature=req.temperature or 0.2
+        )
+        return {
+            "status": "success",
+            "model": MODEL_NAME,
+            "response": resp.choices[0].message.content.strip()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации Ollama: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

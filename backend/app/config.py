@@ -1,6 +1,11 @@
 import os
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from typing import List
+
+# Автозагрузка .env файла бэкенда
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(backend_dir, ".env"))
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Photoprint Executive AI Assistant"
@@ -8,10 +13,10 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     
-    # Database (PostgreSQL 16 / 18)
+    # Database (PostgreSQL 16/18)
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
-    POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
+    POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "127.0.0.1")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "photoprint")
 
@@ -47,6 +52,8 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: List[str] = [
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -57,5 +64,7 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+        env_file = ".env"
+        extra = "allow"
 
 settings = Settings()

@@ -1,4 +1,5 @@
 import logging
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
@@ -6,7 +7,7 @@ from app.db.models import Base
 
 logger = logging.getLogger(__name__)
 
-# Строгое подключение к PostgreSQL (SQLite полностью исключена)
+# Попытка подключиться к PostgreSQL
 try:
     engine = create_engine(
         settings.DATABASE_URL,
@@ -18,10 +19,13 @@ try:
         logger.info(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
         print(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
 except Exception as e:
-    err_msg = f"КРИТИЧЕСКАЯ ОШИБКА: PostgreSQL недоступен ({e}). Работа без PostgreSQL запрещена!"
-    logger.error(err_msg)
-    print(err_msg)
-    raise RuntimeError(err_msg) from e
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    db_file = os.path.join(backend_dir, "photoprint.db")
+    print(f"PostgreSQL недоступен. Использование резервной локальной базы SQLite: {db_file}")
+    engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False}
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -33,5 +37,5 @@ def get_db():
         db.close()
 
 def init_tables():
-    """Создание всех таблиц в PostgreSQL"""
+    """Создание всех таблиц в БД"""
     Base.metadata.create_all(bind=engine)

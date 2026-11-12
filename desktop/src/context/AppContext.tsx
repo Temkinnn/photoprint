@@ -13,6 +13,7 @@ import {
   TranscriptItem,
   OverviewBrief,
 } from '../types';
+import { MOCK_DOCUMENTS } from '../mock/mockData';
 import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
@@ -593,70 +594,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // Local fallback if offline
+    // Local fallback if offline or timeout
     const lower = queryText.toLowerCase();
-    if (
-      lower.includes('бюджет') ||
-      lower.includes('выручк') ||
-      lower.includes('оклад') ||
-      lower.includes('зарплат') ||
-      lower.includes('премирован')
-    ) {
-      if (!canAccessDocument(1)) {
-        logAudit(
-          'ACCESS_DENIED',
-          'Document: doc-fin-01',
-          'ACCESS_DENIED',
-          `Попытка запроса финансовых показателей пользователем с ролью ${currentRole}`
-        );
+
+    // Check RBAC for sensitive finance / salaries
+    const isFinanceProbe = ['оклад', 'зарплат', 'бдр', 'прибыль', 'p&l', 'премирован'].some((kw) => lower.includes(kw));
+    if (isFinanceProbe && !canAccessDocument(1)) {
+      logAudit(
+        'ACCESS_DENIED',
+        'Document: doc-fin-02',
+        'ACCESS_DENIED',
+        `Попытка несанкционированного доступа к финансовой информации пользователем с ролью ${currentRole}`
+      );
+      return {
+        id: 'asst-' + Date.now(),
+        sender: 'assistant',
+        text: `⛔ Доступ ограничен политикой безопасности предприятия. У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.`,
+        timestamp: time,
+        status: 'access_denied',
+        citations: [],
+      };
+    }
+
+    // Search across all 20 corporate documents
+    const words = lower.split(/[\s,?.!]+/).filter((w) => w.length >= 3);
+    const scoredDocs = MOCK_DOCUMENTS.map((doc) => {
+      const docText = (doc.title + ' ' + doc.summary + ' ' + doc.content).toLowerCase();
+      let score = 0;
+      for (const w of words) {
+        const root = w.length >= 5 ? w.slice(0, 4) : w;
+        if (docText.includes(root)) score += 1;
+      }
+      return { doc, score };
+    })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scoredDocs.length > 0) {
+      const best = scoredDocs[0].doc;
+
+      // Check clearance
+      if (!canAccessDocument(best.minClearance)) {
+        logAudit('ACCESS_DENIED', best.id, 'ACCESS_DENIED', `Отказ в доступе к ${best.id} для роли ${currentRole}`);
         return {
           id: 'asst-' + Date.now(),
           sender: 'assistant',
-          text: `⛔ Доступ ограничен политикой безопасности предприятия. У вас отсутствуют права на просмотр финансовой отчетности, фонда оплаты труда и персональных окладов руководства ООО «Фотопринт». Попытка доступа зарегистрирована в журнале аудита информационной безопасности.`,
+          text: `⛔ Доступ ограничен политикой безопасности предприятия. У вашей роли отсутствуют права на просмотр документа «${best.title}». Инцидент зафиксирован в журнале аудита.`,
           timestamp: time,
           status: 'access_denied',
           citations: [],
         };
       }
 
-      logAudit('RAG_SEARCH', 'Document: doc-fin-01', 'SUCCESS', 'Поиск в финансовых регламентах с цитированием');
+      logAudit('RAG_SEARCH', best.id, 'SUCCESS', `Поиск по регламенту «${best.title}»`);
       return {
         id: 'asst-' + Date.now(),
         sender: 'assistant',
-        text: 'Согласно утвержденному Бюджету доходов и расходов (БДР) на Q4 2026, плановая выручка ООО «Фотопринт» составляет 48 500 000 руб. Плановый фонд премирования производственной смены при соблюдении уровня брака ниже 2.5% составляет 3 200 000 руб.',
+        text: `На основании регламента «${best.title}» (редакция от ${best.date}):\n\n${best.summary}\n\nВыдержка: ${best.content}`,
         timestamp: time,
         status: 'grounded',
-        citations: [
-          {
-            documentId: 'doc-fin-01',
-            documentTitle: 'Бюджет доходов и расходов на 4 квартал 2026',
-            documentDate: '2026-10-01',
-            category: 'Финансы и стратегия',
-            excerpt:
-              'Плановые показатели выручки ООО «Фотопринт» на Q4 2026 установлены на уровне 48 500 000 руб. Фонд премирования производственной смены составляет 3 200 000 руб.',
-          },
-        ],
-      };
-    }
-
-    if (lower.includes('delta') || lower.includes('indigo') || lower.includes('калибровк')) {
-      logAudit('RAG_SEARCH', 'Document: doc-prod-01', 'SUCCESS', 'Поиск технологической карты HP Indigo 7900');
-      return {
-        id: 'asst-' + Date.now(),
-        sender: 'assistant',
-        text: 'Согласно Технологической карте цифровой печати на ЦПМ HP Indigo 7900, допустимое оптическое отклонение Delta-E составляет <= 2.0. Калибровка встроенного спектрофотометра обязательна каждые 4 часа работы либо при смене рулона.',
-        timestamp: time,
-        status: 'grounded',
-        citations: [
-          {
-            documentId: 'doc-prod-01',
-            documentTitle: 'Технологическая карта цифровой печати на ЦПМ HP Indigo 7900',
-            documentDate: '2026-08-15',
-            category: 'Производство',
-            excerpt:
-              'Калибровка встроенного спектрофотометра выполняется каждые 4 часа непрерывной работы. Допустимое оптическое отклонение Delta-E <= 2.0. Максимальное технологическое смещение приводки сторон — 0.2 мм.',
-          },
-        ],
+        citations: scoredDocs.slice(0, 2).map((s) => ({
+          documentId: s.doc.id,
+          documentTitle: s.doc.title,
+          documentDate: s.doc.date,
+          category: s.doc.category,
+          excerpt: s.doc.content.slice(0, 240) + '...',
+        })),
       };
     }
 
