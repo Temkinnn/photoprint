@@ -9,6 +9,7 @@ from app.services.document_store import get_restricted_doc_ids, list_documents_f
 from app.services.ollama_client import chat_with_ollama, wrap_untrusted_context
 
 FINANCE_SENSITIVE_KEYWORDS = [
+    "финанс", "рентабельн", "себестоим",
     "зарплат", "оклад", "сетка окладов", "бдр", "прибыль", "p&l", "ebitda",
     "сколько зарабатывает", "доход топ-менеджмент", "премиальн", "премирован",
     "фот", "инвест", "лизинг", "авансирован", "предоплат", "выручк", "бюджет",

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from fastapi import HTTPException
 from app.config import settings
 from app.schemas import (
-    ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
+    AudioTranscriptionResponse, ProtocolAnalysisResponse, DecisionItem, RiskItem, TaskItem
 )
 from app.services.document_store import extract_docx_text
 from app.services.ollama_client import (
@@ -566,6 +566,122 @@ async def analyze_meeting_transcript(transcript_text: str, meeting_title: str) -
         ) from exc
 
 
+def _validate_audio_file(file_bytes: bytes, filename: str) -> str:
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Аудиофайл пуст.")
+    lower_name = (filename or "").lower()
+    ext = "." + lower_name.rsplit(".", 1)[-1] if "." in lower_name else ""
+    if ext and ext not in AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неподдерживаемый формат аудио ({ext}). Допустимые форматы: .wav, .ogg, .mp3, .m4a, .flac, .webm.",
+        )
+    return ext
+
+
+async def _proxy_stt_only(
+    target_base_url: str,
+    file_bytes: bytes,
+    filename: str,
+    meeting_title: str,
+    meeting_id: Optional[str],
+    content_type: str,
+    req_timeout: float,
+) -> AudioTranscriptionResponse:
+    target_url = f"{target_base_url.rstrip('/')}/api/v1/stt/transcribe"
+    try:
+        async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
+            resp = await client.post(
+                target_url,
+                headers=TUNNEL_HEADERS,
+                files={"file": (filename or "meeting.ogg", file_bytes, content_type or "application/octet-stream")},
+            )
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Сервер Whisper STT недоступен ({target_url}): {exc}",
+        ) from exc
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ошибка Whisper STT (HTTP {resp.status_code}): {resp.text[:300]}",
+        )
+
+    payload = resp.json()
+    transcript = str(payload.get("transcript") or payload.get("transcriptText") or "").strip()
+    if not transcript:
+        raise HTTPException(status_code=503, detail="Whisper вернул пустую расшифровку аудио.")
+    return AudioTranscriptionResponse(
+        filename=filename,
+        meetingTitle=meeting_title,
+        meetingId=meeting_id,
+        transcriptText=transcript,
+        durationSec=payload.get("duration_sec") or payload.get("durationSec"),
+        modelUsed=f"Whisper STT ({target_base_url})",
+    )
+
+
+async def transcribe_meeting_audio(
+    file_bytes: bytes,
+    filename: str,
+    meeting_title: str,
+    meeting_id: Optional[str] = None,
+    content_type: str = "application/octet-stream",
+) -> AudioTranscriptionResponse:
+    """
+    Только транскрибация аудио через Whisper (без вызова Qwen),
+    чтобы Qwen оставался свободным для работы в Базе знаний.
+    """
+    import time
+
+    ext = _validate_audio_file(file_bytes, filename)
+    mode = (settings.AI_MODE or "auto").strip().lower()
+    ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")
+    local_ai_server = (settings.LOCAL_AI_SERVER_URL or "").strip().rstrip("/")
+    req_timeout = max(settings.OLLAMA_TIMEOUT_SECONDS, 300.0)
+
+    if mode in ("auto", "local"):
+        if local_ai_server:
+            local_up, _, _ = await probe_ai_server(local_ai_server)
+            if local_up:
+                return await _proxy_stt_only(
+                    local_ai_server, file_bytes, filename, meeting_title, meeting_id, content_type, req_timeout
+                )
+
+        if importlib.util.find_spec("faster_whisper") is not None:
+            t0 = time.time()
+            try:
+                transcript_text = await asyncio.to_thread(_transcribe_with_local_faster_whisper, file_bytes, ext)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Ошибка локального Whisper при распознавании речи: {exc}",
+                ) from exc
+            elapsed = round(time.time() - t0, 2)
+            return AudioTranscriptionResponse(
+                filename=filename,
+                meetingTitle=meeting_title,
+                meetingId=meeting_id,
+                transcriptText=transcript_text,
+                durationSec=elapsed,
+                modelUsed=f"local faster-whisper ({settings.WHISPER_MODEL_SIZE})",
+            )
+
+    if mode in ("auto", "remote") and ai_server:
+        return await _proxy_stt_only(
+            ai_server, file_bytes, filename, meeting_title, meeting_id, content_type, req_timeout
+        )
+
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Сервер распознавания речи Whisper недоступен: локальный faster-whisper не установлен "
+            "и удаленный AI_SERVER_URL не подключен."
+        ),
+    )
+
+
 async def process_meeting_audio(
     file_bytes: bytes,
     filename: str,
@@ -578,16 +694,7 @@ async def process_meeting_audio(
        затем локальный faster-whisper прямо в процессе + Ollama.
     2. Если локального STT нет — проксирует на удаленный AI_SERVER_URL.
     """
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="Аудиофайл пуст.")
-
-    lower_name = (filename or "").lower()
-    ext = "." + lower_name.rsplit(".", 1)[-1] if "." in lower_name else ""
-    if ext and ext not in AUDIO_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Неподдерживаемый формат аудио ({ext}). Допустимые форматы: .wav, .ogg, .mp3, .m4a, .flac, .webm.",
-        )
+    ext = _validate_audio_file(file_bytes, filename)
 
     mode = (settings.AI_MODE or "auto").strip().lower()
     ai_server = (settings.AI_SERVER_URL or "").strip().rstrip("/")

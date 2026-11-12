@@ -11,7 +11,10 @@ import {
   Sun,
   Moon,
   Server,
-  RefreshCw
+  RefreshCw,
+  Mic,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -28,7 +31,9 @@ export const Sidebar: React.FC = () => {
     resetDemoData,
     backendOnline,
     isSyncing,
-    syncWithBackend
+    syncWithBackend,
+    audioJob,
+    clearAudioJob
   } = useApp();
 
   const activeTasksCount = tasks.filter((t) => t.status === 'active' || t.status === 'overdue').length;
@@ -171,6 +176,63 @@ export const Sidebar: React.FC = () => {
 
       {/* Footer Backend Status & Profile Box */}
       <div>
+        {/* Persistent Background Whisper Job Indicator */}
+        {audioJob && (
+          <div
+            className={`mx-2 mb-2 p-2.5 rounded-md border text-[11px] space-y-1.5 ${
+              audioJob.status === 'transcribing'
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-900 dark:text-sky-200'
+                : audioJob.status === 'ready'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-900 dark:text-rose-200'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 font-semibold min-w-0">
+                {audioJob.status === 'transcribing' ? (
+                  <Mic className="w-3.5 h-3.5 text-sky-500 animate-pulse shrink-0" />
+                ) : audioJob.status === 'ready' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : (
+                  <Mic className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                )}
+                <span className="truncate">
+                  {audioJob.status === 'transcribing'
+                    ? 'Whisper распознаёт...'
+                    : audioJob.status === 'ready'
+                    ? 'Расшифровка готова'
+                    : 'Ошибка Whisper'}
+                </span>
+              </div>
+              {audioJob.status !== 'transcribing' && (
+                <button
+                  onClick={clearAudioJob}
+                  title="Скрыть"
+                  className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <div className="truncate font-mono text-[10px] opacity-80" title={audioJob.filename}>
+              {audioJob.filename}
+            </div>
+            {audioJob.status === 'error' && audioJob.error && (
+              <div className="text-[10px] opacity-90 line-clamp-2">{audioJob.error}</div>
+            )}
+            <button
+              onClick={() => setActiveTab('meetings')}
+              className={`w-full py-1 px-2 rounded text-[10px] font-semibold transition-colors ${
+                audioJob.status === 'ready'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-white/70 dark:bg-[#1a1d25] hover:bg-white dark:hover:bg-[#222632] text-current border border-current/20'
+              }`}
+            >
+              {audioJob.status === 'ready' ? 'Открыть и запустить анализ' : 'Перейти к встрече'}
+            </button>
+          </div>
+        )}
+
         {/* Backend Hardware / API Connection Status */}
         <div className="px-4 py-2 border-t border-neutral-200 dark:border-[#212530] bg-neutral-50/60 dark:bg-[#101217] flex items-center justify-between text-[11px] font-mono">
           <div className="flex items-center gap-2 min-w-0">

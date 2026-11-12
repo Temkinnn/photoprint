@@ -7,6 +7,7 @@ from app.db.models import DBCalendarSlot, DBMeeting, DBMeetingInvitation, DBProt
 from app.db.session import get_db
 from app.db.storage import EXTRA_STAFF
 from app.schemas import (
+    AudioTranscriptionResponse,
     CalendarSlot,
     ConfirmTasksRequest,
     CreateMeetingRequest,
@@ -28,6 +29,7 @@ from app.services.meeting_analyzer import (
     analyze_meeting_transcript,
     extract_transcript_text,
     process_meeting_audio,
+    transcribe_meeting_audio,
 )
 from app.services.meeting_prep import generate_meeting_prep
 
@@ -337,6 +339,47 @@ async def save_protocol(req: SaveProtocolRequest, db: Session = Depends(get_db))
         user=current_user,
     )
     return _to_protocol_item(db_proto)
+
+
+@router.post("/transcribe-audio", response_model=AudioTranscriptionResponse)
+async def transcribe_audio_endpoint(
+    file: UploadFile = File(...),
+    meetingTitle: str = Form("Оперативное совещание"),
+    meetingId: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Только транскрибация аудио через Whisper (без запуска Qwen) для фонового режима."""
+    file_bytes = await file.read()
+    title = (meetingTitle or "").strip() or (file.filename or "Оперативное совещание")
+    try:
+        result = await transcribe_meeting_audio(
+            file_bytes=file_bytes,
+            filename=file.filename or "meeting.ogg",
+            meeting_title=title,
+            meeting_id=meetingId,
+            content_type=file.content_type or "application/octet-stream",
+        )
+    except HTTPException as exc:
+        add_audit_log(
+            db,
+            action="TRANSCRIBE_MEETING_AUDIO",
+            target=f"{title} ({file.filename})",
+            status="warning",
+            details=f"Ошибка транскрибации Whisper: {exc.detail}",
+        )
+        raise
+
+    add_audit_log(
+        db,
+        action="TRANSCRIBE_MEETING_AUDIO",
+        target=f"{title} ({file.filename})",
+        status="success",
+        details=(
+            f"Аудиозапись расшифрована Whisper ({result.durationSec or 0}с) и ожидает запуска AI-анализа"
+            + (f" [встреча {meetingId}]" if meetingId else "")
+        ),
+    )
+    return result
 
 
 @router.post("/process-audio", response_model=ProtocolAnalysisResponse)

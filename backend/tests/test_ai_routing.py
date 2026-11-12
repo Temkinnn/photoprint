@@ -135,6 +135,25 @@ def test_auto_ai_routing_local_and_remote_fallback():
                 proto = asyncio.run(meeting_analyzer.process_meeting_audio(b"RIFF0000", "test.wav", "Тест аудио"))
                 assert "local faster-whisper" in (proto.modelUsed or "")
 
+            # 4. Separate Whisper-only endpoint (/api/v1/meetings/transcribe-audio) does NOT invoke Qwen LLM
+            with (
+                patch("app.services.meeting_analyzer.probe_ai_server", side_effect=fake_probe_srv_down),
+                patch("app.services.meeting_analyzer.importlib.util.find_spec", return_value=object()),
+                patch(
+                    "app.services.meeting_analyzer._transcribe_with_local_faster_whisper",
+                    return_value="[00:12] Проверка фонового Whisper для защиты проекта",
+                ),
+            ):
+                stt_res = client.post(
+                    "/api/v1/meetings/transcribe-audio",
+                    files={"file": ("demo.wav", b"RIFF0000", "audio/wav")},
+                    data={"meetingTitle": "Защита проекта"},
+                )
+                assert stt_res.status_code == 200, stt_res.text
+                stt_json = stt_res.json()
+                assert "Проверка фонового Whisper" in stt_json["transcriptText"]
+                assert stt_json["filename"] == "demo.wav"
+
         print("AI_AUTO_ROUTING_PASSED")
     finally:
         settings.AI_MODE = orig_mode

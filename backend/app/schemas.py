@@ -232,6 +232,15 @@ class ProtocolAnalysisResponse(BaseModel):
     processingTimeSec: Optional[float] = None
     modelUsed: Optional[str] = None
 
+
+class AudioTranscriptionResponse(BaseModel):
+    filename: str
+    meetingTitle: str
+    meetingId: Optional[str] = None
+    transcriptText: str
+    durationSec: Optional[float] = None
+    modelUsed: Optional[str] = None
+
 class SaveProtocolRequest(BaseModel):
     meetingId: Optional[str] = None
     meetingTitle: str

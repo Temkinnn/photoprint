@@ -31,6 +31,22 @@ import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
 
+export interface AudioTranscriptionJob {
+  id: string;
+  targetId: string;
+  meetingId?: string;
+  filename: string;
+  meetingTitle: string;
+  date: string;
+  status: 'transcribing' | 'ready' | 'error';
+  transcriptText?: string;
+  durationSec?: number;
+  modelUsed?: string;
+  error?: string;
+  startedAt: string;
+  applied?: boolean;
+}
+
 interface Toast {
   id: string;
   title: string;
@@ -96,6 +112,16 @@ interface AppContextType {
   rollbackDocumentVersion: (docId: string, versionId: string) => Promise<DocumentItem>;
   analyzeMeetingTranscript: (text: string, title: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   processMeetingAudio: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
+  startBackgroundAudioTranscription: (params: {
+    file: File;
+    meetingTitle: string;
+    meetingId?: string;
+    targetId: string;
+    date: string;
+  }) => void;
+  audioJob: AudioTranscriptionJob | null;
+  markAudioJobApplied: (jobId: string) => void;
+  clearAudioJob: () => void;
   uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   protocols: ProtocolItem[];
   saveMeetingProtocol: (params: {
@@ -190,6 +216,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Backend connection state
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [audioJob, setAudioJob] = useState<AudioTranscriptionJob | null>(null);
 
   const currentUser = MOCK_USERS[currentRole];
   const [ragMessages, setRagMessages] = useState<RAGMessage[]>(() => [
@@ -599,6 +626,105 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return result;
   };
 
+  const markAudioJobApplied = useCallback((jobId: string) => {
+    setAudioJob((prev) => (prev && prev.id === jobId ? { ...prev, applied: true } : prev));
+  }, []);
+
+  const clearAudioJob = useCallback(() => {
+    setAudioJob(null);
+  }, []);
+
+  const startBackgroundAudioTranscription = useCallback(
+    (params: {
+      file: File;
+      meetingTitle: string;
+      meetingId?: string;
+      targetId: string;
+      date: string;
+    }) => {
+      if (!backendOnline) {
+        showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для распознавания речи Whisper.', 'error');
+        return;
+      }
+
+      const jobId = `stt-${Date.now()}`;
+      setAudioJob({
+        id: jobId,
+        targetId: params.targetId,
+        meetingId: params.meetingId,
+        filename: params.file.name,
+        meetingTitle: params.meetingTitle,
+        date: params.date,
+        status: 'transcribing',
+        startedAt: new Date().toLocaleTimeString('ru-RU'),
+        applied: false,
+      });
+
+      const formData = new FormData();
+      formData.append('file', params.file);
+      formData.append('meetingTitle', params.meetingTitle);
+      if (params.meetingId) {
+        formData.append('meetingId', params.meetingId);
+      }
+
+      const apiBase =
+        ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined) || 'http://127.0.0.1:8000';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+      fetch(`${apiBase}/api/v1/meetings/transcribe-audio`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+        .then(async (res) => {
+          clearTimeout(timeoutId);
+          if (!res.ok) {
+            let detail = `HTTP ${res.status}`;
+            try {
+              const errJson = await res.json();
+              if (errJson?.detail) detail = String(errJson.detail);
+            } catch {
+              const txt = await res.text().catch(() => '');
+              if (txt) detail = txt;
+            }
+            throw new Error(detail);
+          }
+          return res.json();
+        })
+        .then(async (data) => {
+          setAudioJob((prev) =>
+            prev && prev.id === jobId
+              ? {
+                  ...prev,
+                  status: 'ready',
+                  transcriptText: data.transcriptText || '',
+                  durationSec: data.durationSec,
+                  modelUsed: data.modelUsed,
+                  applied: false,
+                }
+              : prev
+          );
+          await refreshAuditLogsSafe();
+          showToast(
+            'Whisper завершил расшифровку',
+            `Файл «${params.file.name}» готов (${data.durationSec ?? '—'}с). Откройте «Совещания» и запустите AI-анализ.`,
+            'success'
+          );
+        })
+        .catch((err: any) => {
+          clearTimeout(timeoutId);
+          const msg =
+            err?.name === 'AbortError'
+              ? 'Таймаут Whisper STT (5 мин).'
+              : err?.message || 'Ошибка распознавания аудио Whisper.';
+          setAudioJob((prev) => (prev && prev.id === jobId ? { ...prev, status: 'error', error: msg } : prev));
+          showToast('Ошибка Whisper STT', msg, 'error');
+        });
+    },
+    [backendOnline, refreshAuditLogsSafe, showToast]
+  );
+
   const uploadMeetingTranscript = async (
     file: File,
     meetingTitle: string,
@@ -834,6 +960,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetDemoData = async () => {
+    setAudioJob(null);
     if (backendOnline) {
       try {
         await apiClient.resetDemo();
@@ -904,6 +1031,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         rollbackDocumentVersion,
         analyzeMeetingTranscript,
         processMeetingAudio,
+        startBackgroundAudioTranscription,
+        audioJob,
+        markAudioJobApplied,
+        clearAudioJob,
         uploadMeetingTranscript,
         protocols,
         saveMeetingProtocol,

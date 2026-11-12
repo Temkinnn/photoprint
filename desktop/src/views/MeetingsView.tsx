@@ -95,7 +95,10 @@ export const MeetingsView: React.FC = () => {
     logAudit,
     showToast,
     analyzeMeetingTranscript,
-    processMeetingAudio,
+    startBackgroundAudioTranscription,
+    audioJob,
+    markAudioJobApplied,
+    clearAudioJob,
     uploadMeetingTranscript,
     saveMeetingProtocol,
     protocols,
@@ -210,6 +213,60 @@ export const MeetingsView: React.FC = () => {
       return documents.slice(0, 2).map((d) => d.id);
     });
   }, [documents]);
+
+  useEffect(() => {
+    if (!audioJob) return;
+    if (audioJob.status === 'transcribing') {
+      setSelectedTranscriptId(audioJob.targetId);
+      setShowScheduledProtocolWorkspace(true);
+      setShowTranscript(true);
+      setWorkspaceData((prev) => {
+        if (prev.transcriptRef === `#audio-${audioJob.filename}`) return prev;
+        return {
+          id: audioJob.meetingId || audioJob.id,
+          meetingId: audioJob.meetingId,
+          title: audioJob.meetingTitle,
+          date: audioJob.date,
+          transcriptRef: `#audio-${audioJob.filename}`,
+          transcriptText:
+            `⏳ Whisper распознаёт аудио «${audioJob.filename}» в фоне...\n\n` +
+            'Можете перейти в «Базу знаний» для демонстрации Qwen и ролевой защиты (RBAC). ' +
+            'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
+          summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+          decisions: [],
+          risks: [],
+          openQuestions: [],
+          processingTimeSec: null,
+          modelUsed: 'Whisper STT (в фоне)',
+        };
+      });
+      return;
+    }
+
+    if (audioJob.status === 'ready' && !audioJob.applied && audioJob.transcriptText) {
+      setSelectedTranscriptId(audioJob.targetId);
+      setShowScheduledProtocolWorkspace(true);
+      setShowTranscript(true);
+      setIsEditingTranscript(false);
+      setWorkspaceData({
+        id: audioJob.meetingId || audioJob.id,
+        meetingId: audioJob.meetingId,
+        title: audioJob.meetingTitle,
+        date: audioJob.date,
+        transcriptRef: `#audio-${audioJob.filename}`,
+        transcriptText: audioJob.transcriptText,
+        summary:
+          'Расшифровка аудио через Whisper завершена. Проверьте текст стенограммы слева и нажмите «Запустить AI-анализ».',
+        decisions: [],
+        risks: [],
+        openQuestions: [],
+        processingTimeSec: audioJob.durationSec ?? null,
+        modelUsed: audioJob.modelUsed || 'Whisper STT',
+      });
+      setTasksToReview([]);
+      markAudioJobApplied(audioJob.id);
+    }
+  }, [audioJob, markAudioJobApplied]);
 
   const currentUserSurname = surnameKey(currentUser.name);
   const incomingInvitations = invitations.filter(
@@ -416,8 +473,14 @@ export const MeetingsView: React.FC = () => {
 
   const handleRunAiAnalysis = async () => {
     const textToAnalyze = workspaceData.transcriptText.trim();
-    if (!textToAnalyze) {
-      showToast('Пустая стенограмма', 'Вставьте текст или загрузите файл стенограммы/аудио', 'warning');
+    if (!textToAnalyze || textToAnalyze.startsWith('⏳')) {
+      showToast(
+        'Стенограмма ещё не готова',
+        textToAnalyze.startsWith('⏳')
+          ? 'Дождитесь завершения распознавания речи Whisper.'
+          : 'Вставьте текст или загрузите файл стенограммы/аудио',
+        'warning'
+      );
       return;
     }
     setIsAnalyzing(true);
@@ -436,6 +499,9 @@ export const MeetingsView: React.FC = () => {
         transcriptRef: workspaceData.transcriptRef,
         fallbackText: textToAnalyze,
       });
+      if (audioJob?.status === 'ready') {
+        clearAudioJob();
+      }
       showToast(
         'Анализ завершен',
         `Решений: ${res.decisions.length}, поручений: ${res.tasks.length}, рисков: ${res.risks.length}`,
@@ -448,37 +514,54 @@ export const MeetingsView: React.FC = () => {
     }
   };
 
-  const handleAudioFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
 
     const targetMeeting = selectedMeetingItem;
     const isAdHoc = !targetMeeting && selectedTranscriptId === 'ad-hoc-new';
-    const title = targetMeeting?.title || (isAdHoc ? file.name.replace(/\.[^.]+$/, '') : workspaceData.title);
+    const targetId = targetMeeting ? targetMeeting.id : 'ad-hoc-new';
+    const title =
+      targetMeeting?.title ||
+      (isAdHoc ? file.name.replace(/\.[^.]+$/, '') : workspaceData.title || file.name.replace(/\.[^.]+$/, ''));
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
 
-    setIsAnalyzing(true);
-    setAnalyzingLabel('Whisper STT + Qwen 2.5...');
-    showToast('Распознавание речи', `Загрузка и расшифровка «${file.name}» (Whisper -> Qwen 2.5)...`, 'info');
-    try {
-      const res = await processMeetingAudio(file, title, targetMeeting?.id);
-      applyAnalysisResult(res, {
-        id: targetMeeting?.id || `audio-${Date.now()}`,
-        meetingId: targetMeeting?.id,
-        date: today,
-        transcriptRef: `#audio-${file.name}`,
-      });
-      showToast(
-        'Аудио обработано',
-        `Транскрибация и протокол готовы: решений — ${res.decisions.length}, поручений — ${res.tasks.length}`,
-        'success'
-      );
-    } catch (err: any) {
-      showToast('Ошибка распознавания аудио', err?.message || 'Сервер Whisper/AI недоступен', 'error');
-    } finally {
-      setIsAnalyzing(false);
-    }
+    setSelectedTranscriptId(targetId);
+    setShowScheduledProtocolWorkspace(true);
+    setShowTranscript(true);
+    setIsEditingTranscript(false);
+    setWorkspaceData({
+      id: targetMeeting?.id || `audio-${Date.now()}`,
+      meetingId: targetMeeting?.id,
+      title,
+      date: today,
+      transcriptRef: `#audio-${file.name}`,
+      transcriptText:
+        `⏳ Whisper распознаёт аудио «${file.name}» в фоне...\n\n` +
+        'Можете перейти в «Базу знаний» для демонстрации Qwen и ролевой защиты (RBAC). ' +
+        'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
+      summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+      processingTimeSec: null,
+      modelUsed: 'Whisper STT (в фоне)',
+    });
+    setTasksToReview([]);
+
+    startBackgroundAudioTranscription({
+      file,
+      meetingTitle: title,
+      meetingId: targetMeeting?.id,
+      targetId,
+      date: today,
+    });
+    showToast(
+      'Whisper запущен в фоне',
+      `Аудио «${file.name}» расшифровывается. Можно перейти в «Базу знаний» и вернуться к анализу позже.`,
+      'info'
+    );
   };
 
   const handleTranscriptFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1147,6 +1230,37 @@ export const MeetingsView: React.FC = () => {
         {/* Right Pane: Summary, 4-Category Decisions, Risks, Open Questions & Staged Tasks */}
         <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
           <div className="max-w-5xl mx-auto w-full space-y-6">
+            {audioJob?.status === 'transcribing' && (
+              <div className="p-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-900 dark:text-sky-200">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Mic className="w-4 h-4 text-sky-500 animate-pulse shrink-0" />
+                  <span>
+                    <strong>Whisper распознаёт «{audioJob.filename}» в фоне.</strong> Можете перейти в «Базу знаний» для показа Qwen и RBAC — расшифровка сохранится автоматически.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {audioJob?.status !== 'transcribing' &&
+              workspaceData.transcriptRef.startsWith('#audio-') &&
+              workspaceData.decisions.length === 0 &&
+              !workspaceData.transcriptText.startsWith('⏳') && (
+                <div className="p-3.5 rounded-lg border border-emerald-500/35 bg-emerald-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 dark:text-emerald-200">
+                  <div>
+                    <strong>Расшифровка Whisper готова ({workspaceData.transcriptRef.replace('#audio-', '')}).</strong>{' '}
+                    Проверьте текст стенограммы слева и запустите AI-анализ моделью Qwen 2.5.
+                  </div>
+                  <button
+                    onClick={handleRunAiAnalysis}
+                    disabled={isAnalyzing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm disabled:opacity-50"
+                  >
+                    <Cpu className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                    <span>{isAnalyzing ? analyzingLabel : 'Запустить AI-анализ (Qwen 2.5)'}</span>
+                  </button>
+                </div>
+              )}
+
             {/* Context Header for Protocol */}
             <div className="flex flex-wrap items-start justify-between gap-3 pb-3.5 border-b border-neutral-200 dark:border-[#212530]">
               <div className="flex-1 min-w-[240px]">
