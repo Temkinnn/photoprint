@@ -15,6 +15,9 @@ import {
   ProtocolItem,
   DecisionItem,
   RiskItem,
+  DocumentVersionItem,
+  DocumentDiffLine,
+  DocumentDraftResponse,
 } from '../types';
 import {
   MOCK_USERS,
@@ -71,6 +74,26 @@ interface AppContextType {
   queryRAG: (queryText: string) => Promise<RAGMessage>;
   ragMessages: RAGMessage[];
   setRagMessages: React.Dispatch<React.SetStateAction<RAGMessage[]>>;
+  getDocumentVersions: (docId: string) => Promise<DocumentVersionItem[]>;
+  generateDocumentDraft: (params: {
+    documentId?: string | null;
+    instruction: string;
+    title?: string;
+    category?: string;
+    minClearance?: number;
+  }) => Promise<DocumentDraftResponse>;
+  previewDocumentDiff: (originalContent: string, proposedContent: string) => Promise<DocumentDiffLine[]>;
+  commitDocument: (params: {
+    mode: 'create' | 'edit';
+    documentId?: string | null;
+    title: string;
+    category: string;
+    minClearance: number;
+    summary: string;
+    content: string;
+    changeNote: string;
+  }) => Promise<DocumentItem>;
+  rollbackDocumentVersion: (docId: string, versionId: string) => Promise<DocumentItem>;
   analyzeMeetingTranscript: (text: string, title: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   processMeetingAudio: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
@@ -589,6 +612,80 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return result;
   };
 
+  const getDocumentVersions = async (docId: string): Promise<DocumentVersionItem[]> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен для загрузки истории версий.');
+    }
+    return apiClient.getDocumentVersions(docId);
+  };
+
+  const generateDocumentDraft = async (params: {
+    documentId?: string | null;
+    instruction: string;
+    title?: string;
+    category?: string;
+    minClearance?: number;
+  }): Promise<DocumentDraftResponse> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Запустите FastAPI для генерации черновика.');
+    }
+    const draft = await apiClient.generateDocumentDraft(params);
+    await refreshAuditLogsSafe();
+    return draft;
+  };
+
+  const previewDocumentDiff = async (
+    originalContent: string,
+    proposedContent: string
+  ): Promise<DocumentDiffLine[]> => {
+    if (!backendOnline) {
+      const oldLines = originalContent.split('\n');
+      const newLines = proposedContent.split('\n');
+      return [
+        ...oldLines.filter((l) => !newLines.includes(l)).map((text) => ({ kind: 'removed' as const, text })),
+        ...newLines.map((text) => ({ kind: (oldLines.includes(text) ? 'unchanged' : 'added') as 'unchanged' | 'added', text })),
+      ];
+    }
+    return apiClient.previewDocumentDiff(originalContent, proposedContent);
+  };
+
+  const commitDocument = async (params: {
+    mode: 'create' | 'edit';
+    documentId?: string | null;
+    title: string;
+    category: string;
+    minClearance: number;
+    summary: string;
+    content: string;
+    changeNote: string;
+  }): Promise<DocumentItem> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен. Сохранение версий выполняется в PostgreSQL.');
+    }
+    const saved = await apiClient.commitDocument(params);
+    await syncWithBackend();
+    showToast(
+      params.mode === 'create' ? 'Документ создан в БД' : `Версия v${saved.version || 1} сохранена`,
+      `Регламент «${saved.title}» зафиксирован в PostgreSQL (AI-03 / AI-07).`,
+      'success'
+    );
+    return saved;
+  };
+
+  const rollbackDocumentVersion = async (docId: string, versionId: string): Promise<DocumentItem> => {
+    if (!backendOnline) {
+      throw new Error('Бэкенд недоступен.');
+    }
+    const rolled = await apiClient.rollbackDocumentVersion(docId, versionId);
+    await syncWithBackend();
+    showToast(
+      `Откат выполнен (v${rolled.version || 1})`,
+      `Восстановлена выбранная редакция документа «${rolled.title}»`,
+      'success'
+    );
+    return rolled;
+  };
+
   const saveMeetingProtocol = async (params: {
     meetingId?: string;
     meetingTitle: string;
@@ -800,6 +897,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         queryRAG,
         ragMessages,
         setRagMessages,
+        getDocumentVersions,
+        generateDocumentDraft,
+        previewDocumentDiff,
+        commitDocument,
+        rollbackDocumentVersion,
         analyzeMeetingTranscript,
         processMeetingAudio,
         uploadMeetingTranscript,

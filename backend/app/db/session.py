@@ -39,9 +39,11 @@ def init_tables():
     """Создание всех таблиц в БД и безопасное добавление недостающих колонок."""
     Base.metadata.create_all(bind=engine)
     inspector = inspect(engine)
-    if "protocols" in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    is_pg = engine.dialect.name == "postgresql"
+
+    if "protocols" in table_names:
         existing_cols = {col["name"] for col in inspector.get_columns("protocols")}
-        is_pg = engine.dialect.name == "postgresql"
         extra_cols = {
             "meeting_id": "VARCHAR(64)",
             "transcript_text": "TEXT DEFAULT ''",
@@ -52,3 +54,9 @@ def init_tables():
             for col_name, col_type in extra_cols.items():
                 if col_name not in existing_cols:
                     conn.execute(text(f"ALTER TABLE protocols ADD COLUMN {col_name} {col_type}"))
+
+    if "documents" in table_names:
+        doc_cols = {col["name"] for col in inspector.get_columns("documents")}
+        if "version" not in doc_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN version INTEGER DEFAULT 1"))

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.seed import seed_database
-from app.routers import auth, meetings, tasks, rag, overview, system
+from app.routers import auth, documents, meetings, tasks, rag, overview, system
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +33,7 @@ app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(meetings.router, prefix=settings.API_V1_PREFIX)
 app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rag.router, prefix=settings.API_V1_PREFIX)
+app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
 app.include_router(overview.router, prefix=settings.API_V1_PREFIX)
 app.include_router(system.router, prefix=settings.API_V1_PREFIX)
 

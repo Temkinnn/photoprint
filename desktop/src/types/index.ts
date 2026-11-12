@@ -48,6 +48,43 @@ export interface DocumentItem {
   minClearance: number; // 1 = Director only, 2 = Production/Director, 3 = All
   content: string;
   summary: string;
+  version?: number;
+}
+
+export interface DocumentVersionItem {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  title: string;
+  category: string;
+  date: string;
+  minClearance: number;
+  summary: string;
+  content: string;
+  changeNote: string;
+  changedBy: string;
+  createdAt: string;
+}
+
+export interface DocumentDiffLine {
+  kind: 'unchanged' | 'removed' | 'added';
+  text: string;
+}
+
+export interface DocumentDraftResponse {
+  mode: 'create' | 'edit';
+  documentId?: string | null;
+  originalTitle: string;
+  originalSummary: string;
+  originalContent: string;
+  proposedTitle: string;
+  proposedCategory: string;
+  proposedMinClearance: number;
+  proposedSummary: string;
+  proposedContent: string;
+  changeNote: string;
+  diffLines: DocumentDiffLine[];
+  modelUsed: string;
 }
 
 export interface Citation {

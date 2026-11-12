@@ -16,6 +16,9 @@ import {
   AIStatusInfo,
   ProtocolAnalysisResult,
   ProtocolItem,
+  DocumentVersionItem,
+  DocumentDiffLine,
+  DocumentDraftResponse,
 } from '../types';
 
 export type { ProtocolAnalysisResult };
@@ -309,6 +312,71 @@ export const apiClient = {
   async getDocuments(): Promise<DocumentItem[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/rag/documents`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
+  async getDocumentVersions(docId: string): Promise<DocumentVersionItem[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/documents/${docId}/versions`);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async generateDocumentDraft(params: {
+    documentId?: string | null;
+    instruction: string;
+    title?: string;
+    category?: string;
+    minClearance?: number;
+  }): Promise<DocumentDraftResponse> {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/v1/documents/draft`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      90000
+    );
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async previewDocumentDiff(originalContent: string, proposedContent: string): Promise<DocumentDiffLine[]> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/documents/diff-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ originalContent, proposedContent }),
+    });
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async commitDocument(params: {
+    mode: 'create' | 'edit';
+    documentId?: string | null;
+    title: string;
+    category: string;
+    minClearance: number;
+    summary: string;
+    content: string;
+    changeNote: string;
+  }): Promise<DocumentItem> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/documents/commit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
+  async rollbackDocumentVersion(docId: string, versionId: string): Promise<DocumentItem> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/documents/${docId}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versionId }),
+    });
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
     return res.json();
   },
 

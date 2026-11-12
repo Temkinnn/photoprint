@@ -57,6 +57,64 @@ class DocumentItem(BaseModel):
     minClearance: int  # 1 = Director only, 2 = Production/Director, 3 = All
     content: str
     summary: str
+    version: int = 1
+
+class DocumentVersionItem(BaseModel):
+    id: str
+    documentId: str
+    versionNumber: int
+    title: str
+    category: str
+    date: str
+    minClearance: int
+    summary: str
+    content: str
+    changeNote: str
+    changedBy: str
+    createdAt: str
+
+class DocumentDiffLine(BaseModel):
+    kind: Literal['unchanged', 'removed', 'added']
+    text: str
+
+class DocumentDraftRequest(BaseModel):
+    documentId: Optional[str] = None
+    instruction: str
+    title: Optional[str] = None
+    category: Optional[str] = None
+    minClearance: Optional[int] = None
+
+class DocumentDraftResponse(BaseModel):
+    mode: Literal['create', 'edit']
+    documentId: Optional[str] = None
+    originalTitle: str = ""
+    originalSummary: str = ""
+    originalContent: str = ""
+    proposedTitle: str
+    proposedCategory: str
+    proposedMinClearance: int
+    proposedSummary: str
+    proposedContent: str
+    changeNote: str
+    diffLines: List[DocumentDiffLine] = []
+    modelUsed: str
+
+class DocumentDiffPreviewRequest(BaseModel):
+    originalContent: str
+    proposedContent: str
+
+class DocumentCommitRequest(BaseModel):
+    mode: Literal['create', 'edit']
+    documentId: Optional[str] = None
+    title: str
+    category: str
+    minClearance: int = 3
+    summary: str
+    content: str
+    changeNote: str = ""
+
+class DocumentRollbackRequest(BaseModel):
+    versionId: str
 
 class Citation(BaseModel):
     documentId: str

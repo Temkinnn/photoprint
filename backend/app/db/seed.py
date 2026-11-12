@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, init_tables
 from app.db.models import (
-    DBAppState, DBUser, DBDocument, DBMeeting, DBTask,
+    DBAppState, DBUser, DBDocument, DBDocumentVersion, DBMeeting, DBTask,
     DBCalendarSlot, DBAuditLog, DBKPIMetric, DBMeetingInvitation, DBProtocol
 )
 from app.db.storage import (
@@ -25,6 +25,7 @@ def seed_database(db: Session = None, force: bool = False):
             db.query(DBMeeting).delete()
             db.query(DBCalendarSlot).delete()
             db.query(DBKPIMetric).delete()
+            db.query(DBDocumentVersion).delete()
             db.query(DBDocument).delete()
             db.query(DBUser).delete()
             db.query(DBAppState).delete()
@@ -32,6 +33,23 @@ def seed_database(db: Session = None, force: bool = False):
         elif db.query(DBUser).first() is not None:
             if db.query(DBAppState).filter(DBAppState.key == "current_role").first() is None:
                 db.add(DBAppState(key="current_role", value="ROLE_DIRECTOR"))
+                db.commit()
+            if db.query(DBDocumentVersion).first() is None:
+                for d in db.query(DBDocument).all():
+                    db.add(DBDocumentVersion(
+                        id=f"ver-{d.id}-v1",
+                        document_id=d.id,
+                        version_number=d.version or 1,
+                        title=d.title,
+                        category=d.category,
+                        date=d.date,
+                        min_clearance=d.min_clearance,
+                        summary=d.summary,
+                        content=d.content,
+                        change_note="Исходная утверждённая редакция документа",
+                        changed_by="Система ООО «Фотопринт»",
+                        created_at=f"{d.date} 09:00",
+                    ))
                 db.commit()
             print("База данных уже инициализирована. Сидирование пропущено.")
             return
@@ -51,7 +69,7 @@ def seed_database(db: Session = None, force: bool = False):
                 avatar_initials=u.avatarInitials
             ))
 
-        # 2. Документы регламентов (20+)
+        # 2. Документы регламентов (20+) и их начальные версии v1
         for doc in INITIAL_DOCUMENTS:
             db.add(DBDocument(
                 id=doc.id,
@@ -60,7 +78,22 @@ def seed_database(db: Session = None, force: bool = False):
                 date=doc.date,
                 min_clearance=doc.minClearance,
                 summary=doc.summary,
-                content=doc.content
+                content=doc.content,
+                version=1,
+            ))
+            db.add(DBDocumentVersion(
+                id=f"ver-{doc.id}-v1",
+                document_id=doc.id,
+                version_number=1,
+                title=doc.title,
+                category=doc.category,
+                date=doc.date,
+                min_clearance=doc.minClearance,
+                summary=doc.summary,
+                content=doc.content,
+                change_note="Исходная утверждённая редакция документа",
+                changed_by="Система ООО «Фотопринт»",
+                created_at=f"{doc.date} 09:00",
             ))
 
         # 3. KPI Метрики

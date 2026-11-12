@@ -29,6 +29,7 @@ async def get_documents(db: Session = Depends(get_db)):
             minClearance=d.min_clearance,
             summary=d.summary,
             content=d.content,
+            version=d.version or 1,
         )
         for d in docs
     ]

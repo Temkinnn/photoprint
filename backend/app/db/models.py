@@ -31,6 +31,24 @@ class DBDocument(Base):
     min_clearance = Column(Integer, default=3)  # 1 = Director, 2 = Prod, 3 = All
     summary = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
+    version = Column(Integer, default=1)
+
+
+class DBDocumentVersion(Base):
+    __tablename__ = "document_versions"
+
+    id = Column(String(64), primary_key=True)
+    document_id = Column(String(64), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    title = Column(String(512), nullable=False)
+    category = Column(String(255), nullable=False)
+    date = Column(String(32), nullable=False)
+    min_clearance = Column(Integer, default=3)
+    summary = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    change_note = Column(Text, default="")
+    changed_by = Column(String(255), nullable=False)
+    created_at = Column(String(64), nullable=False)
 
 class DBMeeting(Base):
     __tablename__ = "meetings"
