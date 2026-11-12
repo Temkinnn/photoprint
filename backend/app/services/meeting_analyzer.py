@@ -2,10 +2,8 @@ import asyncio
 import importlib.util
 import io
 import json
-import logging
 import os
 import re
-import sys
 import tempfile
 import httpx
 from typing import List, Dict, Any, Optional, Tuple
@@ -301,47 +299,7 @@ def extract_transcript_text(file_bytes: bytes, filename: str) -> str:
     return content
 
 
-logger = logging.getLogger(__name__)
 _LOCAL_WHISPER_CACHE: Dict[Tuple[str, str, str], Any] = {}
-_CUDA_DLLS_REGISTERED = False
-
-CORPORATE_WHISPER_PROMPT = (
-    "Оперативное производственное совещание руководства компании ООО «Фотопринт» (сервис picPac.by). "
-    "Участники: генеральный директор Смирнов А.В., начальник производства Иванов И.С., "
-    "служба снабжения Петрова М.К., руководитель службы заботы Ковалева Е.Д. "
-    "Термины: УФ-лакировка, ламинатор Foliant Vega 400, тираж фотокниг, SLA, брак, рекламация."
-)
-
-
-def _register_cuda_dll_directories() -> None:
-    """Регистрирует каталоги с CUDA 12 DLL (включая библиотеку cublas64_12.dll из Ollama) для faster-whisper."""
-    global _CUDA_DLLS_REGISTERED
-    if _CUDA_DLLS_REGISTERED or os.name != "nt":
-        return
-    _CUDA_DLLS_REGISTERED = True
-
-    candidates: List[str] = [
-        os.path.join(sys.prefix, "Lib", "site-packages", "nvidia", "cublas", "bin"),
-        os.path.join(sys.prefix, "Lib", "site-packages", "nvidia", "cudnn", "bin"),
-    ]
-    local_app_data = os.getenv("LOCALAPPDATA", "")
-    if local_app_data:
-        candidates.append(os.path.join(local_app_data, "Programs", "Ollama", "lib", "ollama", "cuda_v12"))
-    candidates.append(r"C:\Program Files\Ollama\lib\ollama\cuda_v12")
-    cuda_path = os.getenv("CUDA_PATH", "")
-    if cuda_path:
-        candidates.append(os.path.join(cuda_path, "bin"))
-
-    current_path = os.environ.get("PATH", "")
-    for directory in candidates:
-        if directory and os.path.isdir(directory):
-            try:
-                os.add_dll_directory(directory)
-            except OSError:
-                pass
-            if directory not in current_path:
-                current_path = f"{directory}{os.pathsep}{current_path}"
-    os.environ["PATH"] = current_path
 
 
 def _decode_audio_to_16k_mono(audio_path: str):
@@ -386,27 +344,18 @@ def _decode_audio_to_16k_mono(audio_path: str):
 
 
 def _transcribe_with_local_faster_whisper(file_bytes: bytes, ext: str) -> str:
-    """Локальная транскрибация аудио через faster-whisper с приоритетом GPU CUDA (через DLL Ollama/NVIDIA)."""
-    _register_cuda_dll_directories()
-    import ctranslate2
+    """Локальная транскрибация аудио через faster-whisper прямо на ПК пользователя."""
     from faster_whisper import WhisperModel
 
     preferred_size = (settings.WHISPER_MODEL_SIZE or "medium").strip() or "medium"
     download_root = r"D:\whisper_models" if os.path.exists(r"D:\whisper_models") else None
-    has_cuda = ctranslate2.get_cuda_device_count() > 0
-    cpu_threads = max(4, (os.cpu_count() or 8) - 2)
 
-    attempts: List[Tuple[str, str, str]] = []
-    if has_cuda:
-        attempts.extend([
-            (preferred_size, "cuda", "float16"),
-            (preferred_size, "cuda", "int8_float16"),
-        ])
-        if preferred_size != "small":
-            attempts.append(("small", "cuda", "float16"))
+    attempts: List[Tuple[str, str, str]] = [
+        (preferred_size, "cuda", "float16"),
+        (preferred_size, "cpu", "int8"),
+    ]
     if preferred_size != "small":
         attempts.append(("small", "cpu", "int8"))
-    attempts.append((preferred_size, "cpu", "int8"))
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext or ".ogg") as tmp:
         tmp.write(file_bytes)
@@ -420,15 +369,10 @@ def _transcribe_with_local_faster_whisper(file_bytes: bytes, ext: str) -> str:
         last_exc: Optional[Exception] = None
         for m_size, device, compute_type in attempts:
             cache_key = (m_size, device, compute_type)
-            beam = 5 if device == "cuda" else 2
             try:
                 model = _LOCAL_WHISPER_CACHE.get(cache_key)
                 if model is None:
-                    kwargs: Dict[str, Any] = {
-                        "device": device,
-                        "compute_type": compute_type,
-                        "cpu_threads": cpu_threads,
-                    }
+                    kwargs: Dict[str, Any] = {"device": device, "compute_type": compute_type}
                     if download_root:
                         kwargs["download_root"] = download_root
                     try:
@@ -439,21 +383,14 @@ def _transcribe_with_local_faster_whisper(file_bytes: bytes, ext: str) -> str:
 
                 segs, _ = model.transcribe(
                     audio_array,
-                    beam_size=beam,
+                    beam_size=5,
                     language="ru",
-                    initial_prompt=CORPORATE_WHISPER_PROMPT,
                     vad_filter=True,
                     vad_parameters={"min_silence_duration_ms": 400},
                 )
                 seg_list = list(segs)
                 if not seg_list:
-                    segs_no_vad, _ = model.transcribe(
-                        audio_array,
-                        beam_size=beam,
-                        language="ru",
-                        initial_prompt=CORPORATE_WHISPER_PROMPT,
-                        vad_filter=False,
-                    )
+                    segs_no_vad, _ = model.transcribe(audio_array, beam_size=5, language="ru", vad_filter=False)
                     seg_list = list(segs_no_vad)
 
                 lines = [
@@ -467,7 +404,6 @@ def _transcribe_with_local_faster_whisper(file_bytes: bytes, ext: str) -> str:
                 return transcript
             except Exception as exc:
                 last_exc = exc
-                logger.warning("Whisper %s (%s/%s) failed: %s", m_size, device, compute_type, exc)
                 _LOCAL_WHISPER_CACHE.pop(cache_key, None)
                 continue
         raise RuntimeError(f"Не удалось выполнить локальную транскрибацию Whisper: {last_exc}")

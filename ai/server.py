@@ -20,25 +20,15 @@ WHISPER_DOWNLOAD_ROOT = os.getenv(
     "D:\\whisper_models" if os.path.exists("D:\\") else "",
 ) or None
 
-# Автоподключение CUDA DLL (nvidia-*-cu12, Ollama cuda_v12, CUDA_PATH\bin)
-if os.name == "nt":
-    cuda_candidates = [
-        os.path.join(sys.prefix, "Lib", "site-packages", "nvidia", "cublas", "bin"),
-        os.path.join(sys.prefix, "Lib", "site-packages", "nvidia", "cudnn", "bin"),
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "Lib", "site-packages", "nvidia", "cublas", "bin"),
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "Lib", "site-packages", "nvidia", "cudnn", "bin"),
-        os.path.join(os.getenv("LOCALAPPDATA", ""), "Programs", "Ollama", "lib", "ollama", "cuda_v12"),
-        r"C:\Program Files\Ollama\lib\ollama\cuda_v12",
-        os.path.join(os.getenv("CUDA_PATH", ""), "bin"),
-    ]
-    for p in cuda_candidates:
-        if p and os.path.isdir(p):
-            try:
-                os.add_dll_directory(p)
-            except OSError:
-                pass
-            if p not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = f"{p}{os.pathsep}{os.environ.get('PATH', '')}"
+# Автоподключение CUDA DLL (если есть nvidia-*-cu12)
+try:
+    site_packages = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv", "Lib", "site-packages")
+    for nvd in ["cublas", "cudnn"]:
+        p = os.path.join(site_packages, "nvidia", nvd, "bin")
+        if os.path.exists(p):
+            os.add_dll_directory(p)
+except Exception:
+    pass
 
 import numpy as np
 import scipy.io.wavfile as wavfile
@@ -164,22 +154,14 @@ _WHISPER_CACHE: Dict[str, Any] = {}
 
 
 def run_whisper(audio_path: str, model_size="medium"):
-    import ctranslate2
     from faster_whisper import WhisperModel
     audio_numpy = load_audio_as_numpy(audio_path, target_sr=16000)
-    cpu_threads = max(4, (os.cpu_count() or 8) - 2)
-    has_cuda = ctranslate2.get_cuda_device_count() > 0
 
     def try_decode(m_size, device, compute_type):
         key = f"{m_size}:{device}:{compute_type}"
-        beam = 5 if device == "cuda" else 2
         m = _WHISPER_CACHE.get(key)
         if m is None:
-            kwargs: Dict[str, Any] = {
-                "device": device,
-                "compute_type": compute_type,
-                "cpu_threads": cpu_threads,
-            }
+            kwargs: Dict[str, Any] = {"device": device, "compute_type": compute_type}
             if WHISPER_DOWNLOAD_ROOT:
                 kwargs["download_root"] = WHISPER_DOWNLOAD_ROOT
             try:
@@ -189,7 +171,7 @@ def run_whisper(audio_path: str, model_size="medium"):
             _WHISPER_CACHE[key] = m
         segs, _ = m.transcribe(
             audio_numpy,
-            beam_size=beam,
+            beam_size=5,
             language="ru",
             initial_prompt=CORPORATE_PROMPT,
             vad_filter=True,
@@ -197,32 +179,22 @@ def run_whisper(audio_path: str, model_size="medium"):
         )
         seg_list = list(segs)
         if not seg_list:
-            segs_nv, _ = m.transcribe(audio_numpy, beam_size=beam, language="ru", initial_prompt=CORPORATE_PROMPT, vad_filter=False)
+            segs_nv, _ = m.transcribe(audio_numpy, beam_size=5, language="ru", initial_prompt=CORPORATE_PROMPT, vad_filter=False)
             seg_list = list(segs_nv)
         return seg_list
 
-    attempts = []
-    if has_cuda:
-        attempts.extend([(model_size, "cuda", "float16"), (model_size, "cuda", "int8_float16")])
-        if model_size != "small":
-            attempts.append(("small", "cuda", "float16"))
-    if model_size != "small":
-        attempts.append(("small", "cpu", "int8"))
-    attempts.append((model_size, "cpu", "int8"))
-
     segments = None
-    last_exc = None
-    for current_model, device, compute_type in attempts:
+    for current_model in [model_size, "small"]:
         try:
-            segments = try_decode(current_model, device, compute_type)
+            segments = try_decode(current_model, "cuda", "float16")
             break
-        except Exception as exc:
-            last_exc = exc
-            _WHISPER_CACHE.pop(f"{current_model}:{device}:{compute_type}", None)
-            continue
-
-    if segments is None:
-        raise RuntimeError(f"Whisper failed: {last_exc}")
+        except Exception:
+            try:
+                segments = try_decode(current_model, "cpu", "int8")
+                break
+            except Exception:
+                if current_model == "small":
+                    raise
 
     formatted = []
     for s in segments:
