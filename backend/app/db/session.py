@@ -19,6 +19,7 @@ try:
         logger.info(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
         print(f"Успешное подключение к PostgreSQL: {settings.POSTGRES_DB}")
 except Exception as e:
+    print(f"PostgreSQL ошибка подключения: {e}")
     backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     db_file = os.path.join(backend_dir, "photoprint.db")
     print(f"PostgreSQL недоступен. Использование резервной локальной базы SQLite: {db_file}")

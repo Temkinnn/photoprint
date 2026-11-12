@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Database (PostgreSQL 16/18)
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgrespassword")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "127.0.0.1")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "photoprint")
@@ -26,10 +26,6 @@ class Settings(BaseSettings):
         if env_url:
             return env_url
             
-        # If unix socket exists in /tmp, prefer connecting via socket
-        if os.path.exists("/tmp/.s.PGSQL.5432") and self.POSTGRES_SERVER in ("localhost", "127.0.0.1", ""):
-            return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@/{self.POSTGRES_DB}?host=/tmp"
-
         from sqlalchemy.engine import URL
         url_obj = URL.create(
             drivername="postgresql+psycopg2",
@@ -41,8 +37,8 @@ class Settings(BaseSettings):
         )
         return url_obj.render_as_string(hide_password=False)
     
-    # AI Server (Developer 2 remote GPU: Whisper + Qwen 2.5)
-    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "https://salty-news-tan.loca.lt")
+    # AI Server (Отключен - работа напрямую локально на одном компьютере)
+    AI_SERVER_URL: str = os.getenv("AI_SERVER_URL", "")
     AI_SERVER_BYPASS_HEADER: str = "true"
 
     # AI / Ollama configuration (local fallback)

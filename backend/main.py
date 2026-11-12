@@ -4,12 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.seed import seed_database
+from app.db.storage import storage
 from app.routers import auth, meetings, tasks, rag, overview, system, ai_proxy
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Автоматическая инициализация и сидирование БД при старте
     seed_database()
+    storage.reload_from_db()
     yield
 
 app = FastAPI(
