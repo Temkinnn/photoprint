@@ -151,6 +151,13 @@ export const MeetingProtocolView: React.FC = () => {
           `Выделено решений: ${res.decisions.length}, задач: ${res.tasks.length}`,
           'success'
         );
+        if (res.docxFilename) {
+          showToast(
+            'Word-протокол сформирован',
+            `Файл: ${res.docxFilename} сохранен на диск (кнопка "Скачать Word")`,
+            'success'
+          );
+        }
       } else {
         showToast('Внимание', 'Не удалось обработать аудио через удаленный сервер', 'warning');
       }
@@ -176,6 +183,13 @@ export const MeetingProtocolView: React.FC = () => {
       `Протокол сохранен со ссылкой на исходную расшифровку (${protocolRef})`,
       'success'
     );
+  };
+
+  const handleDownloadWord = () => {
+    if (!currentTranscript) return;
+    const downloadUrl = `http://127.0.0.1:8000/api/v1/meetings/export-word/${currentTranscript.id}`;
+    window.open(downloadUrl, '_blank');
+    showToast('Word-протокол сформирован', 'Файл .docx скачивается и сохранен в папках ai/ и documents/', 'success');
   };
 
   const handleApproveAllTasks = async () => {
@@ -396,7 +410,16 @@ ${tasksText || '  (все поручения утверждены и внесе�
               title="Скопировать протокол в буфер обмена для отправки в мессенджер или почту"
             >
               <Copy className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Скопировать протокол</span>
+              <span>Скопировать</span>
+            </button>
+
+            <button
+              onClick={handleDownloadWord}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors shadow-sm"
+              title="Сгенерировать и скачать официальный протокол в формате Word (.docx)"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Скачать Word (.docx)</span>
             </button>
 
             <button
@@ -447,7 +470,7 @@ ${tasksText || '  (все поручения утверждены и внесе�
               </div>
             </div>
 
-            <div className="text-xs text-neutral-700 dark:text-neutral-300 font-mono leading-relaxed max-h-52 overflow-y-auto space-y-1 p-2 bg-white dark:bg-[#0c0d12] rounded border border-neutral-200 dark:border-[#1d2028]">
+            <div className="text-xs text-neutral-700 dark:text-neutral-300 font-mono leading-relaxed max-h-[480px] overflow-y-auto space-y-1 p-2 bg-white dark:bg-[#0c0d12] rounded border border-neutral-200 dark:border-[#1d2028]">
               {currentTranscript.content
                 .split('\n')
                 .filter((line) => {

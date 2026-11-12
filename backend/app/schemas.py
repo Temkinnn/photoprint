@@ -121,6 +121,8 @@ class ProtocolAnalysisResponse(BaseModel):
     transcriptId: Optional[str] = None
     questions: Optional[List[str]] = []
     duration: Optional[str] = None
+    docxPath: Optional[str] = None
+    docxFilename: Optional[str] = None
 
 class ConfirmTasksRequest(BaseModel):
     tasks: List[TaskItem]

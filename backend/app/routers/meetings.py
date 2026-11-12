@@ -1,4 +1,6 @@
+import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse
 from typing import List, Optional
 from app.db.storage import storage
 from app.schemas import (
@@ -8,7 +10,8 @@ from app.schemas import (
     AgendaGenerationRequest, AgendaGenerationResponse
 )
 from app.services.meeting_analyzer import (
-    analyze_meeting_transcript, generate_meeting_agenda, process_audio_meeting
+    analyze_meeting_transcript, generate_meeting_agenda, process_audio_meeting,
+    generate_word_for_transcript_id
 )
 
 router = APIRouter(prefix="/meetings", tags=["Встречи и Протоколы"])
@@ -188,3 +191,24 @@ async def confirm_tasks(req: ConfirmTasksRequest):
         )
 
     return added_tasks
+
+@router.get("/export-word/{transcript_id}")
+async def export_word_protocol(transcript_id: str):
+    """
+    Генерирует и скачивает официальный Word-документ (.docx) протокола встречи со всеми разделами по ТЗ.
+    """
+    docx_path = generate_word_for_transcript_id(transcript_id)
+    if not docx_path or not os.path.exists(docx_path):
+        raise HTTPException(status_code=404, detail="Не удалось сгенерировать Word-документ протокола")
+
+    storage.add_audit_log(
+        action="EXPORT_WORD_PROTOCOL",
+        target=f"Протокол: {transcript_id}",
+        status="success",
+        details=f"Сгенерирован и скачан Word-документ: {os.path.basename(docx_path)}"
+    )
+    return FileResponse(
+        path=docx_path,
+        filename=os.path.basename(docx_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )

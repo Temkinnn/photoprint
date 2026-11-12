@@ -39,6 +39,8 @@ export interface ProtocolAnalysisResult {
   transcriptId?: string;
   questions?: string[];
   duration?: string;
+  docxPath?: string;
+  docxFilename?: string;
 }
 
 export interface BackendHealth {

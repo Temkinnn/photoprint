@@ -20,7 +20,14 @@ def seed_database(db: Session = None):
 
     try:
         # Проверяем, есть ли уже данные
-        if db.query(DBUser).first() is not None:
+        has_data = False
+        try:
+            if db.query(DBUser).first() is not None:
+                has_data = True
+        except Exception:
+            has_data = False
+
+        if has_data:
             print("База данных PostgreSQL уже инициализирована. Сидирование пропущено.")
             return
 
