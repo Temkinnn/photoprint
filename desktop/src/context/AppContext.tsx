@@ -47,6 +47,22 @@ export interface AudioTranscriptionJob {
   applied?: boolean;
 }
 
+export interface TranscriptAnalysisJob {
+  id: string;
+  targetId: string;
+  workspaceId: string;
+  meetingId?: string;
+  meetingTitle: string;
+  date: string;
+  transcriptRef: string;
+  transcriptText: string;
+  status: 'analyzing' | 'ready' | 'error';
+  result?: ProtocolAnalysisResult;
+  error?: string;
+  startedAt: string;
+  applied?: boolean;
+}
+
 interface Toast {
   id: string;
   title: string;
@@ -122,6 +138,18 @@ interface AppContextType {
   audioJob: AudioTranscriptionJob | null;
   markAudioJobApplied: (jobId: string) => void;
   clearAudioJob: () => void;
+  startBackgroundTranscriptAnalysis: (params: {
+    targetId: string;
+    workspaceId: string;
+    meetingId?: string;
+    meetingTitle: string;
+    date: string;
+    transcriptRef: string;
+    transcriptText: string;
+  }) => void;
+  analysisJob: TranscriptAnalysisJob | null;
+  markAnalysisJobApplied: (jobId: string) => void;
+  clearAnalysisJob: () => void;
   uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   protocols: ProtocolItem[];
   saveMeetingProtocol: (params: {
@@ -217,6 +245,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [audioJob, setAudioJob] = useState<AudioTranscriptionJob | null>(null);
+  const [analysisJob, setAnalysisJob] = useState<TranscriptAnalysisJob | null>(null);
 
   const currentUser = MOCK_USERS[currentRole];
   const [ragMessages, setRagMessages] = useState<RAGMessage[]>(() => [
@@ -675,6 +704,83 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAudioJob(null);
   }, []);
 
+  const markAnalysisJobApplied = useCallback((jobId: string) => {
+    setAnalysisJob((prev) => (prev && prev.id === jobId ? { ...prev, applied: true } : prev));
+  }, []);
+
+  const clearAnalysisJob = useCallback(() => {
+    setAnalysisJob(null);
+  }, []);
+
+  const startBackgroundTranscriptAnalysis = useCallback(
+    (params: {
+      targetId: string;
+      workspaceId: string;
+      meetingId?: string;
+      meetingTitle: string;
+      date: string;
+      transcriptRef: string;
+      transcriptText: string;
+    }) => {
+      if (!backendOnline) {
+        showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для AI-анализа.', 'error');
+        return;
+      }
+
+      const jobId = `llm-${Date.now()}`;
+      setAnalysisJob({
+        id: jobId,
+        targetId: params.targetId,
+        workspaceId: params.workspaceId,
+        meetingId: params.meetingId,
+        meetingTitle: params.meetingTitle,
+        date: params.date,
+        transcriptRef: params.transcriptRef,
+        transcriptText: params.transcriptText,
+        status: 'analyzing',
+        startedAt: new Date().toLocaleTimeString('ru-RU'),
+        applied: false,
+      });
+
+      postJsonWithTimeout<ProtocolAnalysisResult>(
+        '/api/v1/meetings/analyze-transcript',
+        {
+          transcriptText: params.transcriptText,
+          meetingTitle: params.meetingTitle,
+          meetingId: params.meetingId,
+        },
+        180000
+      )
+        .then(async (res) => {
+          setAnalysisJob((prev) =>
+            prev && prev.id === jobId
+              ? {
+                  ...prev,
+                  status: 'ready',
+                  result: res,
+                  applied: false,
+                }
+              : prev
+          );
+          setAudioJob((prev) => (prev?.status === 'ready' ? null : prev));
+          await refreshAuditLogsSafe();
+          showToast(
+            'Qwen 2.5 завершил анализ',
+            `«${params.meetingTitle}»: решений — ${res.decisions.length}, поручений — ${res.tasks.length}, рисков — ${res.risks.length}.`,
+            'success'
+          );
+        })
+        .catch((err: any) => {
+          const msg = err?.message || 'AI-сервер недоступен';
+          setAnalysisJob((prev) =>
+            prev && prev.id === jobId ? { ...prev, status: 'error', error: msg } : prev
+          );
+          showToast('Ошибка AI-анализа', msg, 'error');
+        });
+    },
+    [backendOnline, showToast]
+  );
+
   const startBackgroundAudioTranscription = useCallback(
     (params: {
       file: File;
@@ -1000,6 +1106,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetDemoData = async () => {
     setAudioJob(null);
+    setAnalysisJob(null);
     if (backendOnline) {
       try {
         await apiClient.resetDemo();
@@ -1074,6 +1181,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         audioJob,
         markAudioJobApplied,
         clearAudioJob,
+        startBackgroundTranscriptAnalysis,
+        analysisJob,
+        markAnalysisJobApplied,
+        clearAnalysisJob,
         uploadMeetingTranscript,
         protocols,
         saveMeetingProtocol,

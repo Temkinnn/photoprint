@@ -94,11 +94,14 @@ export const MeetingsView: React.FC = () => {
     batchApproveTasks,
     logAudit,
     showToast,
-    analyzeMeetingTranscript,
     startBackgroundAudioTranscription,
     audioJob,
     markAudioJobApplied,
     clearAudioJob,
+    startBackgroundTranscriptAnalysis,
+    analysisJob,
+    markAnalysisJobApplied,
+    clearAnalysisJob,
     uploadMeetingTranscript,
     saveMeetingProtocol,
     protocols,
@@ -144,6 +147,8 @@ export const MeetingsView: React.FC = () => {
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analyzingLabel, setAnalyzingLabel] = useState<string>('Анализ...');
+  const busyAnalyzing = isAnalyzing || analysisJob?.status === 'analyzing';
+  const busyLabel = isAnalyzing ? analyzingLabel : 'Qwen 2.5 анализирует в фоне...';
   const [isSavingProtocol, setIsSavingProtocol] = useState<boolean>(false);
   const [isEditingTranscript, setIsEditingTranscript] = useState<boolean>(false);
   const [decisionFilter, setDecisionFilter] = useState<DecisionCategory | 'all'>('all');
@@ -267,6 +272,63 @@ export const MeetingsView: React.FC = () => {
       markAudioJobApplied(audioJob.id);
     }
   }, [audioJob, markAudioJobApplied]);
+
+  useEffect(() => {
+    if (!analysisJob) return;
+    if (analysisJob.status === 'analyzing') {
+      setSelectedTranscriptId(analysisJob.targetId);
+      setShowScheduledProtocolWorkspace(true);
+      setShowTranscript(true);
+      setIsEditingTranscript(false);
+      setWorkspaceData((prev) => {
+        if (
+          prev.transcriptRef === analysisJob.transcriptRef &&
+          prev.modelUsed === 'Qwen 2.5 (в фоне)'
+        ) {
+          return prev;
+        }
+        return {
+          id: analysisJob.meetingId || analysisJob.workspaceId,
+          meetingId: analysisJob.meetingId,
+          title: analysisJob.meetingTitle,
+          date: analysisJob.date,
+          transcriptRef: analysisJob.transcriptRef,
+          transcriptText: analysisJob.transcriptText,
+          summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+          decisions: [],
+          risks: [],
+          openQuestions: [],
+          processingTimeSec: null,
+          modelUsed: 'Qwen 2.5 (в фоне)',
+        };
+      });
+      return;
+    }
+
+    if (
+      analysisJob.status === 'ready' &&
+      analysisJob.result &&
+      (!analysisJob.applied || workspaceData.transcriptRef !== analysisJob.transcriptRef || workspaceData.decisions.length === 0)
+    ) {
+      setSelectedTranscriptId(analysisJob.targetId);
+      setShowScheduledProtocolWorkspace(true);
+      setShowTranscript(true);
+      setIsEditingTranscript(false);
+      applyAnalysisResult(analysisJob.result, {
+        id: analysisJob.meetingId || analysisJob.workspaceId,
+        meetingId: analysisJob.meetingId,
+        date: analysisJob.date,
+        transcriptRef: analysisJob.transcriptRef,
+        fallbackText: analysisJob.transcriptText,
+      });
+      if (audioJob?.status === 'ready') {
+        clearAudioJob();
+      }
+      if (!analysisJob.applied) {
+        markAnalysisJobApplied(analysisJob.id);
+      }
+    }
+  }, [analysisJob, audioJob?.status, clearAudioJob, markAnalysisJobApplied]);
 
   const currentUserSurname = surnameKey(currentUser.name);
   const incomingInvitations = invitations.filter(
@@ -471,7 +533,7 @@ export const MeetingsView: React.FC = () => {
     }
   };
 
-  const handleRunAiAnalysis = async () => {
+  const handleRunAiAnalysis = () => {
     const textToAnalyze = workspaceData.transcriptText.trim();
     if (!textToAnalyze || textToAnalyze.startsWith('⏳')) {
       showToast(
@@ -483,41 +545,46 @@ export const MeetingsView: React.FC = () => {
       );
       return;
     }
-    setIsAnalyzing(true);
-    setAnalyzingLabel('Qwen 2.5 анализирует...');
-    showToast('AI-Анализ запущен', 'Обработка стенограммы моделью Qwen 2.5...', 'info');
-    try {
-      const res = await analyzeMeetingTranscript(
-        textToAnalyze,
-        workspaceData.title,
-        workspaceData.meetingId
-      );
-      applyAnalysisResult(res, {
-        id: workspaceData.id,
-        meetingId: workspaceData.meetingId,
-        date: workspaceData.date,
-        transcriptRef: workspaceData.transcriptRef,
-        fallbackText: textToAnalyze,
-      });
-      if (audioJob?.status === 'ready') {
-        clearAudioJob();
-      }
-      showToast(
-        'Анализ завершен',
-        `Решений: ${res.decisions.length}, поручений: ${res.tasks.length}, рисков: ${res.risks.length}`,
-        'success'
-      );
-    } catch (err: any) {
-      showToast('Ошибка AI-анализа', err?.message || 'AI-сервер недоступен', 'error');
-    } finally {
-      setIsAnalyzing(false);
+    if (analysisJob?.status === 'analyzing') {
+      showToast('Анализ уже выполняется', 'Дождитесь завершения текущей обработки Qwen 2.5.', 'info');
+      return;
     }
+    if (audioJob?.status === 'ready') {
+      clearAudioJob();
+    }
+    setWorkspaceData((prev) => ({
+      ...prev,
+      summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+      decisions: [],
+      risks: [],
+      openQuestions: [],
+      processingTimeSec: null,
+      modelUsed: 'Qwen 2.5 (в фоне)',
+    }));
+    setTasksToReview([]);
+    startBackgroundTranscriptAnalysis({
+      targetId: selectedTranscriptId,
+      workspaceId: workspaceData.id,
+      meetingId: workspaceData.meetingId,
+      meetingTitle: workspaceData.title,
+      date: workspaceData.date,
+      transcriptRef: workspaceData.transcriptRef,
+      transcriptText: textToAnalyze,
+    });
+    showToast(
+      'AI-анализ запущен в фоне',
+      'Qwen 2.5 обрабатывает стенограмму — можете переключаться между экранами.',
+      'info'
+    );
   };
 
   const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (analysisJob && analysisJob.status !== 'analyzing') {
+      clearAnalysisJob();
+    }
 
     const targetMeeting = selectedMeetingItem;
     const isAdHoc = !targetMeeting && selectedTranscriptId === 'ad-hoc-new';
@@ -681,6 +748,9 @@ export const MeetingsView: React.FC = () => {
   };
 
   const handleSelectMeeting = (id: string) => {
+    if (analysisJob && analysisJob.status !== 'analyzing' && id !== analysisJob.targetId) {
+      clearAnalysisJob();
+    }
     setSelectedTranscriptId(id);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
@@ -954,17 +1024,17 @@ export const MeetingsView: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => audioInputRef.current?.click()}
-                      disabled={isAnalyzing}
+                      disabled={busyAnalyzing}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
                       title="Отправить аудиозапись (.ogg/.wav/.mp3) в Whisper + Qwen 2.5"
                     >
-                      <Mic className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-pulse' : ''}`} />
-                      <span>{isAnalyzing ? analyzingLabel : 'Загрузить аудиозапись'}</span>
+                      <Mic className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-pulse' : ''}`} />
+                      <span>{busyAnalyzing ? busyLabel : 'Загрузить аудиозапись'}</span>
                     </button>
 
                     <button
                       onClick={() => transcriptInputRef.current?.click()}
-                      disabled={isAnalyzing}
+                      disabled={busyAnalyzing}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
                       title="Загрузить текстовую стенограмму (.txt, .vtt, .docx)"
                     >
@@ -974,7 +1044,7 @@ export const MeetingsView: React.FC = () => {
 
                     <button
                       onClick={handleSwitchToScheduledWorkspace}
-                      disabled={isAnalyzing}
+                      disabled={busyAnalyzing}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15 transition-colors disabled:opacity-50"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -1089,7 +1159,7 @@ export const MeetingsView: React.FC = () => {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => audioInputRef.current?.click()}
-                  disabled={isAnalyzing}
+                  disabled={busyAnalyzing}
                   title="Загрузить аудио (.ogg, .wav, .mp3, .m4a)"
                   className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
                 >
@@ -1097,7 +1167,7 @@ export const MeetingsView: React.FC = () => {
                 </button>
                 <button
                   onClick={() => transcriptInputRef.current?.click()}
-                  disabled={isAnalyzing}
+                  disabled={busyAnalyzing}
                   title="Загрузить файл стенограммы (.txt, .vtt, .docx)"
                   className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
                 >
@@ -1241,7 +1311,19 @@ export const MeetingsView: React.FC = () => {
               </div>
             )}
 
+            {analysisJob?.status === 'analyzing' && (
+              <div className="p-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-900 dark:text-sky-200">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Cpu className="w-4 h-4 text-sky-500 animate-spin shrink-0" />
+                  <span>
+                    <strong>Qwen 2.5 формирует протокол в фоне («{analysisJob.meetingTitle}»).</strong> Можете переключаться по другим экранам — готовые решения и поручения появятся здесь автоматически.
+                  </span>
+                </div>
+              </div>
+            )}
+
             {audioJob?.status !== 'transcribing' &&
+              analysisJob?.status !== 'analyzing' &&
               workspaceData.transcriptRef.startsWith('#audio-') &&
               workspaceData.decisions.length === 0 &&
               !workspaceData.transcriptText.startsWith('⏳') && (
@@ -1252,11 +1334,11 @@ export const MeetingsView: React.FC = () => {
                   </div>
                   <button
                     onClick={handleRunAiAnalysis}
-                    disabled={isAnalyzing}
+                    disabled={busyAnalyzing}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm disabled:opacity-50"
                   >
-                    <Cpu className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                    <span>{isAnalyzing ? analyzingLabel : 'Запустить AI-анализ (Qwen 2.5)'}</span>
+                    <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
+                    <span>{busyAnalyzing ? busyLabel : 'Запустить AI-анализ (Qwen 2.5)'}</span>
                   </button>
                 </div>
               )}
@@ -1309,7 +1391,7 @@ export const MeetingsView: React.FC = () => {
 
                 <button
                   onClick={() => audioInputRef.current?.click()}
-                  disabled={isAnalyzing}
+                  disabled={busyAnalyzing}
                   title="Загрузить аудио (.ogg, .wav, .mp3) -> Whisper + Qwen 2.5"
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
                 >
@@ -1319,17 +1401,17 @@ export const MeetingsView: React.FC = () => {
 
                 <button
                   onClick={handleRunAiAnalysis}
-                  disabled={isAnalyzing}
+                  disabled={busyAnalyzing}
                   title={backendOnline ? 'Запустить AI-анализ текущей стенограммы (Qwen 2.5)' : 'Бэкенд недоступен'}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm disabled:opacity-50"
                 >
-                  <Cpu className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                  <span>{isAnalyzing ? analyzingLabel : 'Анализ стенограммы'}</span>
+                  <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
+                  <span>{busyAnalyzing ? busyLabel : 'Анализ стенограммы'}</span>
                 </button>
 
                 <button
                   onClick={handleSaveProtocol}
-                  disabled={isSavingProtocol || isAnalyzing}
+                  disabled={isSavingProtocol || busyAnalyzing}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
                   title="Сохранить протокол в PostgreSQL со ссылкой на стенограмму"
                 >
