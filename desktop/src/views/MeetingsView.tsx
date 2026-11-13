@@ -50,6 +50,17 @@ const normalizeTs = (ts?: string | null): string => {
   return (ts || '').replace(/[\[\]]/g, '').trim();
 };
 
+const API_BASE =
+  ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined) || 'http://127.0.0.1:8000';
+
+const resolvePlayableAudioUrl = (rawUrl?: string | null): string | null => {
+  if (!rawUrl) return null;
+  if (rawUrl.startsWith('blob:') || rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    return rawUrl;
+  }
+  return `${API_BASE}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+};
+
 const DECISION_CATEGORY_META: Record<
   DecisionCategory,
   { label: string; dotColor: string; pillClass: string }
@@ -90,6 +101,7 @@ interface ActiveProtocolWorkspace {
   openQuestions: string[];
   processingTimeSec?: number | null;
   modelUsed?: string | null;
+  audioUrl?: string | null;
 }
 
 export const MeetingsView: React.FC = () => {
@@ -156,6 +168,7 @@ export const MeetingsView: React.FC = () => {
       decisions: first.decisions,
       risks: first.risks || [],
       openQuestions: [],
+      audioUrl: null,
     };
   });
 
@@ -171,11 +184,21 @@ export const MeetingsView: React.FC = () => {
   // Mini audio player state
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
-  const [activeAudioTime, setActiveAudioTime] = useState<string>('00:01');
+  const [activeAudioTime, setActiveAudioTime] = useState<string>('00:00');
+  const [audioProgressPercent, setAudioProgressPercent] = useState<number>(0);
 
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const transcriptInputRef = useRef<HTMLInputElement | null>(null);
   const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const playableAudioUrl = resolvePlayableAudioUrl(workspaceData.audioUrl);
+
+  useEffect(() => {
+    if (audioElementRef.current) {
+      audioElementRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed, playableAudioUrl]);
 
   const [tasksToReview, setTasksToReview] = useState<Omit<TaskItem, 'id'>[]>(
     MOCK_TRANSCRIPTS[0].stagedTasks.map((t) => ({
@@ -248,7 +271,12 @@ export const MeetingsView: React.FC = () => {
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
       setWorkspaceData((prev) => {
-        if (prev.transcriptRef === `#audio-${audioJob.filename}`) return prev;
+        if (prev.transcriptRef === `#audio-${audioJob.filename}`) {
+          return {
+            ...prev,
+            audioUrl: audioJob.audioUrl || prev.audioUrl || null,
+          };
+        }
         return {
           id: audioJob.meetingId || audioJob.id,
           meetingId: audioJob.meetingId,
@@ -264,6 +292,7 @@ export const MeetingsView: React.FC = () => {
           openQuestions: [],
           processingTimeSec: null,
           modelUsed: 'Whisper STT',
+          audioUrl: audioJob.audioUrl || prev.audioUrl || null,
         };
       });
       return;
@@ -289,6 +318,7 @@ export const MeetingsView: React.FC = () => {
         openQuestions: [],
         processingTimeSec: audioJob.durationSec ?? null,
         modelUsed: audioJob.modelUsed || 'Whisper STT',
+        audioUrl: audioJob.audioUrl || null,
       });
       setTasksToReview([]);
       markAudioJobApplied(audioJob.id);
@@ -311,6 +341,7 @@ export const MeetingsView: React.FC = () => {
           return prev;
         }
         return {
+          ...prev,
           id: analysisJob.meetingId || analysisJob.workspaceId,
           meetingId: analysisJob.meetingId,
           title: analysisJob.meetingTitle,
@@ -500,20 +531,21 @@ export const MeetingsView: React.FC = () => {
       fallbackText?: string;
     }
   ) => {
-    setWorkspaceData({
+    setWorkspaceData((prev) => ({
       id: meta.id,
       meetingId: meta.meetingId,
-      title: res.meetingTitle || workspaceData.title,
+      title: res.meetingTitle || prev.title,
       date: meta.date,
       transcriptRef: meta.transcriptRef,
-      transcriptText: res.transcriptText || meta.fallbackText || workspaceData.transcriptText,
+      transcriptText: res.transcriptText || meta.fallbackText || prev.transcriptText,
       summary: res.summary,
       decisions: res.decisions || [],
       risks: res.risks || [],
       openQuestions: res.openQuestions || [],
       processingTimeSec: res.processingTimeSec ?? null,
       modelUsed: res.modelUsed ?? null,
-    });
+      audioUrl: res.audioUrl || prev.audioUrl || null,
+    }));
     const staged = (res.tasks || []).map((t) => ({
       title: t.title,
       assigneeName: t.assigneeName,
@@ -553,11 +585,13 @@ export const MeetingsView: React.FC = () => {
         risks: workspaceData.risks,
         openQuestions: workspaceData.openQuestions,
         processingTimeSec: workspaceData.processingTimeSec,
+        audioUrl: workspaceData.audioUrl ?? null,
       });
       setWorkspaceData((prev) => ({
         ...prev,
         id: saved.id,
         savedProtocolId: saved.id,
+        audioUrl: saved.audioUrl || prev.audioUrl || null,
       }));
     } catch (err: any) {
       showToast('Ошибка сохранения', err?.message || 'Не удалось сохранить протокол в БД', 'error');
@@ -626,12 +660,16 @@ export const MeetingsView: React.FC = () => {
         ? customTitle || file.name.replace(/\.[^.]+$/, '')
         : workspaceData.title || file.name.replace(/\.[^.]+$/, ''));
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
+    const localPreviewUrl = URL.createObjectURL(file);
 
     setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId(targetId);
     setShowScheduledProtocolWorkspace(true);
     setShowTranscript(true);
     setIsEditingTranscript(false);
+    setIsPlayingAudio(false);
+    setActiveAudioTime('00:00');
+    setAudioProgressPercent(0);
     setWorkspaceData({
       id: targetMeeting?.id || `audio-${Date.now()}`,
       meetingId: targetMeeting?.id,
@@ -647,6 +685,7 @@ export const MeetingsView: React.FC = () => {
       openQuestions: [],
       processingTimeSec: null,
       modelUsed: 'Whisper STT',
+      audioUrl: localPreviewUrl,
     });
     setTasksToReview([]);
 
@@ -656,6 +695,7 @@ export const MeetingsView: React.FC = () => {
       meetingId: targetMeeting?.id,
       targetId,
       date: today,
+      previewAudioUrl: localPreviewUrl,
     });
     showToast(
       'Транскрибация запущена',
@@ -725,6 +765,9 @@ export const MeetingsView: React.FC = () => {
     setSelectedTranscriptId('ad-hoc-new');
     setShowScheduledProtocolWorkspace(true);
     setShowTranscript(true);
+    setIsPlayingAudio(false);
+    setActiveAudioTime('00:00');
+    setAudioProgressPercent(0);
     setWorkspaceData({
       id: `ad-hoc-${Date.now()}`,
       title,
@@ -736,6 +779,7 @@ export const MeetingsView: React.FC = () => {
       decisions: [],
       risks: [],
       openQuestions: [],
+      audioUrl: null,
     });
     setTasksToReview([]);
     setIsEditingTranscript(true);
@@ -748,6 +792,10 @@ export const MeetingsView: React.FC = () => {
     const savedProto = selectedMeetingItem.protocolId
       ? protocols.find((p) => p.id === selectedMeetingItem.protocolId)
       : protocols.find((p) => p.meetingId === selectedMeetingItem.id);
+
+    setIsPlayingAudio(false);
+    setActiveAudioTime('00:00');
+    setAudioProgressPercent(0);
 
     if (savedProto) {
       setWorkspaceData({
@@ -763,6 +811,7 @@ export const MeetingsView: React.FC = () => {
         risks: savedProto.risks,
         openQuestions: savedProto.openQuestions || [],
         processingTimeSec: savedProto.processingTimeSec,
+        audioUrl: savedProto.audioUrl || null,
       });
       setIsEditingTranscript(false);
     } else {
@@ -778,6 +827,7 @@ export const MeetingsView: React.FC = () => {
         decisions: [],
         risks: [],
         openQuestions: selectedMeetingItem.openQuestions || [],
+        audioUrl: null,
       });
       setIsEditingTranscript(true);
     }
@@ -788,14 +838,60 @@ export const MeetingsView: React.FC = () => {
     setHighlightedTimestamp(null);
   };
 
-  const handleJumpToTimestamp = (rawTs?: string | null) => {
+  const handleTogglePlayAudio = async () => {
+    if (!playableAudioUrl || !audioElementRef.current) {
+      showToast(
+        'Аудио не прикреплено',
+        'Аудиофайл не прикреплён к этой архивной стенограмме',
+        'info'
+      );
+      return;
+    }
+    const audio = audioElementRef.current;
+    if (audio.paused) {
+      audio.playbackRate = playbackSpeed;
+      try {
+        await audio.play();
+        setIsPlayingAudio(true);
+      } catch {
+        setIsPlayingAudio(false);
+      }
+    } else {
+      audio.pause();
+      setIsPlayingAudio(false);
+    }
+  };
+
+  const handleAudioTimeUpdate = () => {
+    const audio = audioElementRef.current;
+    if (!audio) return;
+    const cur = Math.floor(audio.currentTime || 0);
+    const mins = String(Math.floor(cur / 60)).padStart(2, '0');
+    const secs = String(cur % 60).padStart(2, '0');
+    setActiveAudioTime(`${mins}:${secs}`);
+
+    if (audio.duration && Number.isFinite(audio.duration) && audio.duration > 0) {
+      setAudioProgressPercent(Math.min(100, (audio.currentTime / audio.duration) * 100));
+    }
+  };
+
+  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioElementRef.current;
+    if (!playableAudioUrl || !audio || !audio.duration || !Number.isFinite(audio.duration)) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    handleAudioTimeUpdate();
+  };
+
+  const handleJumpToTimestamp = async (rawTs?: string | null) => {
     const clean = normalizeTs(rawTs);
     if (!clean) return;
     setShowTranscript(true);
     setIsEditingTranscript(false);
     setHighlightedTimestamp(clean);
     setActiveAudioTime(clean);
-    setIsPlayingAudio(true);
+
     setTimeout(() => {
       const container = transcriptContainerRef.current;
       if (!container) return;
@@ -804,6 +900,32 @@ export const MeetingsView: React.FC = () => {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 60);
+
+    if (!playableAudioUrl || !audioElementRef.current) {
+      showToast(
+        'Аудио не прикреплено',
+        'Аудиофайл не прикреплён к этой архивной стенограмме',
+        'info'
+      );
+      return;
+    }
+
+    const parts = clean.split(':').map(Number);
+    if (parts.some(Number.isNaN)) return;
+    const targetSeconds =
+      parts.length === 3
+        ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+        : parts[0] * 60 + (parts[1] || 0);
+
+    const audio = audioElementRef.current;
+    audio.currentTime = targetSeconds;
+    audio.playbackRate = playbackSpeed;
+    try {
+      await audio.play();
+      setIsPlayingAudio(true);
+    } catch {
+      setIsPlayingAudio(false);
+    }
   };
 
   const handleSelectMeeting = (id: string) => {
@@ -815,6 +937,9 @@ export const MeetingsView: React.FC = () => {
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
     setProtocolTab('summary');
+    setIsPlayingAudio(false);
+    setActiveAudioTime('00:00');
+    setAudioProgressPercent(0);
 
     if (id === 'ad-hoc-new') {
       setIsNewProtocolDropzoneOpen(true);
@@ -840,6 +965,7 @@ export const MeetingsView: React.FC = () => {
           risks: linkedProto.risks,
           openQuestions: linkedProto.openQuestions || [],
           processingTimeSec: linkedProto.processingTimeSec,
+          audioUrl: linkedProto.audioUrl || null,
         });
         setShowScheduledProtocolWorkspace(true);
       } else {
@@ -865,6 +991,7 @@ export const MeetingsView: React.FC = () => {
         risks: protoObj.risks,
         openQuestions: protoObj.openQuestions || [],
         processingTimeSec: protoObj.processingTimeSec,
+        audioUrl: protoObj.audioUrl || null,
       });
       setTasksToReview([]);
       setIsEditingTranscript(false);
@@ -883,6 +1010,7 @@ export const MeetingsView: React.FC = () => {
         decisions: found.decisions,
         risks: found.risks || [],
         openQuestions: [],
+        audioUrl: null,
       });
       const staged = found.stagedTasks.map((t) => ({
         title: t.title,
@@ -1467,9 +1595,22 @@ export const MeetingsView: React.FC = () => {
 
                 {/* Audio Mini-Player */}
                 <div className="px-4 py-2.5 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/60 flex items-center justify-between gap-3">
+                  <audio
+                    ref={audioElementRef}
+                    src={playableAudioUrl || undefined}
+                    preload="metadata"
+                    onTimeUpdate={handleAudioTimeUpdate}
+                    onEnded={() => {
+                      setIsPlayingAudio(false);
+                      setAudioProgressPercent(0);
+                    }}
+                    onPause={() => setIsPlayingAudio(false)}
+                    onPlay={() => setIsPlayingAudio(true)}
+                  />
+
                   <button
                     type="button"
-                    onClick={() => setIsPlayingAudio((prev) => !prev)}
+                    onClick={handleTogglePlayAudio}
                     className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity shrink-0"
                   >
                     {isPlayingAudio ? (
@@ -1489,10 +1630,16 @@ export const MeetingsView: React.FC = () => {
                     <span className="font-mono text-xs font-medium text-[#D71921] shrink-0">
                       {activeAudioTime}
                     </span>
-                    <div className="flex-1 h-1.5 rounded bg-[var(--border-solid)] overflow-hidden">
+                    <div
+                      onClick={handleProgressBarClick}
+                      className={`flex-1 h-1.5 rounded bg-[var(--border-solid)] overflow-hidden ${
+                        playableAudioUrl ? 'cursor-pointer' : ''
+                      }`}
+                    >
                       <div
-                        className={`h-full transition-all duration-300 ${
-                          isPlayingAudio ? 'bg-[#D71921] w-2/3' : 'bg-[var(--text-primary)] w-1/3'
+                        style={{ width: `${audioProgressPercent}%` }}
+                        className={`h-full transition-all duration-150 ${
+                          isPlayingAudio ? 'bg-[#D71921]' : 'bg-[var(--text-primary)]'
                         }`}
                       />
                     </div>
@@ -1558,10 +1705,7 @@ export const MeetingsView: React.FC = () => {
                             <div
                               key={idx}
                               data-ts={tsClean}
-                              onClick={() => {
-                                setHighlightedTimestamp(tsClean);
-                                setActiveAudioTime(tsClean);
-                              }}
+                              onClick={() => handleJumpToTimestamp(tsClean)}
                               className={`cursor-pointer p-3 rounded-xl transition-colors flex items-start gap-3 ${
                                 isHighlighted
                                   ? 'bg-[#D71921]/10 border border-[#D71921]'

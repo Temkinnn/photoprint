@@ -1,5 +1,6 @@
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.db.session import SessionLocal, init_tables
+from app.db.session import SessionLocal, engine, init_tables
 from app.db.models import (
     DBAppState, DBUser, DBMeeting, DBTask,
     DBCalendarSlot, DBAuditLog, DBKPIMetric, DBMeetingInvitation, DBProtocol
@@ -12,6 +13,8 @@ from app.services.document_store import seed_documents_directory
 
 def seed_database(db: Session = None, force: bool = False):
     init_tables()
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE protocols ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
     should_close = False
     if db is None:
         db = SessionLocal()

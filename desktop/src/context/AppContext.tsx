@@ -42,6 +42,7 @@ export interface AudioTranscriptionJob {
   transcriptText?: string;
   durationSec?: number;
   modelUsed?: string;
+  audioUrl?: string | null; // <-- добавить
   error?: string;
   startedAt: string;
   applied?: boolean;
@@ -129,12 +130,13 @@ interface AppContextType {
   analyzeMeetingTranscript: (text: string, title: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   processMeetingAudio: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   startBackgroundAudioTranscription: (params: {
-    file: File;
-    meetingTitle: string;
-    meetingId?: string;
-    targetId: string;
-    date: string;
-  }) => void;
+  file: File;
+  meetingTitle: string;
+  meetingId?: string;
+  targetId: string;
+  date: string;
+  previewAudioUrl?: string; // <-- добавить
+}) => void;
   audioJob: AudioTranscriptionJob | null;
   markAudioJobApplied: (jobId: string) => void;
   clearAudioJob: () => void;
@@ -153,16 +155,17 @@ interface AppContextType {
   uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   protocols: ProtocolItem[];
   saveMeetingProtocol: (params: {
-    meetingId?: string;
-    meetingTitle: string;
-    transcriptRef: string;
-    transcriptText: string;
-    summary: string;
-    decisions: DecisionItem[];
-    risks: RiskItem[];
-    openQuestions?: string[];
-    processingTimeSec?: number | null;
-  }) => Promise<ProtocolItem>;
+  meetingId?: string;
+  meetingTitle: string;
+  transcriptRef: string;
+  transcriptText: string;
+  summary: string;
+  decisions: DecisionItem[];
+  risks: RiskItem[];
+  openQuestions?: string[];
+  processingTimeSec?: number | null;
+  audioUrl?: string | null; // <-- добавить
+}) => Promise<ProtocolItem>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
   participantsCatalog: ParticipantOption[];
@@ -783,29 +786,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const startBackgroundAudioTranscription = useCallback(
     (params: {
-      file: File;
-      meetingTitle: string;
-      meetingId?: string;
-      targetId: string;
-      date: string;
+        file: File;
+        meetingTitle: string;
+        meetingId?: string;
+        targetId: string;
+        date: string;
+        previewAudioUrl?: string;
     }) => {
-      if (!backendOnline) {
-        showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для распознавания речи Whisper.', 'error');
-        return;
-      }
+    if (!backendOnline) {
+      showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для распознавания речи Whisper.', 'error');
+      return;
+    }
 
-      const jobId = `stt-${Date.now()}`;
-      setAudioJob({
-        id: jobId,
-        targetId: params.targetId,
-        meetingId: params.meetingId,
-        filename: params.file.name,
-        meetingTitle: params.meetingTitle,
-        date: params.date,
-        status: 'transcribing',
-        startedAt: new Date().toLocaleTimeString('ru-RU'),
-        applied: false,
-      });
+    const jobId = `stt-${Date.now()}`;
+    const initialAudioUrl = params.previewAudioUrl || URL.createObjectURL(params.file);
+    setAudioJob({
+      id: jobId,
+      targetId: params.targetId,
+      meetingId: params.meetingId,
+      filename: params.file.name,
+      meetingTitle: params.meetingTitle,
+      date: params.date,
+      status: 'transcribing',
+      audioUrl: initialAudioUrl,
+      startedAt: new Date().toLocaleTimeString('ru-RU'),
+      applied: false,
+    });
 
       const formData = new FormData();
       formData.append('file', params.file);
@@ -840,18 +846,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return res.json();
         })
         .then(async (data) => {
-          setAudioJob((prev) =>
-            prev && prev.id === jobId
-              ? {
-                  ...prev,
-                  status: 'ready',
-                  transcriptText: data.transcriptText || '',
-                  durationSec: data.durationSec,
-                  modelUsed: data.modelUsed,
-                  applied: false,
-                }
-              : prev
-          );
+  setAudioJob((prev) =>
+    prev && prev.id === jobId
+      ? {
+          ...prev,
+          status: 'ready',
+          transcriptText: data.transcriptText || '',
+          durationSec: data.durationSec,
+          modelUsed: data.modelUsed,
+          audioUrl: data.audioUrl || prev.audioUrl || null,
+          applied: false,
+        }
+      : prev
+  );
           await refreshAuditLogsSafe();
           showToast(
             'Whisper завершил расшифровку',
@@ -960,6 +967,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const saveMeetingProtocol = async (params: {
+    audioUrl?: string | null;
     meetingId?: string;
     meetingTitle: string;
     transcriptRef: string;
@@ -984,6 +992,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const localProto: ProtocolItem = {
       id: `prot-local-${Date.now()}`,
+      audioUrl: params.audioUrl ?? null,
       meetingId: params.meetingId,
       meetingTitle: params.meetingTitle,
       transcriptRef: params.transcriptRef,

@@ -224,6 +224,7 @@ class ProtocolAnalysisRequest(BaseModel):
 class ProtocolAnalysisResponse(BaseModel):
     meetingTitle: str
     summary: str
+    audioUrl: Optional[str] = None
     decisions: List[DecisionItem]
     risks: List[RiskItem]
     tasks: List[TaskItem]
@@ -236,12 +237,14 @@ class ProtocolAnalysisResponse(BaseModel):
 class AudioTranscriptionResponse(BaseModel):
     filename: str
     meetingTitle: str
+    audioUrl: Optional[str] = None
     meetingId: Optional[str] = None
     transcriptText: str
     durationSec: Optional[float] = None
     modelUsed: Optional[str] = None
 
 class SaveProtocolRequest(BaseModel):
+    audioUrl: Optional[str] = None
     meetingId: Optional[str] = None
     meetingTitle: str
     transcriptRef: str
@@ -254,6 +257,7 @@ class SaveProtocolRequest(BaseModel):
 
 class ProtocolItem(BaseModel):
     id: str
+    audioUrl: Optional[str] = None
     meetingId: Optional[str] = None
     meetingTitle: str
     transcriptRef: str

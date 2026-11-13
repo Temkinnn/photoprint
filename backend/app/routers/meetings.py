@@ -1,3 +1,6 @@
+import mimetypes
+from fastapi.responses import FileResponse
+from app.services.audio_storage import resolve_audio_path, save_uploaded_audio
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -81,10 +84,10 @@ def _to_protocol_item(p: DBProtocol) -> ProtocolItem:
         risks=[RiskItem(**r) for r in (p.risks or [])],
         openQuestions=p.open_questions or [],
         processingTimeSec=p.processing_time_sec,
+        audioUrl=p.audio_url,
         createdAt=p.created_at,
         createdBy=p.created_by,
     )
-
 
 @router.get("/", response_model=List[MeetingItem])
 async def get_meetings(db: Session = Depends(get_db)):
@@ -296,6 +299,7 @@ async def save_protocol(req: SaveProtocolRequest, db: Session = Depends(get_db))
         existing.processing_time_sec = req.processingTimeSec
         existing.created_at = now_str
         existing.created_by = current_user.name
+        existing.audio_url = req.audioUrl
         db_proto = existing
     else:
         db_proto = DBProtocol(
@@ -311,6 +315,7 @@ async def save_protocol(req: SaveProtocolRequest, db: Session = Depends(get_db))
             processing_time_sec=req.processingTimeSec,
             created_at=now_str,
             created_by=current_user.name,
+            audio_url=req.audioUrl,
         )
         db.add(db_proto)
 
@@ -350,6 +355,7 @@ async def transcribe_audio_endpoint(
 ):
     """Только транскрибация аудио через Whisper (без запуска Qwen) для фонового режима."""
     file_bytes = await file.read()
+    _, saved_audio_url = save_uploaded_audio(file_bytes, file.filename or "meeting.ogg")
     title = (meetingTitle or "").strip() or (file.filename or "Оперативное совещание")
     try:
         result = await transcribe_meeting_audio(
@@ -359,6 +365,7 @@ async def transcribe_audio_endpoint(
             meeting_id=meetingId,
             content_type=file.content_type or "application/octet-stream",
         )
+        result.audioUrl = saved_audio_url
     except HTTPException as exc:
         add_audit_log(
             db,
@@ -368,7 +375,7 @@ async def transcribe_audio_endpoint(
             details=f"Ошибка транскрибации Whisper: {exc.detail}",
         )
         raise
-
+        
     add_audit_log(
         db,
         action="TRANSCRIBE_MEETING_AUDIO",
@@ -390,6 +397,7 @@ async def process_audio_endpoint(
     db: Session = Depends(get_db),
 ):
     file_bytes = await file.read()
+    _, saved_audio_url = save_uploaded_audio(file_bytes, file.filename or "meeting.ogg")
     title = (meetingTitle or "").strip() or (file.filename or "Оперативное совещание")
     try:
         result = await process_meeting_audio(
@@ -398,6 +406,7 @@ async def process_audio_endpoint(
             meeting_title=title,
             content_type=file.content_type or "application/octet-stream",
         )
+        result.audioUrl = saved_audio_url
     except HTTPException as exc:
         add_audit_log(
             db,
@@ -485,6 +494,23 @@ async def analyze_transcript(req: ProtocolAnalysisRequest, db: Session = Depends
     )
     return result
 
+@router.get("/audio/{filename}")
+async def stream_meeting_audio(filename: str):
+    """Отдаёт сохранённый аудиофайл протокола через FileResponse (с поддержкой HTTP Range для перемотки)."""
+    try:
+        file_path = resolve_audio_path(filename)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректное имя файла.")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Аудиофайл не найден.")
+
+    media_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type or "audio/ogg",
+        filename=filename,
+    )
 
 @router.post("/confirm-tasks", response_model=List[TaskItem])
 async def confirm_tasks(req: ConfirmTasksRequest, db: Session = Depends(get_db)):

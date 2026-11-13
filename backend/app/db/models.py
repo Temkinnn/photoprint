@@ -105,6 +105,7 @@ class DBKPIMetric(Base):
 class DBProtocol(Base):
     __tablename__ = "protocols"
 
+    audio_url = Column(String, nullable=True)
     id = Column(String(64), primary_key=True)
     meeting_id = Column(String(64), nullable=True)
     meeting_title = Column(String(255), nullable=False)

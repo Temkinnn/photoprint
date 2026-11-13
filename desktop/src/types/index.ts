@@ -212,6 +212,7 @@ export interface ProtocolAnalysisResult {
   openQuestions?: string[];
   processingTimeSec?: number | null;
   modelUsed?: string | null;
+  audioUrl?: string | null;
 }
 
 export interface ProtocolItem {
@@ -225,6 +226,7 @@ export interface ProtocolItem {
   risks: RiskItem[];
   openQuestions?: string[];
   processingTimeSec?: number | null;
+  audioUrl?: string | null;
   createdAt: string;
   createdBy: string;
 }
