@@ -20,6 +20,9 @@ def get_role_clearance(role: UserRole) -> int:
         return 2
     return 3
 
+def get_iso_now() -> str:
+    """Возвращает текущее время в формате ISO 8601 с часовым поясом (ОТ-07)."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 def surname_key(name: str) -> str:
     """Нормализация ФИО по фамилии для сопоставления 'Смирнов Алексей Викторович' и 'Смирнов А.В.'."""
