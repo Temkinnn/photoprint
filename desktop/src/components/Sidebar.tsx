@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import {
   CalendarDays,
   Search,
@@ -16,6 +17,8 @@ import {
   X,
   Clock,
 } from 'lucide-react';
+
+const BRIEF_STORAGE_KEY = 'photoprint_pending_brief_roles';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -61,6 +64,27 @@ export const Sidebar: React.FC = () => {
       ],
     };
 
+  // Автоматически показываем бриф другим участникам при переключении роли
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(BRIEF_STORAGE_KEY);
+      if (!raw) return;
+      const pendingRoles: UserRole[] = JSON.parse(raw);
+      if (pendingRoles.includes(currentRole)) {
+        setActiveBrief({
+          meetingTitle: nextMeeting.title,
+          time: nextMeeting.time.split('-')[0].trim(),
+          agenda: nextMeeting.agenda.slice(0, 2),
+          openTasksCount: activeTasksCount,
+        });
+        const updated = pendingRoles.filter((r) => r !== currentRole);
+        sessionStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify(updated));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [currentRole]);
+
   const triggerPreMeetingBrief = () => {
     setIsProactiveMenuOpen(false);
     setActiveBrief({
@@ -69,12 +93,36 @@ export const Sidebar: React.FC = () => {
       agenda: nextMeeting.agenda.slice(0, 2),
       openTasksCount: activeTasksCount,
     });
+
+    // Ставим в очередь оповещение для остальных участников встречи
+    const allRoles: UserRole[] = [
+      'ROLE_DIRECTOR',
+      'ROLE_PRODUCTION_HEAD',
+      'ROLE_SUPPORT_HEAD',
+    ];
+    const otherRoles = allRoles.filter((r) => r !== currentRole);
+    try {
+      sessionStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify(otherRoles));
+    } catch {
+      // ignore storage errors
+    }
+
     logAudit(
       'PROACTIVE_MEETING_BRIEF',
       `Meeting: ${nextMeeting.title}`,
       'SUCCESS',
-      'Сработал триггер за 60 мин до встречи: сформирована сводка повестки и открытых задач.'
+      'Сработал триггер за 60 мин до встречи: сводка повестки и задач отправлена участникам.'
     );
+  };
+
+  const handleResetDemo = () => {
+    try {
+      sessionStorage.removeItem(BRIEF_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setActiveBrief(null);
+    resetDemoData();
   };
 
   const navigation = [
@@ -124,8 +172,8 @@ export const Sidebar: React.FC = () => {
     <>
       <aside className="w-72 shrink-0 bg-[var(--bg-card)] border-r border-[var(--border-solid)] flex flex-col justify-between select-none transition-colors relative">
         <div>
-          {/* Brand Header */}
-          <div className="h-18 px-4 py-3.5 border-b border-[var(--border-solid)] flex items-center justify-between gap-2">
+          {/* Brand Header (2-row layout to prevent icon overlap) */}
+          <div className="px-4 py-3.5 border-b border-[var(--border-solid)] space-y-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0">
                 <div className="grid grid-cols-2 gap-1 w-4 h-4">
@@ -137,7 +185,7 @@ export const Sidebar: React.FC = () => {
               </div>
 
               <div className="min-w-0">
-                <div className="font-dot text-base text-[var(--text-primary)] leading-none tracking-wider">
+                <div className="font-dot text-base text-[var(--text-primary)] leading-none tracking-wider truncate">
                   ФОТОПРИНТ
                 </div>
                 <div className="text-xs font-mono font-medium text-[var(--text-muted)] mt-1">
@@ -146,28 +194,30 @@ export const Sidebar: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            {/* Utility Buttons Row */}
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsProactiveMenuOpen((prev) => !prev)}
                 title="Умные уведомления и триггеры встреч"
-                className="relative w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="relative flex-1 h-8 px-2.5 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1.5 text-xs font-medium transition-colors"
               >
-                <BellRing className="w-4 h-4" />
-                <span className="w-2 h-2 rounded-full bg-[#D71921] absolute -top-0.5 -right-0.5" />
+                <BellRing className="w-3.5 h-3.5 text-[#D71921] shrink-0" />
+                <span>Уведомления</span>
+                <span className="w-2 h-2 rounded-full bg-[#D71921] shrink-0" />
               </button>
 
               <button
                 onClick={toggleTheme}
                 title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors shrink-0"
               >
                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
 
               <button
-                onClick={resetDemoData}
+                onClick={handleResetDemo}
                 title="Сбросить демо-данные"
-                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors shrink-0"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -203,7 +253,7 @@ export const Sidebar: React.FC = () => {
           )}
 
           {/* Navigation Section */}
-          <div className="px-4 pt-6 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <div className="px-4 pt-5 pb-2 text-xs font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
             // Разделы контура
           </div>
 
