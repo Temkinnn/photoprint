@@ -78,31 +78,28 @@ export const AuditLogView: React.FC = () => {
     if (act.includes('SECURITY') || act.includes('ACCESS_DENIED') || act.includes('BLOCKED')) {
       return {
         label: 'Безопасность',
-        icon: <ShieldAlert className="w-3.5 h-3.5 text-[#D71921]" />,
+        icon: <ShieldAlert className="w-4 h-4 text-[#D71921]" />,
       };
     }
     if (act.includes('TASK') || act.includes('APPROVE')) {
-      return { label: 'Поручения', icon: <CheckSquare className="w-3.5 h-3.5 text-sky-500" /> };
+      return { label: 'Поручения', icon: <CheckSquare className="w-4 h-4 text-sky-500" /> };
     }
     if (act.includes('MEETING') || act.includes('PROACTIVE')) {
       return {
         label: 'Совещания',
-        icon: <Calendar className="w-3.5 h-3.5 text-indigo-400" />,
+        icon: <Calendar className="w-4 h-4 text-indigo-400" />,
       };
     }
     if (act.includes('RAG') || act.includes('DOCUMENT') || act.includes('ANOMALY')) {
       return {
         label: 'Регламенты',
-        icon: <FileText className="w-3.5 h-3.5 text-emerald-500" />,
+        icon: <FileText className="w-4 h-4 text-emerald-500" />,
       };
     }
     if (act.includes('LOGIN') || act.includes('ROLE')) {
-      return {
-        label: 'Вход в систему',
-        icon: <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />,
-      };
+      return { label: 'Вход в систему', icon: <User className="w-4 h-4 text-[var(--text-muted)]" /> };
     }
-    return { label: 'Система', icon: <Layers className="w-3.5 h-3.5 text-[var(--text-muted)]" /> };
+    return { label: 'Система', icon: <Layers className="w-4 h-4 text-[var(--text-muted)]" /> };
   };
 
   const getRoleTitle = (role: UserRole) => {
@@ -121,9 +118,12 @@ export const AuditLogView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between shrink-0">
+      <div className="px-6 py-4 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div>
-          <h1 className="text-sm font-semibold text-[var(--text-primary)]">
+          <div className="font-mono text-xs font-bold uppercase tracking-wider text-[#D71921]">
+            04 // Прозрачность и контроль ИИ
+          </div>
+          <h1 className="text-lg font-bold text-[var(--text-primary)] mt-0.5">
             Журнал аудита действий
           </h1>
           <p className="text-xs text-[var(--text-secondary)]">
@@ -131,25 +131,25 @@ export const AuditLogView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           {accessDeniedCount > 0 && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#D71921]/15 text-xs font-mono font-medium text-[#D71921]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#D71921]/15 text-xs font-mono font-bold text-[#D71921]">
+              <span className="w-2 h-2 rounded-full bg-[#D71921]" />
               {accessDeniedCount} отказов доступа
             </span>
           )}
-          <span className="text-xs font-mono text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-2.5 py-1 rounded">
+          <span className="text-xs font-mono font-bold text-[var(--text-primary)] bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-3 py-1.5 rounded-lg">
             Записей: {auditLogs.length}
           </span>
         </div>
       </div>
 
       {/* Security Contour & Storage Control Strip (Slide 07 & TЗ 7.4) */}
-      <div className="px-6 py-3 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/60 shrink-0">
-        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="px-6 py-3.5 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/70 shrink-0">
+        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] text-[#D71921] font-semibold">
-              07 // КОНТУР ИБ:
+            <span className="font-mono text-xs text-[#D71921] font-bold uppercase tracking-wider">
+              07 // Контур ИБ:
             </span>
             {[
               'SEC-01 Локальный контур',
@@ -160,7 +160,7 @@ export const AuditLogView: React.FC = () => {
             ].map((badge) => (
               <span
                 key={badge}
-                className="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] text-[11px] text-[var(--text-secondary)]"
+                className="px-2.5 py-1 rounded-md bg-[var(--bg-card)] border border-[var(--border-solid)] text-xs font-semibold text-[var(--text-primary)]"
               >
                 {badge}
               </span>
@@ -177,7 +177,7 @@ export const AuditLogView: React.FC = () => {
                 resetDemoData();
               }
             }}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[#D71921] hover:text-[#D71921] text-[var(--text-primary)] transition-colors"
+            className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[#D71921] hover:text-[#D71921] text-[var(--text-primary)] transition-colors"
           >
             SEC-06 · Удалить тестовые данные
           </button>
@@ -185,9 +185,9 @@ export const AuditLogView: React.FC = () => {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="px-6 py-3 border-b border-[var(--border-solid)] bg-[var(--bg-card)] shrink-0">
+      <div className="px-6 py-3.5 border-b border-[var(--border-solid)] bg-[var(--bg-card)] shrink-0">
         <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
+          <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
             {[
               { id: 'all', label: 'Все события', count: auditLogs.length },
               {
@@ -204,15 +204,15 @@ export const AuditLogView: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setFilterStatus(tab.id)}
-                  className={`px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-2 ${
                     isActive
-                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold shadow-sm'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-bold shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium'
                   }`}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`font-mono text-[11px] px-1.5 rounded ${
+                    className={`font-mono text-xs px-1.5 py-0.5 rounded font-bold ${
                       tab.alert ? 'bg-[#D71921] text-white' : 'text-[var(--text-muted)]'
                     }`}
                   >
@@ -223,11 +223,11 @@ export const AuditLogView: React.FC = () => {
             })}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
-              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
+              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs font-medium rounded-xl px-3 py-2 focus:outline-none cursor-pointer"
             >
               <option value="all">Все роли</option>
               <option value="ROLE_DIRECTOR">Генеральный директор</option>
@@ -236,13 +236,13 @@ export const AuditLogView: React.FC = () => {
             </select>
 
             <div className="relative w-64">
-              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2" />
+              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по событиям..."
-                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-xl pl-9 pr-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
               />
             </div>
           </div>
@@ -251,13 +251,13 @@ export const AuditLogView: React.FC = () => {
 
       {/* Audit Logs Stream */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-        <div className="max-w-5xl mx-auto w-full space-y-3">
+        <div className="max-w-5xl mx-auto w-full space-y-3.5">
           {filteredLogs.length === 0 ? (
             <div className="nothing-card-dashed p-12 text-center max-w-xl mx-auto space-y-3">
-              <div className="text-sm font-semibold text-[var(--text-primary)]">
+              <div className="text-base font-bold text-[var(--text-primary)]">
                 Записей аудита не найдено
               </div>
-              <p className="text-xs text-[var(--text-secondary)]">
+              <p className="text-sm text-[var(--text-secondary)]">
                 По заданным критериям фильтрации события отсутствуют
               </p>
               <button
@@ -266,7 +266,7 @@ export const AuditLogView: React.FC = () => {
                   setFilterRole('all');
                   setSearchQuery('');
                 }}
-                className="px-4 py-1.5 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-lg"
+                className="px-4 py-2 text-xs font-bold bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-xl"
               >
                 Сбросить фильтры
               </button>
@@ -275,54 +275,60 @@ export const AuditLogView: React.FC = () => {
             filteredLogs.map((log) => {
               const statusMeta = getStatusMeta(log.status);
               const category = getActionCategory(log.actionType);
+              const isDenied = log.status === 'ACCESS_DENIED';
 
               return (
-                <div key={log.id} className="nothing-card p-4 space-y-2.5">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
+                <div
+                  key={log.id}
+                  className={`nothing-card p-5 space-y-3 ${
+                    isDenied ? 'border-l-4 border-l-[#D71921]' : ''
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium ${statusMeta.pillClass}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ${statusMeta.pillClass}`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}`} />
+                        <span className={`w-2 h-2 rounded-full ${statusMeta.dotClass}`} />
                         <span>{statusMeta.label}</span>
                       </span>
 
-                      <span className="font-mono text-[11px] font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] px-2 py-0.5 rounded">
+                      <span className="font-mono text-xs font-bold text-[var(--text-primary)] bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-2.5 py-1 rounded-md">
                         {log.actionType}
                       </span>
 
-                      <span className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+                      <span className="text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
                         {category.icon}
                         <span>{category.label}</span>
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] font-mono shrink-0">
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono shrink-0">
                       <Clock className="w-3.5 h-3.5" />
                       <span>{log.timestamp} (UTC+3)</span>
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <div className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
                       <span>Объект:</span>
-                      <span className="font-medium text-[var(--text-primary)] font-mono bg-[var(--bg-elevated)] px-2 py-0.5 rounded text-[11px]">
+                      <span className="font-bold text-[var(--text-primary)] font-mono bg-[var(--bg-elevated)] px-2.5 py-0.5 rounded text-xs">
                         {log.targetEntity}
                       </span>
                     </div>
 
-                    <p className="text-xs text-[var(--text-primary)] leading-relaxed bg-[var(--bg-elevated)] p-3 rounded-xl">
+                    <p className="text-sm text-[var(--text-primary)] leading-relaxed bg-[var(--bg-elevated)] p-3.5 rounded-xl border border-[var(--border-solid)]">
                       {log.details}
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-2 border-t border-[var(--border-solid)]">
+                  <div className="flex items-center justify-between text-xs text-[var(--text-muted)] pt-2.5 border-t border-[var(--border-solid)]">
                     <div className="flex items-center gap-2">
-                      <span className="text-[var(--text-primary)] font-medium">
+                      <span className="text-[var(--text-primary)] font-bold">
                         {log.userName}
                       </span>
                       <span>—</span>
-                      <span>{getRoleTitle(log.userRole)}</span>
+                      <span className="font-medium">{getRoleTitle(log.userRole)}</span>
                     </div>
 
                     <span className="font-mono">{log.id}</span>
