@@ -2,30 +2,23 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 import {
-  ShieldCheck,
   ShieldAlert,
   Search,
-  Filter,
   Clock,
   User,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  RotateCcw,
   FileText,
   Calendar,
   Layers,
-  CheckSquare
+  CheckSquare,
 } from 'lucide-react';
 
 export const AuditLogView: React.FC = () => {
-  const { auditLogs } = useApp();
+  const { auditLogs, resetDemoData } = useApp();
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Counts for quick badges
   const accessDeniedCount = useMemo(
     () => auditLogs.filter((l) => l.status === 'ACCESS_DENIED').length,
     [auditLogs]
@@ -41,53 +34,41 @@ export const AuditLogView: React.FC = () => {
 
   const filteredLogs = useMemo(() => {
     return auditLogs.filter((log) => {
-      // Status filter
-      if (filterStatus !== 'all' && log.status !== filterStatus) {
-        return false;
-      }
-      // Role filter
-      if (filterRole !== 'all' && log.userRole !== filterRole) {
-        return false;
-      }
-      // Search query
+      if (filterStatus !== 'all' && log.status !== filterStatus) return false;
+      if (filterRole !== 'all' && log.userRole !== filterRole) return false;
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesAction = log.actionType.toLowerCase().includes(query);
-        const matchesUser = log.userName.toLowerCase().includes(query);
-        const matchesTarget = log.targetEntity.toLowerCase().includes(query);
-        const matchesDetails = log.details.toLowerCase().includes(query);
-        return matchesAction || matchesUser || matchesTarget || matchesDetails;
+        return (
+          log.actionType.toLowerCase().includes(query) ||
+          log.userName.toLowerCase().includes(query) ||
+          log.targetEntity.toLowerCase().includes(query) ||
+          log.details.toLowerCase().includes(query)
+        );
       }
       return true;
     });
   }, [auditLogs, filterStatus, filterRole, searchQuery]);
 
-  const getStatusBadge = (status: string) => {
+  const getStatusMeta = (status: string) => {
     switch (status) {
       case 'ACCESS_DENIED':
         return {
-          icon: <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />,
           label: 'Отказ в доступе',
-          cardBorder: 'border-rose-300 dark:border-rose-900/50 hover:border-rose-400',
-          badgeClass: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20',
-          indicatorDot: 'bg-rose-500',
+          pillClass: 'bg-[#D71921]/15 text-[#D71921]',
+          dotClass: 'bg-[#D71921]',
         };
       case 'REJECTED':
         return {
-          icon: <XCircle className="w-3.5 h-3.5 text-amber-500" />,
           label: 'Отклонено',
-          cardBorder: 'border-amber-300 dark:border-amber-900/50 hover:border-amber-400',
-          badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20',
-          indicatorDot: 'bg-amber-500',
+          pillClass: 'bg-amber-500/15 text-amber-500',
+          dotClass: 'bg-amber-500',
         };
       case 'SUCCESS':
       default:
         return {
-          icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />,
           label: 'Успешно',
-          cardBorder: 'border-neutral-200 dark:border-[#222631] hover:border-neutral-300 dark:hover:border-[#2e3342]',
-          badgeClass: 'bg-neutral-100 dark:bg-[#1a1d25] text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-[#262a36]',
-          indicatorDot: 'bg-emerald-500',
+          pillClass: 'bg-emerald-500/15 text-emerald-500',
+          dotClass: 'bg-emerald-500',
         };
     }
   };
@@ -95,21 +76,33 @@ export const AuditLogView: React.FC = () => {
   const getActionCategory = (action: string) => {
     const act = action.toUpperCase();
     if (act.includes('SECURITY') || act.includes('ACCESS_DENIED') || act.includes('BLOCKED')) {
-      return { label: 'RBAC / Безопасность', icon: <ShieldAlert className="w-3 h-3 text-rose-500" /> };
+      return {
+        label: 'Безопасность',
+        icon: <ShieldAlert className="w-3.5 h-3.5 text-[#D71921]" />,
+      };
     }
     if (act.includes('TASK') || act.includes('APPROVE')) {
-      return { label: 'Поручения цеха', icon: <CheckSquare className="w-3 h-3 text-sky-500" /> };
+      return { label: 'Поручения', icon: <CheckSquare className="w-3.5 h-3.5 text-sky-500" /> };
     }
-    if (act.includes('MEETING')) {
-      return { label: 'Совещания', icon: <Calendar className="w-3 h-3 text-indigo-500" /> };
+    if (act.includes('MEETING') || act.includes('PROACTIVE')) {
+      return {
+        label: 'Совещания',
+        icon: <Calendar className="w-3.5 h-3.5 text-indigo-400" />,
+      };
     }
-    if (act.includes('RAG') || act.includes('DOCUMENT')) {
-      return { label: 'Регламенты и стандарты', icon: <FileText className="w-3 h-3 text-emerald-500" /> };
+    if (act.includes('RAG') || act.includes('DOCUMENT') || act.includes('ANOMALY')) {
+      return {
+        label: 'Регламенты',
+        icon: <FileText className="w-3.5 h-3.5 text-emerald-500" />,
+      };
     }
     if (act.includes('LOGIN') || act.includes('ROLE')) {
-      return { label: 'Аутентификация', icon: <User className="w-3 h-3 text-neutral-400" /> };
+      return {
+        label: 'Вход в систему',
+        icon: <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />,
+      };
     }
-    return { label: 'Система', icon: <Layers className="w-3 h-3 text-neutral-400" /> };
+    return { label: 'Система', icon: <Layers className="w-3.5 h-3.5 text-[var(--text-muted)]" /> };
   };
 
   const getRoleTitle = (role: UserRole) => {
@@ -126,39 +119,83 @@ export const AuditLogView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
+    <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
       {/* Top Header */}
-      <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
+      <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-sm font-semibold text-[var(--text-primary)]">
             Журнал аудита действий
           </h1>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Неизменяемый реестр операций: фиксация решений, разграничение прав (RBAC) и аудит доступа
+          <p className="text-xs text-[var(--text-secondary)]">
+            Реестр операций, разграничение прав и контроль доступа
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {accessDeniedCount > 0 && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-500/10 border border-rose-500/20 text-xs font-mono font-medium text-rose-700 dark:text-rose-400">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>{accessDeniedCount} нарушений допуска</span>
-            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#D71921]/15 text-xs font-mono font-medium text-[#D71921]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+              {accessDeniedCount} отказов доступа
+            </span>
           )}
-          <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-[#1a1d25] px-2.5 py-1 rounded border border-neutral-200 dark:border-[#252936]">
-            Всего записей: {auditLogs.length}
+          <span className="text-xs font-mono text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-2.5 py-1 rounded">
+            Записей: {auditLogs.length}
           </span>
         </div>
       </div>
 
-      {/* Control Bar: Filters & Search */}
-      <div className="p-3.5 px-6 border-b border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#13151b] shrink-0">
+      {/* Security Contour & Storage Control Strip (Slide 07 & TЗ 7.4) */}
+      <div className="px-6 py-3 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/60 shrink-0">
+        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] text-[#D71921] font-semibold">
+              07 // КОНТУР ИБ:
+            </span>
+            {[
+              'SEC-01 Локальный контур',
+              'SEC-02 RBAC',
+              'SEC-03 Фильтрация PII',
+              'SEC-04 Anti-Injection',
+              'SEC-05 Подтверждение действий',
+            ].map((badge) => (
+              <span
+                key={badge}
+                className="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] text-[11px] text-[var(--text-secondary)]"
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Удалить тестовые логи, временные аудиозаписи и черновики (SEC-06)?'
+                )
+              ) {
+                resetDemoData();
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[#D71921] hover:text-[#D71921] text-[var(--text-primary)] transition-colors"
+          >
+            SEC-06 · Удалить тестовые данные
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="px-6 py-3 border-b border-[var(--border-solid)] bg-[var(--bg-card)] shrink-0">
         <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3">
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1">
+          <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
             {[
               { id: 'all', label: 'Все события', count: auditLogs.length },
-              { id: 'ACCESS_DENIED', label: 'Отказы в доступе', count: accessDeniedCount, alert: accessDeniedCount > 0 },
+              {
+                id: 'ACCESS_DENIED',
+                label: 'Отказы в доступе',
+                count: accessDeniedCount,
+                alert: accessDeniedCount > 0,
+              },
               { id: 'SUCCESS', label: 'Успешные', count: successCount },
               { id: 'REJECTED', label: 'Отклоненные', count: rejectedCount },
             ].map((tab) => {
@@ -167,20 +204,16 @@ export const AuditLogView: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setFilterStatus(tab.id)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1 rounded-md text-xs transition-colors flex items-center gap-1.5 ${
                     isActive
-                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold shadow-sm'
-                      : 'bg-neutral-50 dark:bg-[#191c24] text-neutral-600 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white border border-neutral-200/80 dark:border-[#242834]'
+                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`text-[10px] font-mono px-1 rounded ${
-                      tab.alert
-                        ? 'bg-rose-500 text-white'
-                        : isActive
-                        ? 'bg-white/20 text-white dark:bg-neutral-950/20 dark:text-neutral-950'
-                        : 'text-neutral-400 dark:text-neutral-500'
+                    className={`font-mono text-[11px] px-1.5 rounded ${
+                      tab.alert ? 'bg-[#D71921] text-white' : 'text-[var(--text-muted)]'
                     }`}
                   >
                     {tab.count}
@@ -190,13 +223,11 @@ export const AuditLogView: React.FC = () => {
             })}
           </div>
 
-          {/* Role Filter & Search Field */}
-          <div className="flex items-center gap-2.5">
-            {/* Role selector */}
+          <div className="flex items-center gap-2">
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
-              className="bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#252936] text-neutral-800 dark:text-neutral-200 text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-sky-500 cursor-pointer"
+              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
             >
               <option value="all">Все роли</option>
               <option value="ROLE_DIRECTOR">Генеральный директор</option>
@@ -204,31 +235,30 @@ export const AuditLogView: React.FC = () => {
               <option value="ROLE_SUPPORT_HEAD">Клиентский сервис</option>
             </select>
 
-            {/* Search box */}
             <div className="relative w-64">
-              <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск по событиям и деталям..."
-                className="w-full bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#252936] rounded-md pl-8 pr-3 py-1.5 text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-sky-500"
+                placeholder="Поиск по событиям..."
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--text-primary)]"
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Cards Stream / Feed */}
+      {/* Audit Logs Stream */}
       <div className="flex-1 overflow-y-auto p-6 lg:p-8">
         <div className="max-w-5xl mx-auto w-full space-y-3">
           {filteredLogs.length === 0 ? (
-            <div className="p-12 text-center bg-white dark:bg-[#14161c] border border-dashed border-neutral-200 dark:border-[#222631] rounded-lg max-w-xl mx-auto space-y-2">
-              <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+            <div className="nothing-card-dashed p-12 text-center max-w-xl mx-auto space-y-3">
+              <div className="text-sm font-semibold text-[var(--text-primary)]">
                 Записей аудита не найдено
               </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                По заданным критериям фильтрации события отсутствуют.
+              <p className="text-xs text-[var(--text-secondary)]">
+                По заданным критериям фильтрации события отсутствуют
               </p>
               <button
                 onClick={() => {
@@ -236,81 +266,66 @@ export const AuditLogView: React.FC = () => {
                   setFilterRole('all');
                   setSearchQuery('');
                 }}
-                className="px-3 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-[#1a1d25] hover:bg-neutral-200 dark:hover:bg-[#222632] rounded-md transition-colors mt-2"
+                className="px-4 py-1.5 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] rounded-lg"
               >
                 Сбросить фильтры
               </button>
             </div>
           ) : (
             filteredLogs.map((log) => {
-              const statusConfig = getStatusBadge(log.status);
+              const statusMeta = getStatusMeta(log.status);
               const category = getActionCategory(log.actionType);
 
               return (
-                <div
-                  key={log.id}
-                  className={`p-4 rounded-lg bg-white dark:bg-[#14161c] border ${statusConfig.cardBorder} space-y-2.5 transition-colors`}
-                >
-                  {/* Top Row */}
+                <div key={log.id} className="nothing-card p-4 space-y-2.5">
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Status Tag */}
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${statusConfig.badgeClass}`}
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium ${statusMeta.pillClass}`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.indicatorDot}`} />
-                        <span>{statusConfig.label}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}`} />
+                        <span>{statusMeta.label}</span>
                       </span>
 
-                      {/* Action Code Tag */}
-                      <span className="font-mono text-[11px] font-medium text-neutral-800 dark:text-neutral-200 bg-neutral-100 dark:bg-[#1a1d25] px-2 py-0.5 rounded border border-neutral-200 dark:border-[#252936]">
+                      <span className="font-mono text-[11px] font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] px-2 py-0.5 rounded">
                         {log.actionType}
                       </span>
 
-                      {/* Category Label */}
-                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-medium">
+                      <span className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
                         {category.icon}
                         <span>{category.label}</span>
                       </span>
                     </div>
 
-                    {/* Timestamp */}
-                    <div className="flex items-center gap-1 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono shrink-0">
-                      <Clock className="w-3 h-3 text-neutral-400" />
-                      <span>{log.timestamp}</span>
+                    <div className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] font-mono shrink-0">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{log.timestamp} (UTC+3)</span>
                     </div>
                   </div>
 
-                  {/* Target & Details */}
                   <div className="space-y-1.5">
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
+                    <div className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
                       <span>Объект:</span>
-                      <span className="font-semibold text-neutral-900 dark:text-neutral-100 font-mono bg-neutral-100 dark:bg-[#191c24] px-1.5 py-0.2 rounded text-[11px]">
+                      <span className="font-medium text-[var(--text-primary)] font-mono bg-[var(--bg-elevated)] px-2 py-0.5 rounded text-[11px]">
                         {log.targetEntity}
                       </span>
                     </div>
 
-                    <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans bg-neutral-50 dark:bg-[#101217] p-2.5 rounded border border-neutral-100 dark:border-[#1d2028]">
+                    <p className="text-xs text-[var(--text-primary)] leading-relaxed bg-[var(--bg-elevated)] p-3 rounded-xl">
                       {log.details}
                     </p>
                   </div>
 
-                  {/* Actor & ID */}
-                  <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 pt-1 border-t border-neutral-100 dark:border-[#1d2028]">
+                  <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-2 border-t border-[var(--border-solid)]">
                     <div className="flex items-center gap-2">
-                      <span className="text-neutral-900 dark:text-neutral-200 font-medium">
+                      <span className="text-[var(--text-primary)] font-medium">
                         {log.userName}
                       </span>
                       <span>—</span>
-                      <span className="text-neutral-600 dark:text-neutral-400">
-                        {getRoleTitle(log.userRole)}
-                      </span>
-                      <span className="text-neutral-400 font-mono text-[10px]">({log.userRole})</span>
+                      <span>{getRoleTitle(log.userRole)}</span>
                     </div>
 
-                    <span className="font-mono text-[10px] text-neutral-400">
-                      ID: {log.id}
-                    </span>
+                    <span className="font-mono">{log.id}</span>
                   </div>
                 </div>
               );
