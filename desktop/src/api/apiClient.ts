@@ -113,6 +113,7 @@ export const apiClient = {
   },
 
   async switchRole(role: UserRole): Promise<UserProfile> {
+    setClientUserRole(role);
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/switch-role`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -266,11 +267,11 @@ export const apiClient = {
     transcriptRef: string;
     transcriptText: string;
     summary: string;
-    audioUrl?: string | null;
     decisions: DecisionItem[];
     risks: RiskItem[];
     openQuestions?: string[];
     processingTimeSec?: number | null;
+    audioUrl?: string | null;
   }): Promise<ProtocolItem> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/meetings/save-protocol`, {
       method: 'POST',
@@ -452,6 +453,12 @@ export const apiClient = {
   },
 
   // 6. System
+  async getSystemRevision(): Promise<{ revision: string }> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/system/revision`, {}, 4000);
+    if (!res.ok) throw new Error(await parseErrorDetail(res));
+    return res.json();
+  },
+
   async resetDemo(): Promise<void> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/v1/system/reset-demo`, {
       method: 'POST',

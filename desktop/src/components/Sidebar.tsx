@@ -35,6 +35,7 @@ export const Sidebar: React.FC = () => {
     resetDemoData,
     backendOnline,
     isSyncing,
+    hasRemoteUpdates,
     syncWithBackend,
     logAudit,
   } = useApp();
@@ -306,6 +307,20 @@ export const Sidebar: React.FC = () => {
 
         {/* Footer Telemetry & Profile */}
         <div className="p-3.5 space-y-2.5 border-t border-[var(--border-solid)]">
+          {hasRemoteUpdates && (
+            <button
+              type="button"
+              onClick={() => syncWithBackend(true)}
+              className="w-full px-3.5 py-2 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--text-primary)] text-[var(--text-primary)] flex items-center justify-between gap-2 text-xs font-semibold transition-colors shadow-sm"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-[#D71921] shrink-0" />
+                <span className="truncate">Подгрузить обновления</span>
+              </span>
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+
           <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-between text-xs font-mono">
             <div className="flex items-center gap-2 min-w-0">
               <span
@@ -318,7 +333,7 @@ export const Sidebar: React.FC = () => {
               </span>
             </div>
             <button
-              onClick={syncWithBackend}
+              onClick={() => syncWithBackend(true)}
               title="Синхронизировать с сервером"
               className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >

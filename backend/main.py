@@ -7,18 +7,21 @@ from app.db.seed import seed_database
 from app.routers import auth, documents, meetings, tasks, rag, overview, system
 from app.services.audit import reset_request_role, set_request_role
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Автоматическая инициализация и сидирование БД при старте
     seed_database()
     yield
 
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend API для On-Premise AI-ассистента руководителя ООО «Фотопринт» (Трек 3)",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 @app.middleware("http")
 async def attach_user_role_middleware(request: Request, call_next):
@@ -28,10 +31,11 @@ async def attach_user_role_middleware(request: Request, call_next):
     finally:
         reset_request_role(token)
 
-# CORS Middleware для связи с фронтендом Tauri и Web UI
+
+# CORS Middleware: разрешаем запросы с любых локальных IP-адресов
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,6 +50,7 @@ app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
 app.include_router(overview.router, prefix=settings.API_V1_PREFIX)
 app.include_router(system.router, prefix=settings.API_V1_PREFIX)
 
+
 @app.get("/")
 async def root():
     return {
@@ -53,13 +58,14 @@ async def root():
         "service": settings.PROJECT_NAME,
         "docs_url": "/docs",
         "database": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else "local",
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host=settings.BACKEND_HOST,
         port=settings.BACKEND_PORT,
-        reload=True
+        reload=True,
     )

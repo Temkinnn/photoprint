@@ -22,6 +22,7 @@ import {
   Shield,
   GitCompare,
   ArrowUpRight,
+  RefreshCw,
 } from 'lucide-react';
 
 const CLEARANCE_LABELS: Record<number, string> = {
@@ -59,6 +60,9 @@ export const KnowledgeBaseView: React.FC = () => {
     previewDocumentDiff,
     commitDocument,
     rollbackDocumentVersion,
+    hasRemoteUpdates,
+    isSyncing,
+    syncWithBackend,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'rag' | 'docs'>('rag');
@@ -405,13 +409,27 @@ export const KnowledgeBaseView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleOpenNewDocEditor}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Новый документ</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {hasRemoteUpdates && (
+            <button
+              type="button"
+              onClick={() => syncWithBackend(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#D71921] shrink-0" />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>Подгрузить обновления</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleOpenNewDocEditor}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Новый документ</span>
+          </button>
+        </div>
       </div>
 
       {activeSubTab === 'rag' ? (
@@ -548,7 +566,7 @@ export const KnowledgeBaseView: React.FC = () => {
             )}
           </div>
 
-          {/* Clean Single-Row Bottom Search Bar (No duplicate chips) */}
+          {/* Clean Single-Row Bottom Search Bar */}
           <div className="p-4 px-6 border-t border-[var(--border-solid)] bg-[var(--bg-card)]">
             <form
               onSubmit={(e) => {

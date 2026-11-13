@@ -2,12 +2,29 @@ import importlib.util
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.config import settings
+from app.db.models import DBProtocol, DBTask
 from app.db.seed import seed_database
 from app.db.session import engine, get_db
 from app.services.audit import add_audit_log
+from app.services.document_store import list_documents_from_disk
 from app.services.ollama_client import probe_ai_server, probe_local_ollama
 
 router = APIRouter(prefix="/system", tags=["Системные операции"])
+
+
+@router.get("/revision")
+async def get_system_revision(db: Session = Depends(get_db)):
+    """Возвращает текущую ревизию данных (документы + протоколы + задачи) для синхронизации клиентов."""
+    docs = list_documents_from_disk(min_clearance=1)
+    docs_count = len(docs)
+    max_doc_stamp = max(
+        (f"v{getattr(d, 'version', 1)}:{getattr(d, 'date', '')}" for d in docs),
+        default="v0:",
+    )
+    protocols_count = db.query(DBProtocol).count()
+    tasks_count = db.query(DBTask).count()
+    revision = f"{docs_count}_{max_doc_stamp}_{protocols_count}_{tasks_count}"
+    return {"revision": revision}
 
 
 @router.post("/reset-demo")

@@ -42,7 +42,7 @@ export interface AudioTranscriptionJob {
   transcriptText?: string;
   durationSec?: number;
   modelUsed?: string;
-  audioUrl?: string | null; // <-- добавить
+  audioUrl?: string | null;
   error?: string;
   startedAt: string;
   applied?: boolean;
@@ -103,7 +103,9 @@ interface AppContextType {
   canAccessDocument: (minClearance: number) => boolean;
   backendOnline: boolean;
   isSyncing: boolean;
-  syncWithBackend: () => Promise<void>;
+  hasRemoteUpdates: boolean;
+  lastKnownRevision: string | null;
+  syncWithBackend: (notify?: boolean) => Promise<void>;
   queryRAG: (queryText: string) => Promise<RAGMessage>;
   ragMessages: RAGMessage[];
   setRagMessages: React.Dispatch<React.SetStateAction<RAGMessage[]>>;
@@ -130,13 +132,13 @@ interface AppContextType {
   analyzeMeetingTranscript: (text: string, title: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   processMeetingAudio: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   startBackgroundAudioTranscription: (params: {
-  file: File;
-  meetingTitle: string;
-  meetingId?: string;
-  targetId: string;
-  date: string;
-  previewAudioUrl?: string; // <-- добавить
-}) => void;
+    file: File;
+    meetingTitle: string;
+    meetingId?: string;
+    targetId: string;
+    date: string;
+    previewAudioUrl?: string;
+  }) => void;
   audioJob: AudioTranscriptionJob | null;
   markAudioJobApplied: (jobId: string) => void;
   clearAudioJob: () => void;
@@ -155,17 +157,17 @@ interface AppContextType {
   uploadMeetingTranscript: (file: File, meetingTitle: string, meetingId?: string) => Promise<ProtocolAnalysisResult>;
   protocols: ProtocolItem[];
   saveMeetingProtocol: (params: {
-  meetingId?: string;
-  meetingTitle: string;
-  transcriptRef: string;
-  transcriptText: string;
-  summary: string;
-  decisions: DecisionItem[];
-  risks: RiskItem[];
-  openQuestions?: string[];
-  processingTimeSec?: number | null;
-  audioUrl?: string | null; // <-- добавить
-}) => Promise<ProtocolItem>;
+    meetingId?: string;
+    meetingTitle: string;
+    transcriptRef: string;
+    transcriptText: string;
+    summary: string;
+    decisions: DecisionItem[];
+    risks: RiskItem[];
+    openQuestions?: string[];
+    processingTimeSec?: number | null;
+    audioUrl?: string | null;
+  }) => Promise<ProtocolItem>;
   calendarSlots: CalendarSlot[];
   scheduledMeetings: MeetingItem[];
   participantsCatalog: ParticipantOption[];
@@ -244,9 +246,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [invitations, setInvitations] = useState<MeetingInvitationItem[]>([]);
   const [protocols, setProtocols] = useState<ProtocolItem[]>([]);
 
-  // Backend connection state
+  // Backend connection & remote revision state
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [hasRemoteUpdates, setHasRemoteUpdates] = useState<boolean>(false);
+  const [lastKnownRevision, setLastKnownRevision] = useState<string | null>(null);
   const [audioJob, setAudioJob] = useState<AudioTranscriptionJob | null>(null);
   const [analysisJob, setAnalysisJob] = useState<TranscriptAnalysisJob | null>(null);
 
@@ -289,7 +293,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [currentUser.name, currentRole]);
 
   // Synchronize state with backend
-  const syncWithBackend = useCallback(async () => {
+  const syncWithBackend = useCallback(async (notify: boolean = false) => {
     setIsSyncing(true);
     try {
       const health = await apiClient.checkHealth();
@@ -307,6 +311,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           liveUsers,
           liveInvitations,
           liveProtocols,
+          revRes,
         ] = await Promise.allSettled([
           apiClient.getTasks(),
           apiClient.getMetrics(),
@@ -317,6 +322,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           apiClient.getUsers(),
           apiClient.getInvitations(),
           apiClient.getProtocols(),
+          apiClient.getSystemRevision(),
         ]);
 
         if (liveTasks.status === 'fulfilled' && liveTasks.value.length > 0) {
@@ -346,6 +352,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (liveProtocols.status === 'fulfilled') {
           setProtocols(liveProtocols.value);
         }
+        if (revRes.status === 'fulfilled' && revRes.value?.revision) {
+          setLastKnownRevision(revRes.value.revision);
+          setHasRemoteUpdates(false);
+        }
+        if (notify) {
+          showToast('Данные синхронизированы с сервером', 'Актуальные данные загружены из PostgreSQL', 'success');
+        }
       } else {
         setBackendOnline(false);
       }
@@ -354,16 +367,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [showToast]);
 
-  // Probe backend on mount and periodically every 10 seconds
+  // Initial sync on mount
   useEffect(() => {
     syncWithBackend();
-    const interval = setInterval(() => {
-      syncWithBackend();
-    }, 10000);
-    return () => clearInterval(interval);
   }, [syncWithBackend]);
+
+  // Lightweight 5-second poll for remote revision changes (without overwriting active user input)
+  useEffect(() => {
+    if (!backendOnline) return;
+    const interval = setInterval(async () => {
+      try {
+        const { revision } = await apiClient.getSystemRevision();
+        setLastKnownRevision((prev) => {
+          if (prev === null) return revision;
+          if (prev !== revision) {
+            setHasRemoteUpdates(true);
+          }
+          return prev;
+        });
+      } catch {
+        // ignore transient network error
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [backendOnline]);
 
   const loginAs = async (role: UserRole) => {
     setCurrentRole(role);
@@ -441,8 +470,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
         const liveTask = await apiClient.createTask(taskData);
         setTasks((prev) => prev.map((t) => (t.id === tempId ? liveTask : t)));
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch {
         // keep local
       }
@@ -457,8 +485,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (backendOnline) {
       try {
         await apiClient.updateTask(id, updates);
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch {
         // keep local
       }
@@ -483,8 +510,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (backendOnline) {
       try {
         await apiClient.updateTask(id, { status: nextStatus });
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch {
         // keep local
       }
@@ -519,8 +545,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return [...liveConfirmed, ...withoutLocal];
           });
         }
-        const freshLogs = await apiClient.getAuditLogs();
-        if (freshLogs.length > 0) setAuditLogs(freshLogs);
+        await syncWithBackend();
       } catch (err: any) {
         showToast('Предупреждение синхронизации', err?.message || 'Задачи сохранены только локально', 'warning');
       }
@@ -644,15 +669,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const controller = new AbortController();
     const timerId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-          const res = await fetch(`${apiBase}${path}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-User-Role': currentRole,
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-          });
+      const res = await fetch(`${apiBase}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': currentRole,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;
         try {
@@ -786,37 +811,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           showToast('Ошибка AI-анализа', msg, 'error');
         });
     },
-    [backendOnline, showToast]
+    [backendOnline, showToast, currentRole]
   );
 
   const startBackgroundAudioTranscription = useCallback(
     (params: {
-        file: File;
-        meetingTitle: string;
-        meetingId?: string;
-        targetId: string;
-        date: string;
-        previewAudioUrl?: string;
+      file: File;
+      meetingTitle: string;
+      meetingId?: string;
+      targetId: string;
+      date: string;
+      previewAudioUrl?: string;
     }) => {
-    if (!backendOnline) {
-      showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для распознавания речи Whisper.', 'error');
-      return;
-    }
+      if (!backendOnline) {
+        showToast('Бэкенд недоступен', 'Запустите сервер FastAPI для распознавания речи Whisper.', 'error');
+        return;
+      }
 
-    const jobId = `stt-${Date.now()}`;
-    const initialAudioUrl = params.previewAudioUrl || URL.createObjectURL(params.file);
-    setAudioJob({
-      id: jobId,
-      targetId: params.targetId,
-      meetingId: params.meetingId,
-      filename: params.file.name,
-      meetingTitle: params.meetingTitle,
-      date: params.date,
-      status: 'transcribing',
-      audioUrl: initialAudioUrl,
-      startedAt: new Date().toLocaleTimeString('ru-RU'),
-      applied: false,
-    });
+      const jobId = `stt-${Date.now()}`;
+      const initialAudioUrl = params.previewAudioUrl || URL.createObjectURL(params.file);
+      setAudioJob({
+        id: jobId,
+        targetId: params.targetId,
+        meetingId: params.meetingId,
+        filename: params.file.name,
+        meetingTitle: params.meetingTitle,
+        date: params.date,
+        status: 'transcribing',
+        audioUrl: initialAudioUrl,
+        startedAt: new Date().toLocaleTimeString('ru-RU'),
+        applied: false,
+      });
 
       const formData = new FormData();
       formData.append('file', params.file);
@@ -854,19 +879,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return res.json();
         })
         .then(async (data) => {
-  setAudioJob((prev) =>
-    prev && prev.id === jobId
-      ? {
-          ...prev,
-          status: 'ready',
-          transcriptText: data.transcriptText || '',
-          durationSec: data.durationSec,
-          modelUsed: data.modelUsed,
-          audioUrl: data.audioUrl || prev.audioUrl || null,
-          applied: false,
-        }
-      : prev
-  );
+          setAudioJob((prev) =>
+            prev && prev.id === jobId
+              ? {
+                  ...prev,
+                  status: 'ready',
+                  transcriptText: data.transcriptText || '',
+                  durationSec: data.durationSec,
+                  modelUsed: data.modelUsed,
+                  audioUrl: data.audioUrl || prev.audioUrl || null,
+                  applied: false,
+                }
+              : prev
+          );
           await refreshAuditLogsSafe();
           showToast(
             'Whisper завершил расшифровку',
@@ -884,7 +909,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           showToast('Ошибка Whisper STT', msg, 'error');
         });
     },
-    [backendOnline, refreshAuditLogsSafe, showToast]
+    [backendOnline, showToast, currentRole]
   );
 
   const uploadMeetingTranscript = async (
@@ -915,7 +940,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     minClearance?: number;
   }): Promise<DocumentDraftResponse> => {
     if (!backendOnline) {
-      throw new Error('Бэкенд недоступен. Запустите FastAPI для генерации черновика.');
+      throw new Error('Бэкенд недоступен. Запустите сервер FastAPI для генерации черновика.');
     }
     const draft = await apiClient.generateDocumentDraft(params);
     await refreshAuditLogsSafe();
@@ -1145,6 +1170,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setInvitations([]);
     setProtocols([]);
     setCurrentRole('ROLE_DIRECTOR');
+    setClientUserRole('ROLE_DIRECTOR');
     setRagMessages([buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name)]);
     logAudit(
       'RESET_DEMO',
@@ -1184,6 +1210,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         canAccessDocument,
         backendOnline,
         isSyncing,
+        hasRemoteUpdates,
+        lastKnownRevision,
         syncWithBackend,
         queryRAG,
         ragMessages,
