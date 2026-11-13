@@ -1,9 +1,22 @@
 @echo off
 chcp 65001 > nul
+cd /d "%~dp0"
+
 echo ===================================================================
 echo  ООО «Фотопринт» — On-Premise AI-Ассистент Руководителя
 echo  Единый запуск локального контура: Backend + Frontend
 echo ===================================================================
+
+set "PY_EXE=python"
+if exist ".venv\Scripts\python.exe" (
+    set "PY_EXE=%~dp0.venv\Scripts\python.exe"
+) else if exist "backend\.venv\Scripts\python.exe" (
+    set "PY_EXE=%~dp0backend\.venv\Scripts\python.exe"
+)
+
+echo [0/2] Проверка подключения к AI-серверу (Qwen 2.5 + Whisper)...
+"%PY_EXE%" backend\check_ai_url.py
+echo.
 
 echo [1/2] Запуск Backend API (FastAPI + PostgreSQL/SQLite) на http://127.0.0.1:8000 ...
 start "Photoprint Backend API" cmd /k "cd /d %~dp0backend && run_backend.bat"
