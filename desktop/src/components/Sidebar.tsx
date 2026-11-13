@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserRole } from '../types';
 import {
   CalendarDays,
   Search,
@@ -16,6 +17,8 @@ import {
   X,
   Clock,
 } from 'lucide-react';
+
+const BRIEF_STORAGE_KEY = 'photoprint_pending_brief_roles';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -61,6 +64,27 @@ export const Sidebar: React.FC = () => {
       ],
     };
 
+  // Автоматически показываем бриф другим участникам при переключении роли
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(BRIEF_STORAGE_KEY);
+      if (!raw) return;
+      const pendingRoles: UserRole[] = JSON.parse(raw);
+      if (pendingRoles.includes(currentRole)) {
+        setActiveBrief({
+          meetingTitle: nextMeeting.title,
+          time: nextMeeting.time.split('-')[0].trim(),
+          agenda: nextMeeting.agenda.slice(0, 2),
+          openTasksCount: activeTasksCount,
+        });
+        const updated = pendingRoles.filter((r) => r !== currentRole);
+        sessionStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify(updated));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [currentRole]);
+
   const triggerPreMeetingBrief = () => {
     setIsProactiveMenuOpen(false);
     setActiveBrief({
@@ -69,12 +93,36 @@ export const Sidebar: React.FC = () => {
       agenda: nextMeeting.agenda.slice(0, 2),
       openTasksCount: activeTasksCount,
     });
+
+    // Ставим в очередь оповещение для остальных участников встречи
+    const allRoles: UserRole[] = [
+      'ROLE_DIRECTOR',
+      'ROLE_PRODUCTION_HEAD',
+      'ROLE_SUPPORT_HEAD',
+    ];
+    const otherRoles = allRoles.filter((r) => r !== currentRole);
+    try {
+      sessionStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify(otherRoles));
+    } catch {
+      // ignore storage errors
+    }
+
     logAudit(
       'PROACTIVE_MEETING_BRIEF',
       `Meeting: ${nextMeeting.title}`,
       'SUCCESS',
-      'Сработал триггер за 60 мин до встречи: сформирована сводка повестки и открытых задач.'
+      'Сработал триггер за 60 мин до встречи: сводка повестки и задач отправлена участникам.'
     );
+  };
+
+  const handleResetDemo = () => {
+    try {
+      sessionStorage.removeItem(BRIEF_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setActiveBrief(null);
+    resetDemoData();
   };
 
   const navigation = [
@@ -122,13 +170,13 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      <aside className="w-64 shrink-0 bg-[var(--bg-card)] border-r border-[var(--border-solid)] flex flex-col justify-between select-none transition-colors relative">
+      <aside className="w-72 shrink-0 bg-[var(--bg-card)] border-r border-[var(--border-solid)] flex flex-col justify-between select-none transition-colors relative">
         <div>
-          {/* Brand Header */}
-          <div className="h-16 px-4 border-b border-[var(--border-solid)] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0">
-                <div className="grid grid-cols-2 gap-1 w-3.5 h-3.5">
+          {/* Brand Header (2-row layout to prevent icon overlap) */}
+          <div className="px-4 py-3.5 border-b border-[var(--border-solid)] space-y-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0">
+                <div className="grid grid-cols-2 gap-1 w-4 h-4">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00A8E8]" />
                   <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
                   <span className="w-1.5 h-1.5 rounded-full bg-[#FBB03B]" />
@@ -136,39 +184,40 @@ export const Sidebar: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <div className="font-dot text-sm text-[var(--text-primary)] leading-none">
+              <div className="min-w-0">
+                <div className="font-dot text-base text-[var(--text-primary)] leading-none tracking-wider truncate">
                   ФОТОПРИНТ
                 </div>
-                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-1">
+                <div className="text-xs font-mono font-medium text-[var(--text-muted)] mt-1">
                   picPac.by
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
-              {/* Proactive Event Trigger Button (Slide 05) */}
+            {/* Utility Buttons Row */}
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsProactiveMenuOpen((prev) => !prev)}
                 title="Умные уведомления и триггеры встреч"
-                className="relative w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="relative flex-1 h-8 px-2.5 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center gap-1.5 text-xs font-medium transition-colors"
               >
-                <BellRing className="w-4 h-4" />
-                <span className="w-2 h-2 rounded-full bg-[#D71921] absolute -top-0.5 -right-0.5" />
+                <BellRing className="w-3.5 h-3.5 text-[#D71921] shrink-0" />
+                <span>Уведомления</span>
+                <span className="w-2 h-2 rounded-full bg-[#D71921] shrink-0" />
               </button>
 
               <button
                 onClick={toggleTheme}
                 title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors shrink-0"
               >
                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
 
               <button
-                onClick={resetDemoData}
+                onClick={handleResetDemo}
                 title="Сбросить демо-данные"
-                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors shrink-0"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -177,26 +226,26 @@ export const Sidebar: React.FC = () => {
 
           {/* Proactive Notification Popover */}
           {isProactiveMenuOpen && (
-            <div className="mx-3 mt-3 p-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] space-y-2.5 text-xs shadow-lg">
+            <div className="mx-3 mt-3 p-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] space-y-2.5 shadow-lg">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] text-[#D71921] font-semibold">
-                  05 // УМНЫЕ УВЕДОМЛЕНИЯ
+                <span className="font-mono text-xs text-[#D71921] font-bold uppercase tracking-wider">
+                  05 // Умные уведомления
                 </span>
                 <button
                   onClick={() => setIsProactiveMenuOpen(false)}
                   className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="text-[11px] text-[var(--text-secondary)] leading-snug">
+              <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 Ближайшая встреча:{' '}
                 <strong className="text-[var(--text-primary)]">{nextMeeting.title}</strong> (
                 {nextMeeting.time})
               </div>
               <button
                 onClick={triggerPreMeetingBrief}
-                className="w-full py-2 px-3 rounded-lg bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold text-[11px] hover:opacity-90 transition-opacity"
+                className="w-full py-2 px-3 rounded-lg bg-[var(--text-primary)] text-[var(--bg-canvas)] font-semibold text-xs hover:opacity-90 transition-opacity"
               >
                 Симулировать триггер (за 60 мин)
               </button>
@@ -204,11 +253,11 @@ export const Sidebar: React.FC = () => {
           )}
 
           {/* Navigation Section */}
-          <div className="px-4 pt-6 pb-2 text-xs font-medium text-[var(--text-muted)]">
-            Разделы
+          <div className="px-4 pt-5 pb-2 text-xs font-mono font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            // Разделы контура
           </div>
 
-          <nav className="px-3 space-y-1">
+          <nav className="px-3 space-y-1.5">
             {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -217,28 +266,33 @@ export const Sidebar: React.FC = () => {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full h-9 px-3 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                  className={`w-full h-11 px-3.5 rounded-xl text-sm flex items-center justify-between transition-all ${
                     isActive
-                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold border border-[var(--border-solid)]'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/60 font-normal border border-transparent'
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-bold border border-[var(--border-solid)] shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/60 font-medium border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${
+                      className={`w-2 h-2 rounded-full transition-colors ${
                         isActive ? 'bg-[#D71921]' : 'bg-transparent'
                       }`}
                     />
-                    <Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                    <Icon
+                      className={`w-[18px] h-[18px] shrink-0 ${
+                        isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'
+                      }`}
+                      strokeWidth={isActive ? 2.25 : 1.75}
+                    />
                     <span>{item.label}</span>
                   </div>
 
                   {item.badge !== undefined && (
                     <span
-                      className={`font-mono text-[11px] px-1.5 py-0.5 rounded leading-none ${
+                      className={`font-mono text-xs px-2 py-0.5 rounded-md leading-none font-bold ${
                         isActive
-                          ? 'bg-[#D71921] text-white font-medium'
-                          : 'text-[var(--text-muted)]'
+                          ? 'bg-[#D71921] text-white'
+                          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-solid)]'
                       }`}
                     >
                       {item.badge}
@@ -251,37 +305,37 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Footer Telemetry & Profile */}
-        <div className="p-3 space-y-2 border-t border-[var(--border-solid)]">
-          <div className="px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-between text-[11px] font-mono">
+        <div className="p-3.5 space-y-2.5 border-t border-[var(--border-solid)]">
+          <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-between text-xs font-mono">
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                   backendOnline ? 'bg-emerald-500' : 'bg-[#D71921]'
                 }`}
               />
-              <span className="truncate text-[var(--text-secondary)]">
+              <span className="truncate font-medium text-[var(--text-primary)]">
                 {backendOnline ? 'Сервер :8000' : 'Автономно'}
               </span>
             </div>
             <button
               onClick={syncWithBackend}
               title="Синхронизировать с сервером"
-              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
-          <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-between gap-2">
+          <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--text-primary)] truncate">
+              <div className="text-sm font-bold text-[var(--text-primary)] truncate">
                 {currentUser.name}
               </div>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className="text-[11px] text-[var(--text-secondary)] truncate">
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)] truncate">
                   {currentUser.department}
                 </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-solid)] shrink-0">
+                <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border-solid)] shrink-0">
                   {getClearanceLevel(currentUser.role)}
                 </span>
               </div>
@@ -290,7 +344,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={logout}
               title="Сменить пользователя"
-              className="w-8 h-8 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-card)] hover:bg-[#D71921] hover:border-[#D71921] text-[var(--text-secondary)] hover:text-white flex items-center justify-center transition-colors shrink-0"
+              className="w-9 h-9 rounded-lg border border-[var(--border-solid)] bg-[var(--bg-card)] hover:bg-[#D71921] hover:border-[#D71921] text-[var(--text-secondary)] hover:text-white flex items-center justify-center transition-colors shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -300,25 +354,25 @@ export const Sidebar: React.FC = () => {
 
       {/* Floating Proactive Pre-Meeting Brief Card (Slide 05) */}
       {activeBrief && (
-        <div className="fixed top-5 right-5 z-50 max-w-md w-full nothing-card p-4 shadow-2xl border-[var(--text-primary)] space-y-3">
+        <div className="fixed top-5 right-5 z-50 max-w-md w-full nothing-card p-5 shadow-2xl border-2 border-[var(--text-primary)] space-y-3.5">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#D71921]" />
-              <span className="font-mono text-[11px] font-semibold text-[#D71921]">
-                ТРИГГЕР // ЗА 60 МИН ДО ВСТРЕЧИ
+              <span className="w-2.5 h-2.5 rounded-full bg-[#D71921]" />
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#D71921]">
+                Триггер // за 60 мин до встречи
               </span>
             </div>
             <button
               onClick={() => setActiveBrief(null)}
-              className="w-6 h-6 rounded hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
+              className="w-7 h-7 rounded-lg hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+            <div className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#D71921] shrink-0" />
               <span>
                 {activeBrief.time} (UTC+3) · {activeBrief.meetingTitle}
               </span>
@@ -328,21 +382,21 @@ export const Sidebar: React.FC = () => {
             </p>
           </div>
 
-          <div className="p-3 rounded-xl bg-[var(--bg-elevated)] space-y-1.5 text-xs">
-            <div className="font-medium text-[var(--text-primary)]">
+          <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] space-y-2">
+            <div className="text-xs font-bold text-[var(--text-primary)]">
               Повестка и открытые задачи ({activeBrief.openTasksCount} в работе):
             </div>
             {activeBrief.agenda.map((item, i) => (
-              <div key={i} className="text-[11px] text-[var(--text-secondary)]">
+              <div key={i} className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 {item}
               </div>
             ))}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2.5">
             <button
               onClick={() => setActiveBrief(null)}
-              className="px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+              className="px-3.5 py-2 rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
             >
               Закрыть
             </button>
@@ -351,10 +405,10 @@ export const Sidebar: React.FC = () => {
                 setActiveBrief(null);
                 setActiveTab('meetings');
               }}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] flex items-center gap-1"
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-[var(--text-primary)] text-[var(--bg-canvas)] flex items-center gap-1.5"
             >
               <span>Открыть карточку встречи</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
+              <ArrowUpRight className="w-4 h-4" />
             </button>
           </div>
         </div>
