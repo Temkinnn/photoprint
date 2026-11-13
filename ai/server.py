@@ -42,11 +42,11 @@ if os.name == "nt":
 
 import numpy as np
 import scipy.io.wavfile as wavfile
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # Инициализация Ollama клиента
 OLLAMA_HOST = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-client = OpenAI(
+client = AsyncOpenAI(
     base_url=f"{OLLAMA_HOST}/v1",
     api_key="ollama"
 )
@@ -285,7 +285,7 @@ class GenerateRequest(BaseModel):
 async def generate_text_endpoint(req: GenerateRequest):
     """Универсальный текстовый вызов Qwen 2.5 для RAG, повестки и редактора документов."""
     try:
-        resp = client.chat.completions.create(
+        resp = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": req.system or "Ты — корпоративный AI-ассистент ООО «Фотопринт»."},
@@ -329,7 +329,7 @@ async def analyze_transcript_endpoint(req: AnalyzeTranscriptRequest):
     """
 
     try:
-        resp = client.chat.completions.create(
+        resp = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": system_prompt},
