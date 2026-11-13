@@ -32,3 +32,5 @@ Thumbs.db
 # Documentation / Large media
 /doc
 *.log
+__pycache__/
+*.pyc

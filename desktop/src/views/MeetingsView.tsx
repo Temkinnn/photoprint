@@ -6,6 +6,7 @@ import {
   DecisionItem,
   OpenTaskSummary,
   ProtocolAnalysisResult,
+  RAGMessage,
   RiskItem,
   TaskItem,
 } from '../types';
@@ -17,7 +18,6 @@ import {
   ChevronDown,
   Calendar,
   AlertTriangle,
-  Clock,
   FileText,
   X,
   Check,
@@ -34,7 +34,10 @@ import {
   Upload,
   Edit3,
   HelpCircle,
-  MessageSquare,
+  Play,
+  Pause,
+  ArrowUpRight,
+  FileAudio,
 } from 'lucide-react';
 
 const surnameKey = (name: string): string => {
@@ -49,27 +52,27 @@ const normalizeTs = (ts?: string | null): string => {
 
 const DECISION_CATEGORY_META: Record<
   DecisionCategory,
-  { label: string; badgeClass: string; iconColor: string }
+  { label: string; dotColor: string; pillClass: string }
 > = {
   resolved: {
     label: 'Решено',
-    badgeClass: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    dotColor: 'bg-emerald-500',
+    pillClass: 'bg-emerald-500/15 text-emerald-500',
   },
   proposed: {
     label: 'Предложено',
-    badgeClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/25',
-    iconColor: 'text-sky-600 dark:text-sky-400',
+    dotColor: 'bg-sky-500',
+    pillClass: 'bg-sky-500/15 text-sky-500',
   },
   discussed: {
     label: 'Обсуждалось',
-    badgeClass: 'bg-neutral-500/15 text-neutral-700 dark:text-neutral-300 border-neutral-500/25',
-    iconColor: 'text-neutral-500 dark:text-neutral-400',
+    dotColor: 'bg-[var(--text-muted)]',
+    pillClass: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]',
   },
   needs_clarification: {
-    label: 'Требует уточнения',
-    badgeClass: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25',
-    iconColor: 'text-amber-600 dark:text-amber-400',
+    label: 'Уточнить',
+    dotColor: 'bg-amber-500',
+    pillClass: 'bg-amber-500/15 text-amber-500',
   },
 };
 
@@ -105,7 +108,6 @@ export const MeetingsView: React.FC = () => {
     uploadMeetingTranscript,
     saveMeetingProtocol,
     protocols,
-    backendOnline,
     calendarSlots,
     scheduledMeetings,
     scheduleMeeting,
@@ -117,6 +119,9 @@ export const MeetingsView: React.FC = () => {
     invitations,
     respondToInvitation,
     tasks,
+    setActiveTab,
+    queryRAG,
+    setRagMessages,
   } = useApp();
 
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string>(MOCK_TRANSCRIPTS[0].id);
@@ -127,6 +132,15 @@ export const MeetingsView: React.FC = () => {
   const standaloneProtocols = protocols.filter(
     (p) => !p.meetingId || !scheduledList.some((m) => m.id === p.meetingId)
   );
+
+  // Explicit ingestion dropzone screen for creating a new protocol from audio/text
+  const [isNewProtocolDropzoneOpen, setIsNewProtocolDropzoneOpen] = useState<boolean>(false);
+  const [newProtocolTitleInput, setNewProtocolTitleInput] = useState<string>('');
+  const [isDraggingAudio, setIsDraggingAudio] = useState<boolean>(false);
+
+  // Variant A: Clean tabs inside the protocol right pane
+  const [protocolTab, setProtocolTab] = useState<'summary' | 'tasks'>('summary');
+  const [expandedTaskIdx, setExpandedTaskIdx] = useState<number | null>(null);
 
   const [showScheduledProtocolWorkspace, setShowScheduledProtocolWorkspace] =
     useState<boolean>(false);
@@ -148,11 +162,16 @@ export const MeetingsView: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analyzingLabel, setAnalyzingLabel] = useState<string>('Анализ...');
   const busyAnalyzing = isAnalyzing || analysisJob?.status === 'analyzing';
-  const busyLabel = isAnalyzing ? analyzingLabel : 'Qwen 2.5 анализирует в фоне...';
+  const busyLabel = isAnalyzing ? analyzingLabel : 'Qwen 2.5 анализирует...';
   const [isSavingProtocol, setIsSavingProtocol] = useState<boolean>(false);
   const [isEditingTranscript, setIsEditingTranscript] = useState<boolean>(false);
   const [decisionFilter, setDecisionFilter] = useState<DecisionCategory | 'all'>('all');
   const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
+
+  // Mini audio player state
+  const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
+  const [activeAudioTime, setActiveAudioTime] = useState<string>('00:01');
 
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const transcriptInputRef = useRef<HTMLInputElement | null>(null);
@@ -173,10 +192,12 @@ export const MeetingsView: React.FC = () => {
   const [isInvitationsOpen, setIsInvitationsOpen] = useState<boolean>(false);
   const [invTab, setInvTab] = useState<'incoming' | 'all'>('incoming');
 
-  // Scenario 1 & 2: Preparation, Calendar Booking and Preview Confirmation Modal
+  // Meeting Preparation Modal
   const [isPrepModalOpen, setIsPrepModalOpen] = useState<boolean>(false);
   const [prepStep, setPrepStep] = useState<'setup' | 'preview'>('setup');
-  const [prepTopic, setPrepTopic] = useState<string>('Ввод в эксплуатацию ЦПМ Canon imagePRESS V1000');
+  const [prepTopic, setPrepTopic] = useState<string>(
+    'Ввод в эксплуатацию ЦПМ Canon imagePRESS V1000'
+  );
   const [prepParticipants, setPrepParticipants] = useState<string[]>([
     'Смирнов А.В.',
     'Иванов И.С.',
@@ -222,6 +243,7 @@ export const MeetingsView: React.FC = () => {
   useEffect(() => {
     if (!audioJob) return;
     if (audioJob.status === 'transcribing') {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(audioJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -234,21 +256,21 @@ export const MeetingsView: React.FC = () => {
           date: audioJob.date,
           transcriptRef: `#audio-${audioJob.filename}`,
           transcriptText:
-            `⏳ Whisper распознаёт аудио «${audioJob.filename}» в фоне...\n\n` +
-            'Можете перейти в «Базу знаний» для демонстрации Qwen и ролевой защиты (RBAC). ' +
-            'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
-          summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+            `⏳ Whisper расшифровывает аудио «${audioJob.filename}»...\n\n` +
+            'Вы можете перейти в «Базу знаний» — когда расшифровка завершится, появится уведомление.',
+          summary: 'Выполняется транскрибация аудиозаписи через Whisper...',
           decisions: [],
           risks: [],
           openQuestions: [],
           processingTimeSec: null,
-          modelUsed: 'Whisper STT (в фоне)',
+          modelUsed: 'Whisper STT',
         };
       });
       return;
     }
 
     if (audioJob.status === 'ready' && !audioJob.applied && audioJob.transcriptText) {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(audioJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -261,7 +283,7 @@ export const MeetingsView: React.FC = () => {
         transcriptRef: `#audio-${audioJob.filename}`,
         transcriptText: audioJob.transcriptText,
         summary:
-          'Расшифровка аудио через Whisper завершена. Проверьте текст стенограммы слева и нажмите «Запустить AI-анализ».',
+          'Расшифровка аудио завершена. Проверьте текст стенограммы слева и нажмите «Сформировать протокол (ИИ)».',
         decisions: [],
         risks: [],
         openQuestions: [],
@@ -276,6 +298,7 @@ export const MeetingsView: React.FC = () => {
   useEffect(() => {
     if (!analysisJob) return;
     if (analysisJob.status === 'analyzing') {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(analysisJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -294,7 +317,7 @@ export const MeetingsView: React.FC = () => {
           date: analysisJob.date,
           transcriptRef: analysisJob.transcriptRef,
           transcriptText: analysisJob.transcriptText,
-          summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+          summary: '⏳ Qwen 2.5 анализирует стенограмму и выделяет решения и поручения...',
           decisions: [],
           risks: [],
           openQuestions: [],
@@ -308,8 +331,11 @@ export const MeetingsView: React.FC = () => {
     if (
       analysisJob.status === 'ready' &&
       analysisJob.result &&
-      (!analysisJob.applied || workspaceData.transcriptRef !== analysisJob.transcriptRef || workspaceData.decisions.length === 0)
+      (!analysisJob.applied ||
+        workspaceData.transcriptRef !== analysisJob.transcriptRef ||
+        workspaceData.decisions.length === 0)
     ) {
+      setIsNewProtocolDropzoneOpen(false);
       setSelectedTranscriptId(analysisJob.targetId);
       setShowScheduledProtocolWorkspace(true);
       setShowTranscript(true);
@@ -385,11 +411,11 @@ export const MeetingsView: React.FC = () => {
       });
       showToast(
         'Повестка сформирована',
-        `AI (${res.modelUsed}) проанализировал ${res.usedDocuments.length} док. и ${res.openTasks.length} открытых задач из БД`,
+        `Проанализировано ${res.usedDocuments.length} док. и ${res.openTasks.length} открытых задач`,
         'success'
       );
     } catch (err: any) {
-      const message = err?.message || 'Ошибка при генерации повестки через LLM.';
+      const message = err?.message || 'Ошибка при генерации повестки.';
       setPrepError(message);
       showToast('Ошибка генерации повестки', message, 'error');
     } finally {
@@ -421,7 +447,7 @@ export const MeetingsView: React.FC = () => {
         : '';
 
     setInvitationText(
-      `Уважаемые коллеги!\nПриглашаю вас на совещание «${prepTopic.trim()}».\n\n` +
+      `Уважаемые коллеги,\nприглашаю вас на совещание «${prepTopic.trim()}».\n\n` +
         `Дата и время: ${selectedSlot.date}, ${selectedSlot.startTime}–${selectedSlot.endTime}\n` +
         `Участники: ${prepParticipants.join(', ')}\n\n` +
         `Проект повестки:\n${agendaLines}${questionsLines}`
@@ -453,6 +479,7 @@ export const MeetingsView: React.FC = () => {
       });
 
       setSelectedTranscriptId(created.id);
+      setIsNewProtocolDropzoneOpen(false);
       setShowScheduledProtocolWorkspace(false);
       setIsPrepModalOpen(false);
       setPrepStep('setup');
@@ -487,17 +514,19 @@ export const MeetingsView: React.FC = () => {
       processingTimeSec: res.processingTimeSec ?? null,
       modelUsed: res.modelUsed ?? null,
     });
-    setTasksToReview(
-      (res.tasks || []).map((t) => ({
-        title: t.title,
-        assigneeName: t.assigneeName,
-        deadline: t.deadline,
-        sourceQuote: t.sourceQuote,
-        timestamp: t.timestamp || '00:00',
-        status: 'pending_approval' as const,
-      }))
-    );
+    const staged = (res.tasks || []).map((t) => ({
+      title: t.title,
+      assigneeName: t.assigneeName,
+      deadline: t.deadline,
+      sourceQuote: t.sourceQuote,
+      timestamp: t.timestamp || '00:00',
+      status: 'pending_approval' as const,
+    }));
+    setTasksToReview(staged);
+    setExpandedTaskIdx(staged.length > 0 ? 0 : null);
+    setProtocolTab('summary');
     setShowScheduledProtocolWorkspace(true);
+    setIsNewProtocolDropzoneOpen(false);
     setIsEditingTranscript(false);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
@@ -505,7 +534,11 @@ export const MeetingsView: React.FC = () => {
 
   const handleSaveProtocol = async () => {
     if (!workspaceData.summary.trim() && workspaceData.decisions.length === 0) {
-      showToast('Нечего сохранять', 'Сначала выполните анализ стенограммы или аудиозаписи', 'warning');
+      showToast(
+        'Нечего сохранять',
+        'Сначала расшифруйте аудио или запустите анализ стенограммы',
+        'warning'
+      );
       return;
     }
     setIsSavingProtocol(true);
@@ -539,14 +572,14 @@ export const MeetingsView: React.FC = () => {
       showToast(
         'Стенограмма ещё не готова',
         textToAnalyze.startsWith('⏳')
-          ? 'Дождитесь завершения распознавания речи Whisper.'
-          : 'Вставьте текст или загрузите файл стенограммы/аудио',
+          ? 'Дождитесь завершения расшифровки аудио через Whisper'
+          : 'Загрузите аудиозапись или вставьте текст стенограммы слева',
         'warning'
       );
       return;
     }
     if (analysisJob?.status === 'analyzing') {
-      showToast('Анализ уже выполняется', 'Дождитесь завершения текущей обработки Qwen 2.5.', 'info');
+      showToast('Анализ уже выполняется', 'Дождитесь завершения обработки', 'info');
       return;
     }
     if (audioJob?.status === 'ready') {
@@ -554,7 +587,7 @@ export const MeetingsView: React.FC = () => {
     }
     setWorkspaceData((prev) => ({
       ...prev,
-      summary: '⏳ Идёт фоновый AI-анализ стенограммы моделью Qwen 2.5...',
+      summary: '⏳ Qwen 2.5 анализирует стенограмму и выделяет решения и поручения...',
       decisions: [],
       risks: [],
       openQuestions: [],
@@ -572,28 +605,29 @@ export const MeetingsView: React.FC = () => {
       transcriptText: textToAnalyze,
     });
     showToast(
-      'AI-анализ запущен в фоне',
-      'Qwen 2.5 обрабатывает стенограмму — можете переключаться между экранами.',
+      'Анализ стенограммы запущен',
+      'Можете переключаться между экранами — готовый протокол появится автоматически',
       'info'
     );
   };
 
-  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  const startAudioUploadFlow = (file: File) => {
     if (analysisJob && analysisJob.status !== 'analyzing') {
       clearAnalysisJob();
     }
 
     const targetMeeting = selectedMeetingItem;
-    const isAdHoc = !targetMeeting && selectedTranscriptId === 'ad-hoc-new';
+    const isAdHoc = !targetMeeting && (isNewProtocolDropzoneOpen || selectedTranscriptId === 'ad-hoc-new');
     const targetId = targetMeeting ? targetMeeting.id : 'ad-hoc-new';
+    const customTitle = newProtocolTitleInput.trim();
     const title =
       targetMeeting?.title ||
-      (isAdHoc ? file.name.replace(/\.[^.]+$/, '') : workspaceData.title || file.name.replace(/\.[^.]+$/, ''));
+      (isAdHoc
+        ? customTitle || file.name.replace(/\.[^.]+$/, '')
+        : workspaceData.title || file.name.replace(/\.[^.]+$/, ''));
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
 
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId(targetId);
     setShowScheduledProtocolWorkspace(true);
     setShowTranscript(true);
@@ -605,15 +639,14 @@ export const MeetingsView: React.FC = () => {
       date: today,
       transcriptRef: `#audio-${file.name}`,
       transcriptText:
-        `⏳ Whisper распознаёт аудио «${file.name}» в фоне...\n\n` +
-        'Можете перейти в «Базу знаний» для демонстрации Qwen и ролевой защиты (RBAC). ' +
-        'Как только вернётесь сюда, готовая расшифровка будет ждать в этом окне.',
-      summary: 'Идёт фоновая транскрибация аудиозаписи через Whisper STT...',
+        `⏳ Whisper расшифровывает аудио «${file.name}»...\n\n` +
+        'Вы можете перейти в «Базу знаний» — когда расшифровка завершится, появится уведомление.',
+      summary: 'Выполняется транскрибация аудиозаписи через Whisper...',
       decisions: [],
       risks: [],
       openQuestions: [],
       processingTimeSec: null,
-      modelUsed: 'Whisper STT (в фоне)',
+      modelUsed: 'Whisper STT',
     });
     setTasksToReview([]);
 
@@ -625,10 +658,25 @@ export const MeetingsView: React.FC = () => {
       date: today,
     });
     showToast(
-      'Whisper запущен в фоне',
-      `Аудио «${file.name}» расшифровывается. Можно перейти в «Базу знаний» и вернуться к анализу позже.`,
+      'Транскрибация запущена',
+      `Аудио «${file.name}» передано в Whisper`,
       'info'
     );
+  };
+
+  const handleAudioFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    startAudioUploadFlow(file);
+  };
+
+  const handleDropAudioFile = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingAudio(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    startAudioUploadFlow(file);
   };
 
   const handleTranscriptFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -637,12 +685,15 @@ export const MeetingsView: React.FC = () => {
     if (!file) return;
 
     const targetMeeting = selectedMeetingItem;
-    const title = targetMeeting?.title || file.name.replace(/\.[^.]+$/, '');
+    const customTitle = newProtocolTitleInput.trim();
+    const title =
+      targetMeeting?.title || customTitle || file.name.replace(/\.[^.]+$/, '');
     const today = targetMeeting?.date || new Date().toISOString().slice(0, 10);
 
+    setIsNewProtocolDropzoneOpen(false);
     setIsAnalyzing(true);
     setAnalyzingLabel('Анализ файла...');
-    showToast('Обработка файла', `Чтение «${file.name}» и анализ моделью Qwen 2.5...`, 'info');
+    showToast('Обработка файла', `Чтение «${file.name}» и анализ стенограммы...`, 'info');
     try {
       const res = await uploadMeetingTranscript(file, title, targetMeeting?.id);
       applyAnalysisResult(res, {
@@ -657,24 +708,31 @@ export const MeetingsView: React.FC = () => {
         'success'
       );
     } catch (err: any) {
-      showToast('Ошибка чтения файла', err?.message || 'Не удалось обработать файл стенограммы', 'error');
+      showToast(
+        'Ошибка чтения файла',
+        err?.message || 'Не удалось обработать файл стенограммы',
+        'error'
+      );
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const handleOpenAdHocProtocol = () => {
+  const handleOpenManualNewProtocol = () => {
     const today = new Date().toISOString().slice(0, 10);
+    const title = newProtocolTitleInput.trim() || 'Новое оперативное совещание';
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId('ad-hoc-new');
     setShowScheduledProtocolWorkspace(true);
+    setShowTranscript(true);
     setWorkspaceData({
       id: `ad-hoc-${Date.now()}`,
-      title: 'Новое оперативное совещание',
+      title,
       date: today,
       transcriptRef: `#transcript-ad-hoc-${today}`,
-      transcriptText:
-        '[00:05] Смирнов А.В.: Коллеги, начинаем разбор по текущему тиражу.\n[00:18] Иванов И.С.: Проблема со сроками на участке печати, нужно утвердить ответственных.',
-      summary: 'Черновик протокола. Загрузите аудио (.ogg/.wav/.mp3), файл стенограммы (.txt/.vtt/.docx) или отредактируйте текст слева и нажмите «Анализ AI».',
+      transcriptText: '',
+      summary:
+        'Вставьте текст стенограммы в левую панель и нажмите «Сформировать протокол (ИИ)».',
       decisions: [],
       risks: [],
       openQuestions: [],
@@ -708,17 +766,15 @@ export const MeetingsView: React.FC = () => {
       });
       setIsEditingTranscript(false);
     } else {
-      const agendaPreview = selectedMeetingItem.agenda.map((a, idx) => `[00:0${idx + 1}] Повестка: ${a}`).join('\n');
       setWorkspaceData({
         id: selectedMeetingItem.id,
         meetingId: selectedMeetingItem.id,
         title: selectedMeetingItem.title,
         date: selectedMeetingItem.date,
         transcriptRef: `#meeting-${selectedMeetingItem.id}`,
-        transcriptText:
-          agendaPreview ||
-          `[00:00] ${selectedMeetingItem.participants[0] || 'Руководитель'}: Начинаем совещание «${selectedMeetingItem.title}».`,
-        summary: 'Встреча ещё не обработана. Загрузите аудиозапись, файл стенограммы или вставьте текст совещания слева и запустите AI-анализ.',
+        transcriptText: '',
+        summary:
+          'Вставьте текст стенограммы слева или загрузите аудиозапись для автоматической расшифровки.',
         decisions: [],
         risks: [],
         openQuestions: selectedMeetingItem.openQuestions || [],
@@ -726,6 +782,7 @@ export const MeetingsView: React.FC = () => {
       setIsEditingTranscript(true);
     }
     setTasksToReview([]);
+    setProtocolTab('summary');
     setShowScheduledProtocolWorkspace(true);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
@@ -737,6 +794,8 @@ export const MeetingsView: React.FC = () => {
     setShowTranscript(true);
     setIsEditingTranscript(false);
     setHighlightedTimestamp(clean);
+    setActiveAudioTime(clean);
+    setIsPlayingAudio(true);
     setTimeout(() => {
       const container = transcriptContainerRef.current;
       if (!container) return;
@@ -751,12 +810,14 @@ export const MeetingsView: React.FC = () => {
     if (analysisJob && analysisJob.status !== 'analyzing' && id !== analysisJob.targetId) {
       clearAnalysisJob();
     }
+    setIsNewProtocolDropzoneOpen(false);
     setSelectedTranscriptId(id);
     setDecisionFilter('all');
     setHighlightedTimestamp(null);
+    setProtocolTab('summary');
 
     if (id === 'ad-hoc-new') {
-      handleOpenAdHocProtocol();
+      setIsNewProtocolDropzoneOpen(true);
       return;
     }
 
@@ -823,16 +884,16 @@ export const MeetingsView: React.FC = () => {
         risks: found.risks || [],
         openQuestions: [],
       });
-      setTasksToReview(
-        found.stagedTasks.map((t) => ({
-          title: t.title,
-          assigneeName: t.assigneeName,
-          deadline: t.deadline,
-          sourceQuote: t.sourceQuote,
-          timestamp: t.timestamp,
-          status: 'pending_approval' as const,
-        }))
-      );
+      const staged = found.stagedTasks.map((t) => ({
+        title: t.title,
+        assigneeName: t.assigneeName,
+        deadline: t.deadline,
+        sourceQuote: t.sourceQuote,
+        timestamp: t.timestamp,
+        status: 'pending_approval' as const,
+      }));
+      setTasksToReview(staged);
+      setExpandedTaskIdx(null);
       setIsEditingTranscript(false);
     }
   };
@@ -847,21 +908,73 @@ export const MeetingsView: React.FC = () => {
 
   const handleDeleteTask = (index: number) => {
     setTasksToReview((prev) => prev.filter((_, i) => i !== index));
+    if (expandedTaskIdx === index) setExpandedTaskIdx(null);
     showToast('Задача удалена', 'Поручение исключено из черновика', 'info');
   };
 
   const handleAddTask = () => {
-    setTasksToReview((prev) => [
-      ...prev,
-      {
-        title: 'Новое поручение',
-        assigneeName: 'Назначить ответственного',
-        deadline: 'Указать срок',
-        sourceQuote: 'Добавлено вручную',
-        timestamp: '00:00',
-        status: 'pending_approval',
-      },
-    ]);
+    setTasksToReview((prev) => {
+      const next = [
+        ...prev,
+        {
+          title: 'Новое поручение',
+          assigneeName: 'Назначить ответственного',
+          deadline: 'Указать срок',
+          sourceQuote: 'Добавлено вручную',
+          timestamp: '00:00',
+          status: 'pending_approval' as const,
+        },
+      ];
+      setExpandedTaskIdx(next.length - 1);
+      return next;
+    });
+    setProtocolTab('tasks');
+  };
+
+  const handleAddQuestionToTasks = (question: string) => {
+    setTasksToReview((prev) => {
+      const next = [
+        ...prev,
+        {
+          title: `Проработать вопрос: ${question}`,
+          assigneeName: 'Назначить ответственного',
+          deadline: 'Завтра, 18:00',
+          sourceQuote: 'Из открытых вопросов совещания',
+          timestamp: activeAudioTime || '00:00',
+          status: 'pending_approval' as const,
+        },
+      ];
+      setExpandedTaskIdx(next.length - 1);
+      return next;
+    });
+    setProtocolTab('tasks');
+    showToast('Добавлено в поручения', 'Перешли на вкладку утверждения поручений', 'success');
+  };
+
+  const handleSearchQuestionInKB = async (question: string) => {
+    const userMsg: RAGMessage = {
+      id: 'user-' + Date.now(),
+      sender: 'user',
+      text: question,
+      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    };
+    setRagMessages((prev) => [...prev, userMsg]);
+    setActiveTab('knowledge_base');
+    try {
+      const reply = await queryRAG(question);
+      setRagMessages((prev) => [...prev, reply]);
+    } catch (err: any) {
+      setRagMessages((prev) => [
+        ...prev,
+        {
+          id: 'err-' + Date.now(),
+          sender: 'assistant',
+          text: err?.message || 'Ошибка поиска по базе регламентов.',
+          timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          status: 'needs_clarification',
+        },
+      ]);
+    }
   };
 
   const handleApprove = () => {
@@ -872,6 +985,7 @@ export const MeetingsView: React.FC = () => {
     const protoId = workspaceData.savedProtocolId;
     batchApproveTasks(tasksToReview, workspaceData.title, protoId);
     setTasksToReview([]);
+    setExpandedTaskIdx(null);
   };
 
   const handleReject = () => {
@@ -882,12 +996,17 @@ export const MeetingsView: React.FC = () => {
       'Руководитель отклонил черновик поручений. База данных не изменена.'
     );
     setTasksToReview([]);
+    setExpandedTaskIdx(null);
     showToast('Черновик отклонен', 'Поручения отменены без внесения в реестр', 'warning');
   };
 
+  const cycleSpeed = () => {
+    setPlaybackSpeed((prev) => (prev === 1 ? 1.5 : prev === 1.5 ? 2 : 1));
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f6f7f9] dark:bg-[#0c0d12] overflow-hidden transition-colors">
-      {/* Hidden File Inputs for Stage 2 STT Audio & Transcript File Upload */}
+    <div className="flex-1 flex flex-col h-full overflow-hidden transition-colors">
+      {/* Hidden File Inputs */}
       <input
         ref={audioInputRef}
         type="file"
@@ -903,29 +1022,35 @@ export const MeetingsView: React.FC = () => {
         onChange={handleTranscriptFileSelected}
       />
 
-      {/* Top Header - Spacious & Clean */}
-      <div className="h-16 px-6 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between bg-white dark:bg-[#13151b] shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-bold text-neutral-950 dark:text-white tracking-tight">
-              Совещания и протоколы
-            </h1>
-          </div>
+      {/* Top Header */}
+      <div className="h-16 px-6 border-b border-[var(--border-solid)] bg-[var(--bg-card)] flex items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-sm font-semibold text-[var(--text-primary)] shrink-0">
+            Совещания и протоколы
+          </h1>
 
-          <span className="text-neutral-300 dark:text-neutral-700">/</span>
+          <span className="text-[var(--text-muted)]">/</span>
 
-          {/* Meeting Selector in header */}
           <div className="relative">
             <select
-              value={selectedTranscriptId}
-              onChange={(e) => handleSelectMeeting(e.target.value)}
-              className="bg-neutral-50 dark:bg-[#1a1d25] border border-neutral-200 dark:border-[#282d3b] text-neutral-850 dark:text-neutral-200 text-xs rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-sky-500 font-medium appearance-none cursor-pointer max-w-[380px]"
+              value={isNewProtocolDropzoneOpen ? 'new-dropzone' : selectedTranscriptId}
+              onChange={(e) => {
+                if (e.target.value === 'new-dropzone') {
+                  setIsNewProtocolDropzoneOpen(true);
+                } else {
+                  handleSelectMeeting(e.target.value);
+                }
+              }}
+              className="bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] text-xs rounded-lg px-3 py-1.5 pr-8 focus:outline-none focus:border-[var(--text-primary)] font-medium appearance-none cursor-pointer max-w-[360px]"
             >
-              {selectedTranscriptId === 'ad-hoc-new' && (
-                <option value="ad-hoc-new">[Новый протокол] {workspaceData.title}</option>
+              {isNewProtocolDropzoneOpen && (
+                <option value="new-dropzone">+ Загрузка новой записи / стенограммы</option>
+              )}
+              {selectedTranscriptId === 'ad-hoc-new' && !isNewProtocolDropzoneOpen && (
+                <option value="ad-hoc-new">[Черновик] {workspaceData.title}</option>
               )}
               {scheduledList.length > 0 && (
-                <optgroup label="Совещания компании (PostgreSQL)">
+                <optgroup label="Совещания компании">
                   {scheduledList.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.status === 'completed' || m.protocolId ? '[Протокол] ' : '[Запланировано] '}
@@ -935,7 +1060,7 @@ export const MeetingsView: React.FC = () => {
                 </optgroup>
               )}
               {standaloneProtocols.length > 0 && (
-                <optgroup label="Сохранённые протоколы (PostgreSQL)">
+                <optgroup label="Сохранённые протоколы">
                   {standaloneProtocols.map((p) => (
                     <option key={p.id} value={p.id}>
                       [Протокол {p.id}] {p.meetingTitle}
@@ -943,7 +1068,7 @@ export const MeetingsView: React.FC = () => {
                   ))}
                 </optgroup>
               )}
-              <optgroup label="Демо-стенограммы и архив">
+              <optgroup label="Архив и демо-стенограммы">
                 {MOCK_TRANSCRIPTS.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
@@ -951,30 +1076,31 @@ export const MeetingsView: React.FC = () => {
                 ))}
               </optgroup>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] absolute right-2.5 top-2.5 pointer-events-none" />
           </div>
         </div>
 
-        {/* Right side of Top Bar */}
-        <div className="flex items-center gap-2.5">
+        {/* Right Actions */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={handleOpenAdHocProtocol}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors"
-            title="Создать новый протокол из аудиозаписи или стенограммы"
+            onClick={() => {
+              setNewProtocolTitleInput('');
+              setIsNewProtocolDropzoneOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity"
           >
-            <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-            <span>Новый протокол</span>
+            <Mic className="w-4 h-4" />
+            <span>Загрузить аудио / протокол</span>
           </button>
 
           <button
             onClick={() => setIsInvitationsOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors relative"
-            title="Входящие и отправленные приглашения на совещания"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
           >
-            <Bell className="w-3.5 h-3.5 text-neutral-500" />
+            <Bell className="w-4 h-4 text-[var(--text-secondary)]" />
             <span>Приглашения</span>
             {pendingIncomingCount > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-sky-600 text-white">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#D71921] text-white leading-none">
                 {pendingIncomingCount}
               </span>
             )}
@@ -982,10 +1108,9 @@ export const MeetingsView: React.FC = () => {
 
           <button
             onClick={openPrepModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm"
-            title="Сформировать проект повестки и предложить свободные слоты календаря (Сценарии 1 и 2)"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>Подготовка встречи</span>
           </button>
         </div>
@@ -993,777 +1118,1102 @@ export const MeetingsView: React.FC = () => {
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden">
-        {selectedMeetingItem && !showScheduledProtocolWorkspace ? (() => {
-          const meetingInvitations = invitations.filter((inv) => inv.meetingId === selectedMeetingItem.id);
-          const pSurnames = new Set(selectedMeetingItem.participants.map(surnameKey));
-          const relatedTasks = tasks.filter(
-            (t) => (t.status === 'active' || t.status === 'overdue') && pSurnames.has(surnameKey(t.assigneeName))
-          );
-
-          return (
-            <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-              <div className="max-w-5xl mx-auto space-y-6">
-                <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-[#212530]">
-                  <div>
-                    <div className="flex items-center gap-2 text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                      <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 font-semibold">
-                        Запланировано
-                      </span>
-                      <span>{selectedMeetingItem.date}</span>
-                      <span>·</span>
-                      <span>{selectedMeetingItem.time}</span>
-                      <span>·</span>
-                      <span>{selectedMeetingItem.durationMinutes} мин</span>
-                    </div>
-                    <h2 className="text-lg font-bold text-neutral-950 dark:text-white mt-2">
-                      {selectedMeetingItem.title}
-                    </h2>
-                  </div>
-
-                  {/* Stage 2 Actions on Scheduled Meeting */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => audioInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
-                      title="Отправить аудиозапись (.ogg/.wav/.mp3) в Whisper + Qwen 2.5"
-                    >
-                      <Mic className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-pulse' : ''}`} />
-                      <span>{busyAnalyzing ? busyLabel : 'Загрузить аудиозапись'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => transcriptInputRef.current?.click()}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
-                      title="Загрузить текстовую стенограмму (.txt, .vtt, .docx)"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-neutral-500" />
-                      <span>Загрузить стенограмму</span>
-                    </button>
-
-                    <button
-                      onClick={handleSwitchToScheduledWorkspace}
-                      disabled={busyAnalyzing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15 transition-colors disabled:opacity-50"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Оформить протокол</span>
-                    </button>
-                  </div>
+        {isNewProtocolDropzoneOpen ? (
+          /* ========================================================================= */
+          /* CLEAR AUDIO & TRANSCRIPT INGESTION SCREEN (WHISPER ENTRYPOINT)            */
+          /* ========================================================================= */
+          <div className="flex-1 overflow-y-auto p-6 lg:p-10 flex items-center justify-center">
+            <div className="max-w-2xl w-full space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                    Новый протокол совещания
+                  </h2>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                    Загрузите аудиозапись для автоматической расшифровки через Whisper или выберите текстовый файл
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-neutral-100 pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                      <Users className="w-4 h-4 text-neutral-500" />
-                      <span>Участники и статусы приглашений</span>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedMeetingItem.participants.map((p) => {
-                        const inv = meetingInvitations.find((i) => surnameKey(i.recipientName) === surnameKey(p));
-                        return (
-                          <div key={p} className="flex items-center justify-between text-xs p-2 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200/70 dark:border-[#1f232e]">
-                            <span className="font-medium text-neutral-900 dark:text-neutral-200">{p}</span>
-                            {inv ? (
-                              <span
-                                className={`text-[10px] font-mono px-2 py-0.5 rounded ${
-                                  inv.status === 'accepted'
-                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                    : inv.status === 'declined'
-                                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                }`}
-                              >
-                                {inv.status === 'accepted' ? 'Принято' : inv.status === 'declined' ? 'Отклонено' : 'Ожидает ответа'}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono text-neutral-500">Организатор / без аккаунта</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-neutral-900 dark:text-neutral-100 pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                      <FileText className="w-4 h-4 text-neutral-500" />
-                      <span>Утвержденный проект повестки</span>
-                    </div>
-                    <ul className="space-y-2 text-xs text-neutral-800 dark:text-neutral-200">
-                      {selectedMeetingItem.agenda.map((item, idx) => (
-                        <li key={idx} className="p-2 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200/60 dark:border-[#1f232e]">
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                {selectedMeetingItem.openQuestions && selectedMeetingItem.openQuestions.length > 0 && (
-                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2.5">
-                    <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                      Открытые вопросы к обсуждению
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-amber-900 dark:text-amber-300">
-                      {selectedMeetingItem.openQuestions.map((q, idx) => (
-                        <li key={idx}>{q}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                      Открытые поручения участников из реестра ({relatedTasks.length})
-                    </div>
-                  </div>
-                  {relatedTasks.length === 0 ? (
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                      У выбранных участников нет незавершенных поручений в реестре.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {relatedTasks.map((t) => (
-                        <div key={t.id} className="p-2.5 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#202430] flex items-center justify-between gap-3 text-xs">
-                          <div>
-                            <div className="font-medium text-neutral-900 dark:text-neutral-100">{t.title}</div>
-                            <div className="text-[11px] text-neutral-500 mt-0.5">
-                              Ответственный: {t.assigneeName} · Срок: {t.deadline}
-                            </div>
-                          </div>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 shrink-0">
-                            {t.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })() : (
-          <>
-            {/* Left Pane: Transcript & Media Ingestion */}
-            {showTranscript ? (
-          <div className="w-[440px] border-r border-neutral-200 dark:border-[#212530] flex flex-col bg-white dark:bg-[#111318] shrink-0 transition-all">
-            <div className="p-3.5 px-4 border-b border-neutral-200 dark:border-[#212530] flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-400">
-              <div className="flex items-center gap-2 font-medium">
-                <FileText className="w-3.5 h-3.5 text-neutral-500" />
-                <span className="font-semibold text-neutral-900 dark:text-neutral-200">Стенограмма</span>
-                <span className="text-[11px] font-mono text-neutral-400">({workspaceData.date})</span>
-              </div>
-              <div className="flex items-center gap-1">
                 <button
-                  onClick={() => audioInputRef.current?.click()}
-                  disabled={busyAnalyzing}
-                  title="Загрузить аудио (.ogg, .wav, .mp3, .m4a)"
-                  className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
+                  onClick={() => setIsNewProtocolDropzoneOpen(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                 >
-                  <Mic className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => transcriptInputRef.current?.click()}
-                  disabled={busyAnalyzing}
-                  title="Загрузить файл стенограммы (.txt, .vtt, .docx)"
-                  className="p-1.5 text-neutral-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors disabled:opacity-40"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setIsEditingTranscript((prev) => !prev)}
-                  title={isEditingTranscript ? 'Режим просмотра по репликам' : 'Вставить / отредактировать текст'}
-                  className={`p-1.5 rounded transition-colors ${
-                    isEditingTranscript
-                      ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
-                      : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]'
-                  }`}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setShowTranscript(false)}
-                  title="Скрыть панель стенограммы"
-                  className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded transition-colors"
-                >
-                  <PanelLeftClose className="w-4 h-4" />
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Вернуться к архиву</span>
                 </button>
               </div>
-            </div>
 
-            {isEditingTranscript ? (
-              <div className="flex-1 flex flex-col p-3 gap-2">
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center justify-between">
-                  <span>Формат: <code className="font-mono">[00:15] Спикер: Текст реплики</code></span>
-                  <button
-                    onClick={() => setIsEditingTranscript(false)}
-                    className="text-sky-600 dark:text-sky-400 hover:underline font-medium"
-                  >
-                    Готово
-                  </button>
-                </div>
-                <textarea
-                  value={workspaceData.transcriptText}
-                  onChange={(e) =>
-                    setWorkspaceData((prev) => ({ ...prev, transcriptText: e.target.value }))
-                  }
-                  placeholder="Вставьте стенограмму совещания или загрузите аудио/файл выше..."
-                  className="flex-1 w-full bg-neutral-50 dark:bg-[#0e1015] border border-neutral-200 dark:border-[#242834] rounded-md p-3 text-xs font-mono text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-sky-500 resize-none leading-relaxed"
+              {/* Optional Meeting Title */}
+              <div className="nothing-card p-4 space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)] block">
+                  Название совещания (необязательно)
+                </label>
+                <input
+                  type="text"
+                  value={newProtocolTitleInput}
+                  onChange={(e) => setNewProtocolTitleInput(e.target.value)}
+                  placeholder="Например: Планерка цеха по тиражу фотокниг — иначе возьмётся из имени файла"
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-lg px-3.5 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                 />
               </div>
-            ) : (
+
+              {/* Primary Drag & Drop Zone for Audio -> Whisper */}
               <div
-                ref={transcriptContainerRef}
-                id={`transcript-${workspaceData.id}`}
-                className="flex-1 overflow-y-auto p-3 space-y-1 select-text"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingAudio(true);
+                }}
+                onDragLeave={() => setIsDraggingAudio(false)}
+                onDrop={handleDropAudioFile}
+                onClick={() => audioInputRef.current?.click()}
+                className={`p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-colors text-center space-y-3 ${
+                  isDraggingAudio
+                    ? 'border-[#D71921] bg-[#D71921]/10'
+                    : 'border-[var(--border-dashed)] bg-[var(--bg-card)] hover:border-[var(--text-primary)]'
+                }`}
               >
-                {workspaceData.transcriptText.split('\n').map((line, idx) => {
-                  const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s*(.*)$/);
-                  if (match) {
-                    const [, rawTs, speaker, text] = match;
-                    const tsClean = normalizeTs(rawTs);
-                    const isHighlighted =
-                      highlightedTimestamp !== null && tsClean === highlightedTimestamp;
-                    const initials = speaker
-                      .split(' ')
-                      .map((w) => w[0])
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join('');
-
-                    return (
-                      <div
-                        key={idx}
-                        data-ts={tsClean}
-                        className={`group px-3 py-2 rounded-md transition-colors border-l-2 flex items-start gap-3 ${
-                          isHighlighted
-                            ? 'bg-sky-500/12 dark:bg-sky-500/15 border-sky-500 ring-1 ring-sky-500/30'
-                            : 'border-transparent hover:bg-neutral-100/70 dark:hover:bg-[#161922] hover:border-sky-500'
-                        }`}
-                      >
-                        <div className="shrink-0 pt-0.5">
-                          <span
-                            className={`font-mono text-[11px] transition-colors select-none tracking-tight ${
-                              isHighlighted
-                                ? 'text-sky-600 dark:text-sky-300 font-bold'
-                                : 'text-neutral-400 dark:text-neutral-500 group-hover:text-sky-500'
-                            }`}
-                          >
-                            [{tsClean}]
-                          </span>
-                        </div>
-
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-bold bg-neutral-200/80 dark:bg-[#202533] text-neutral-700 dark:text-neutral-300">
-                              {initials}
-                            </span>
-                            <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-200 font-sans tracking-tight">
-                              {speaker}
-                            </span>
-                          </div>
-                          <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans font-normal selection:bg-sky-500/20">
-                            {text}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-                  if (!line.trim()) return null;
-                  return (
-                    <div key={idx} className="px-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 font-sans">
-                      {line}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="w-12 border-r border-neutral-200 dark:border-[#212530] bg-white dark:bg-[#111318] flex flex-col items-center py-4 shrink-0">
-            <button
-              onClick={() => setShowTranscript(true)}
-              title="Показать стенограмму встречи"
-              className="p-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-[#1a1d25] rounded-md transition-colors"
-            >
-              <PanelLeftOpen className="w-4 h-4" />
-            </button>
-            <span className="text-[10px] font-medium text-neutral-400 [writing-mode:vertical-rl] rotate-180 mt-4 tracking-wider uppercase select-none font-mono">
-              Стенограмма
-            </span>
-          </div>
-        )}
-
-        {/* Right Pane: Summary, 4-Category Decisions, Risks, Open Questions & Staged Tasks */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
-          <div className="max-w-5xl mx-auto w-full space-y-6">
-            {audioJob?.status === 'transcribing' && (
-              <div className="p-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-900 dark:text-sky-200">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Mic className="w-4 h-4 text-sky-500 animate-pulse shrink-0" />
-                  <span>
-                    <strong>Whisper распознаёт «{audioJob.filename}» в фоне.</strong> Можете перейти в «Базу знаний» для показа Qwen и RBAC — расшифровка сохранится автоматически.
-                  </span>
+                <div className="w-12 h-12 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center mx-auto text-[#D71921]">
+                  <FileAudio className="w-6 h-6" />
                 </div>
-              </div>
-            )}
 
-            {analysisJob?.status === 'analyzing' && (
-              <div className="p-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-900 dark:text-sky-200">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Cpu className="w-4 h-4 text-sky-500 animate-spin shrink-0" />
-                  <span>
-                    <strong>Qwen 2.5 формирует протокол в фоне («{analysisJob.meetingTitle}»).</strong> Можете переключаться по другим экранам — готовые решения и поручения появятся здесь автоматически.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {audioJob?.status !== 'transcribing' &&
-              analysisJob?.status !== 'analyzing' &&
-              workspaceData.transcriptRef.startsWith('#audio-') &&
-              workspaceData.decisions.length === 0 &&
-              !workspaceData.transcriptText.startsWith('⏳') && (
-                <div className="p-3.5 rounded-lg border border-emerald-500/35 bg-emerald-500/10 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 dark:text-emerald-200">
-                  <div>
-                    <strong>Расшифровка Whisper готова ({workspaceData.transcriptRef.replace('#audio-', '')}).</strong>{' '}
-                    Проверьте текст стенограммы слева и запустите AI-анализ моделью Qwen 2.5.
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-[var(--text-primary)]">
+                    Перетащите аудиозапись сюда или нажмите для выбора файла
                   </div>
-                  <button
-                    onClick={handleRunAiAnalysis}
-                    disabled={busyAnalyzing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm disabled:opacity-50"
-                  >
-                    <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
-                    <span>{busyAnalyzing ? busyLabel : 'Запустить AI-анализ (Qwen 2.5)'}</span>
-                  </button>
-                </div>
-              )}
-
-            {/* Context Header for Protocol */}
-            <div className="flex flex-wrap items-start justify-between gap-3 pb-3.5 border-b border-neutral-200 dark:border-[#212530]">
-              <div className="flex-1 min-w-[240px]">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 font-mono">
-                  <span>Протокол № {workspaceData.savedProtocolId || workspaceData.id}</span>
-                  <span>·</span>
-                  <span>{workspaceData.date}</span>
-                  {workspaceData.savedProtocolId && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold">
-                      Сохранено в PostgreSQL
-                    </span>
-                  )}
-                  {workspaceData.modelUsed && (
-                    <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[10px]">
-                      {workspaceData.modelUsed}
-                      {workspaceData.processingTimeSec ? ` (${workspaceData.processingTimeSec}с)` : ''}
-                    </span>
-                  )}
-                </div>
-                {selectedTranscriptId === 'ad-hoc-new' ? (
-                  <input
-                    type="text"
-                    value={workspaceData.title}
-                    onChange={(e) =>
-                      setWorkspaceData((prev) => ({ ...prev, title: e.target.value }))
-                    }
-                    className="w-full max-w-lg mt-1 bg-transparent text-base font-bold text-neutral-950 dark:text-white border-b border-neutral-300 dark:border-[#2c3242] focus:border-sky-500 focus:outline-none pb-0.5"
-                  />
-                ) : (
-                  <h2 className="text-base font-bold text-neutral-950 dark:text-white mt-0.5 tracking-tight">
-                    {workspaceData.title}
-                  </h2>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {selectedMeetingItem && (
-                  <button
-                    onClick={() => setShowScheduledProtocolWorkspace(false)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] transition-colors"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Карточка встречи</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => audioInputRef.current?.click()}
-                  disabled={busyAnalyzing}
-                  title="Загрузить аудио (.ogg, .wav, .mp3) -> Whisper + Qwen 2.5"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-neutral-300 dark:border-[#2c3242] bg-white dark:bg-[#15171e] text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-[#1d212b] transition-colors disabled:opacity-50"
-                >
-                  <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  <span>Аудио (Whisper)</span>
-                </button>
-
-                <button
-                  onClick={handleRunAiAnalysis}
-                  disabled={busyAnalyzing}
-                  title={backendOnline ? 'Запустить AI-анализ текущей стенограммы (Qwen 2.5)' : 'Бэкенд недоступен'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-neutral-950 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-all shadow-sm disabled:opacity-50"
-                >
-                  <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
-                  <span>{busyAnalyzing ? busyLabel : 'Анализ стенограммы'}</span>
-                </button>
-
-                <button
-                  onClick={handleSaveProtocol}
-                  disabled={isSavingProtocol || busyAnalyzing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
-                  title="Сохранить протокол в PostgreSQL со ссылкой на стенограмму"
-                >
-                  <Bookmark className="w-3.5 h-3.5" />
-                  <span>{isSavingProtocol ? 'Сохранение...' : 'Сохранить протокол в БД'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Summary Box */}
-            <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] border-l-4 border-l-sky-500 space-y-1.5">
-              <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                Краткое резюме встречи
-              </div>
-              <p className="text-xs text-neutral-800 dark:text-neutral-200 leading-relaxed font-sans">{workspaceData.summary}</p>
-            </div>
-
-            {/* 4-Category Decisions & Risks Cards Grid (Scenario 3 & AI-04 Requirement) */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {/* Decisions Card */}
-              <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                  <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                    Итоги и статусы решений (AI-04)
-                  </h3>
-                  <span className="text-[11px] font-mono text-neutral-400">
-                    {workspaceData.decisions.length} поз.
-                  </span>
-                </div>
-
-                {/* 4-Category Filter Tabs */}
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    onClick={() => setDecisionFilter('all')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                      decisionFilter === 'all'
-                        ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 border-transparent'
-                        : 'border-neutral-200 dark:border-[#282d3b] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1b1f28]'
-                    }`}
-                  >
-                    Все ({workspaceData.decisions.length})
-                  </button>
-                  {(['resolved', 'proposed', 'discussed', 'needs_clarification'] as DecisionCategory[]).map(
-                    (cat) => {
-                      const count = workspaceData.decisions.filter((d) => d.category === cat).length;
-                      const meta = DECISION_CATEGORY_META[cat];
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => setDecisionFilter(cat)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
-                            decisionFilter === cat
-                              ? meta.badgeClass + ' font-semibold'
-                              : 'border-neutral-200 dark:border-[#282d3b] text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1b1f28]'
-                          }`}
-                        >
-                          {meta.label} ({count})
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
-
-                <div className="space-y-2.5">
-                  {(() => {
-                    const filtered =
-                      decisionFilter === 'all'
-                        ? workspaceData.decisions
-                        : workspaceData.decisions.filter((d) => d.category === decisionFilter);
-                    if (filtered.length === 0) {
-                      return (
-                        <div className="text-xs text-neutral-400 py-2">
-                          В выбранной категории записей нет
-                        </div>
-                      );
-                    }
-                    return filtered.map((d) => {
-                      const meta =
-                        DECISION_CATEGORY_META[d.category] || DECISION_CATEGORY_META.discussed;
-                      const tsClean = normalizeTs(d.timestamp);
-                      return (
-                        <div
-                          key={d.id}
-                          className="p-2.5 rounded-md bg-neutral-50/70 dark:bg-[#101217] border border-neutral-200/80 dark:border-[#1f232e] space-y-1.5 text-xs text-neutral-800 dark:text-neutral-200"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-1.5">
-                            <span
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${meta.badgeClass}`}
-                            >
-                              {d.category === 'resolved' ? (
-                                <CheckCircle2 className="w-3 h-3" />
-                              ) : d.category === 'needs_clarification' ? (
-                                <HelpCircle className="w-3 h-3" />
-                              ) : (
-                                <MessageSquare className="w-3 h-3" />
-                              )}
-                              <span>{meta.label}</span>
-                            </span>
-
-                            <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                              {d.speaker && <span className="font-medium">{d.speaker}</span>}
-                              {tsClean && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleJumpToTimestamp(tsClean)}
-                                  title="Перейти к реплике в стенограмме"
-                                  className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 transition-colors"
-                                >
-                                  [{tsClean}]
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="leading-snug">{d.text}</div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-
-              {/* Risks & Open Questions Column */}
-              <div className="space-y-4">
-                {/* Risks Card */}
-                <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                    <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                      Карта выявленных рисков
-                    </h3>
-                    <span className="text-[11px] font-mono text-neutral-400">
-                      {workspaceData.risks?.length || 0} риск(а)
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {workspaceData.risks && workspaceData.risks.length > 0 ? (
-                      workspaceData.risks.map((r) => (
-                        <div key={r.id} className="p-2.5 rounded bg-amber-500/[0.04] dark:bg-amber-500/[0.07] border border-amber-500/20 text-xs space-y-1">
-                          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between gap-2">
-                            <span>{r.riskDescription}</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold uppercase shrink-0">
-                              {r.impact}
-                            </span>
-                          </div>
-                          {r.suggestedMitigation && (
-                            <div className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                              Меры: {r.suggestedMitigation}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-xs text-neutral-400">Критических рисков не зафиксировано</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Open Questions Card */}
-                {workspaceData.openQuestions && workspaceData.openQuestions.length > 0 && (
-                  <div className="p-4 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-2.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-[#1d2028]">
-                      <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
-                        <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Открытые вопросы к проработке</span>
-                      </h3>
-                      <span className="text-[11px] font-mono text-neutral-400">
-                        {workspaceData.openQuestions.length}
-                      </span>
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
-                      {workspaceData.openQuestions.map((q, idx) => (
-                        <li
-                          key={idx}
-                          className="p-2 rounded bg-amber-500/[0.05] border border-amber-500/20 leading-snug"
-                        >
-                          {q}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Staged Tasks (Draft & Review) (Scenario 4 Requirement) */}
-            <div className="p-5 rounded-lg bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-[#1d2028]">
-                <div>
-                  <h3 className="text-sm font-semibold text-neutral-950 dark:text-white">
-                    Поручения к утверждению в реестр
-                  </h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    Проверьте исполнителя и дедлайн перед фиксацией в корпоративном журнале
+                  <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto leading-relaxed">
+                    Поддерживаются форматы <span className="font-mono">.ogg, .wav, .mp3, .m4a, .webm</span>.
+                    Whisper автоматически переведёт речь в стенограмму с таймкодами, а Qwen 2.5 выделит решения и поручения.
                   </p>
                 </div>
 
-                <button
-                  onClick={handleAddTask}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-[#1b1f28] hover:bg-neutral-200 dark:hover:bg-[#232834] rounded-md transition-colors border border-neutral-200 dark:border-[#2b3040]"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Добавить</span>
-                </button>
+                <div className="pt-1">
+                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)]">
+                    <Mic className="w-4 h-4" />
+                    <span>Выбрать аудиофайл и запустить Whisper</span>
+                  </span>
+                </div>
               </div>
 
-              {tasksToReview.length === 0 ? (
-                <div className="py-8 text-center text-xs text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-200 dark:border-[#222631] rounded-lg">
-                  Все поручения согласованы и записаны в реестр.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tasksToReview.map((task, idx) => {
-                    const isUnassigned = task.assigneeName.includes('уточнения') || task.assigneeName.includes('Назначить');
-                    const isNoDeadline = task.deadline.includes('уточнения') || task.deadline.includes('Указать');
+              {/* Two Secondary Options: Text File or Manual Paste */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => transcriptInputRef.current?.click()}
+                  className="nothing-card p-4 text-left hover:border-[var(--text-primary)] transition-colors flex items-start gap-3"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0 text-[var(--text-primary)]">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Загрузить файл стенограммы
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      Готовый текст в формате .txt, .vtt, .srt или .docx
+                    </div>
+                  </div>
+                </button>
 
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-neutral-50/70 dark:bg-[#101217] p-3.5 rounded-lg border border-neutral-200 dark:border-[#222631] space-y-3"
-                      >
-                        {/* Title */}
-                        <div className="flex items-start justify-between gap-3">
-                          <input
-                            type="text"
-                            value={task.title}
-                            onChange={(e) => handleUpdateTask(idx, 'title', e.target.value)}
-                            className="flex-1 bg-transparent font-medium text-xs text-neutral-950 dark:text-neutral-100 border-b border-transparent hover:border-neutral-300 dark:hover:border-neutral-700 focus:border-sky-500 focus:outline-none pb-0.5"
-                          />
-                          <button
-                            onClick={() => handleDeleteTask(idx)}
-                            className="text-neutral-400 hover:text-rose-500 transition-colors p-1"
-                            title="Удалить поручение"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                <button
+                  type="button"
+                  onClick={handleOpenManualNewProtocol}
+                  className="nothing-card p-4 text-left hover:border-[var(--text-primary)] transition-colors flex items-start gap-3"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] flex items-center justify-center shrink-0 text-[var(--text-primary)]">
+                    <Edit3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Вставить текст вручную
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      Открыть пустой редактор стенограммы для вставки текста
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : selectedMeetingItem && !showScheduledProtocolWorkspace ? (
+          (() => {
+            const meetingInvitations = invitations.filter(
+              (inv) => inv.meetingId === selectedMeetingItem.id
+            );
+            const pSurnames = new Set(selectedMeetingItem.participants.map(surnameKey));
+            const relatedTasks = tasks.filter(
+              (t) =>
+                (t.status === 'active' || t.status === 'overdue') &&
+                pSurnames.has(surnameKey(t.assigneeName))
+            );
 
-                        {/* Assignee & Deadline with detection warnings */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[11px] text-neutral-500 dark:text-neutral-400">Ответственный:</label>
-                              {isUnassigned && (
-                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">
-                                  Требуется назначение
-                                </span>
-                              )}
-                            </div>
-                            <input
-                              type="text"
-                              value={task.assigneeName}
-                              onChange={(e) => handleUpdateTask(idx, 'assigneeName', e.target.value)}
-                              className={`w-full bg-white dark:bg-[#161820] px-3 py-1.5 rounded text-xs text-neutral-900 dark:text-neutral-200 border focus:outline-none ${
-                                isUnassigned
-                                  ? 'border-amber-400 dark:border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
-                                  : 'border-neutral-200 dark:border-[#282d3b] focus:border-sky-500'
-                              }`}
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[11px] text-neutral-500 dark:text-neutral-400">Срок исполнения:</label>
-                              {isNoDeadline && (
-                                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">
-                                  Требуется срок
-                                </span>
-                              )}
-                            </div>
-                            <input
-                              type="text"
-                              value={task.deadline}
-                              onChange={(e) => handleUpdateTask(idx, 'deadline', e.target.value)}
-                              className={`w-full bg-white dark:bg-[#161820] px-3 py-1.5 rounded text-xs text-neutral-900 dark:text-neutral-200 border focus:outline-none ${
-                                isNoDeadline
-                                  ? 'border-amber-400 dark:border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200'
-                                  : 'border-neutral-200 dark:border-[#282d3b] focus:border-sky-500'
-                              }`}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Citation */}
-                        {task.sourceQuote && (
-                          <div className="text-[11px] text-neutral-600 dark:text-neutral-400 bg-white dark:bg-[#15171e] p-2 rounded border border-neutral-200/80 dark:border-[#1f232e] flex items-center justify-between italic">
-                            <span>Основание: «{task.sourceQuote}»</span>
-                            {task.timestamp && (
-                              <button
-                                type="button"
-                                onClick={() => handleJumpToTimestamp(task.timestamp)}
-                                title="Найти реплику в стенограмме"
-                                className="font-mono not-italic shrink-0 ml-2 px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 font-medium transition-colors"
-                              >
-                                [{normalizeTs(task.timestamp)}]
-                              </button>
-                            )}
-                          </div>
-                        )}
+            return (
+              <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+                <div className="max-w-5xl mx-auto space-y-5">
+                  {/* Scheduled Meeting Header */}
+                  <div className="nothing-card p-5 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[var(--text-secondary)]">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-sky-500/15 text-sky-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          Запланировано
+                        </span>
+                        <span>{selectedMeetingItem.date}</span>
+                        <span>·</span>
+                        <span>{selectedMeetingItem.time}</span>
+                        <span>·</span>
+                        <span>{selectedMeetingItem.durationMinutes} мин</span>
                       </div>
-                    );
-                  })}
+                      <h2 className="text-base font-semibold text-[var(--text-primary)] mt-2">
+                        {selectedMeetingItem.title}
+                      </h2>
+                    </div>
 
-                  {/* Confirm & Reject Buttons */}
-                  <div className="pt-3 flex items-center justify-end gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => audioInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity disabled:opacity-50"
+                      >
+                        <Mic className="w-4 h-4" />
+                        <span>
+                          {busyAnalyzing ? busyLabel : 'Загрузить аудио (Whisper)'}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => transcriptInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>Загрузить стенограмму</span>
+                      </button>
+
+                      <button
+                        onClick={handleSwitchToScheduledWorkspace}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-card)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        <span>Ввести вручную</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Participants & Agenda */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="nothing-card p-5 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)] pb-2.5 border-b border-[var(--border-solid)]">
+                        <Users className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <span>Участники и статусы приглашений</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedMeetingItem.participants.map((p) => {
+                          const inv = meetingInvitations.find(
+                            (i) => surnameKey(i.recipientName) === surnameKey(p)
+                          );
+                          return (
+                            <div
+                              key={p}
+                              className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-[var(--bg-elevated)]"
+                            >
+                              <span className="font-medium text-[var(--text-primary)]">{p}</span>
+                              {inv ? (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded ${
+                                    inv.status === 'accepted'
+                                      ? 'bg-emerald-500/15 text-emerald-500'
+                                      : inv.status === 'declined'
+                                      ? 'bg-[#D71921]/15 text-[#D71921]'
+                                      : 'bg-amber-500/15 text-amber-500'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      inv.status === 'accepted'
+                                        ? 'bg-emerald-500'
+                                        : inv.status === 'declined'
+                                        ? 'bg-[#D71921]'
+                                        : 'bg-amber-500'
+                                    }`}
+                                  />
+                                  {inv.status === 'accepted'
+                                    ? 'Принято'
+                                    : inv.status === 'declined'
+                                    ? 'Отклонено'
+                                    : 'Ожидает ответа'}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                                  Организатор
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="nothing-card p-5 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)] pb-2.5 border-b border-[var(--border-solid)]">
+                        <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <span>Утвержденный проект повестки</span>
+                      </div>
+                      <ul className="space-y-2 text-xs text-[var(--text-primary)]">
+                        {selectedMeetingItem.agenda.map((item, idx) => (
+                          <li key={idx} className="p-2.5 rounded-xl bg-[var(--bg-elevated)]">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {selectedMeetingItem.openQuestions &&
+                    selectedMeetingItem.openQuestions.length > 0 && (
+                      <div className="nothing-card p-5 space-y-2.5">
+                        <div className="text-xs font-semibold text-[var(--text-primary)]">
+                          Открытые вопросы к обсуждению
+                        </div>
+                        <ul className="space-y-1.5 text-xs text-amber-500">
+                          {selectedMeetingItem.openQuestions.map((q, idx) => (
+                            <li key={idx} className="p-2.5 rounded-xl bg-amber-500/10">
+                              {q}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                  <div className="nothing-card p-5 space-y-3">
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Открытые поручения участников из реестра ({relatedTasks.length})
+                    </div>
+                    {relatedTasks.length === 0 ? (
+                      <div className="text-xs text-[var(--text-muted)]">
+                        У выбранных участников нет незавершенных поручений в реестре
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {relatedTasks.map((t) => (
+                          <div
+                            key={t.id}
+                            className="p-3 rounded-xl bg-[var(--bg-elevated)] flex items-center justify-between gap-3 text-xs"
+                          >
+                            <div>
+                              <div className="font-medium text-[var(--text-primary)]">{t.title}</div>
+                              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                                Ответственный: {t.assigneeName} · Срок: {t.deadline}
+                              </div>
+                            </div>
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-secondary)] shrink-0">
+                              {t.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        ) : (
+          /* ========================================================================= */
+          /* ACTIVE PROTOCOL WORKSPACE (TRANSCRIPT LEFT + VARIANT A TABS RIGHT)        */
+          /* ========================================================================= */
+          <>
+            {/* Left Pane: Transcript & Audio Player */}
+            {showTranscript ? (
+              <div className="w-[420px] border-r border-[var(--border-solid)] flex flex-col bg-[var(--bg-card)] shrink-0 transition-colors">
+                <div className="p-3.5 px-4 border-b border-[var(--border-solid)] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[var(--text-secondary)]" />
+                    <span className="font-semibold text-[var(--text-primary)]">Стенограмма</span>
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
+                      {workspaceData.date}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
                     <button
-                      onClick={handleReject}
-                      className="px-3.5 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-[#1a1d25] hover:bg-neutral-200 dark:hover:bg-[#232733] rounded-md transition-colors"
+                      onClick={() => audioInputRef.current?.click()}
+                      disabled={busyAnalyzing}
+                      title="Загрузить аудио для Whisper"
+                      className="px-2 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center gap-1 transition-colors disabled:opacity-40"
                     >
-                      Отклонить все
+                      <Mic className="w-3.5 h-3.5 text-[#D71921]" />
+                      <span>Аудио</span>
                     </button>
-
                     <button
-                      onClick={handleApprove}
-                      className="px-5 py-2 text-xs font-semibold text-white bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 rounded-md shadow-sm transition-all flex items-center gap-2"
+                      onClick={() => setIsEditingTranscript((prev) => !prev)}
+                      title={isEditingTranscript ? 'Просмотр по репликам' : 'Редактировать текст'}
+                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                        isEditingTranscript
+                          ? 'bg-[var(--text-primary)] text-[var(--bg-canvas)]'
+                          : 'hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+                      }`}
                     >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Утвердить поручения ({tasksToReview.length})</span>
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setShowTranscript(false)}
+                      title="Свернуть панель"
+                      className="w-7 h-7 rounded-md hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                    >
+                      <PanelLeftClose className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              )}
+
+                {/* Audio Mini-Player */}
+                <div className="px-4 py-2.5 border-b border-[var(--border-solid)] bg-[var(--bg-elevated)]/60 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsPlayingAudio((prev) => !prev)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity shrink-0"
+                  >
+                    {isPlayingAudio ? (
+                      <>
+                        <Pause className="w-3.5 h-3.5" />
+                        <span>Пауза</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5" />
+                        <span>Слушать</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex-1 flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-xs font-medium text-[#D71921] shrink-0">
+                      {activeAudioTime}
+                    </span>
+                    <div className="flex-1 h-1.5 rounded bg-[var(--border-solid)] overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          isPlayingAudio ? 'bg-[#D71921] w-2/3' : 'bg-[var(--text-primary)] w-1/3'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={cycleSpeed}
+                    className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)] shrink-0"
+                  >
+                    {playbackSpeed.toFixed(1)}x
+                  </button>
+                </div>
+
+                {isEditingTranscript ? (
+                  <div className="flex-1 flex flex-col p-4 gap-2.5">
+                    <div className="text-xs text-[var(--text-secondary)] flex items-center justify-between">
+                      <span>
+                        Формат: <code className="font-mono">[00:15] Спикер: Текст</code>
+                      </span>
+                      <button
+                        onClick={() => setIsEditingTranscript(false)}
+                        className="px-3 py-1 rounded-md bg-[var(--text-primary)] text-[var(--bg-canvas)] font-medium text-xs"
+                      >
+                        Готово
+                      </button>
+                    </div>
+                    <textarea
+                      value={workspaceData.transcriptText}
+                      onChange={(e) =>
+                        setWorkspaceData((prev) => ({ ...prev, transcriptText: e.target.value }))
+                      }
+                      placeholder="Вставьте стенограмму совещания или загрузите аудио выше..."
+                      className="flex-1 w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] rounded-xl p-3.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] resize-none leading-relaxed"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    ref={transcriptContainerRef}
+                    id={`transcript-${workspaceData.id}`}
+                    className="flex-1 overflow-y-auto p-3.5 space-y-2 select-text"
+                  >
+                    {!workspaceData.transcriptText.trim() ? (
+                      <div className="p-6 text-center text-xs text-[var(--text-muted)] space-y-2">
+                        <p>Текст стенограммы пока пуст</p>
+                        <button
+                          onClick={() => audioInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] text-[var(--text-primary)] font-medium"
+                        >
+                          Загрузить аудио для Whisper
+                        </button>
+                      </div>
+                    ) : (
+                      workspaceData.transcriptText.split('\n').map((line, idx) => {
+                        const match = line.match(/^\[([^\]]+)\]\s+([^:]+):\s*(.*)$/);
+                        if (match) {
+                          const [, rawTs, speaker, text] = match;
+                          const tsClean = normalizeTs(rawTs);
+                          const isHighlighted =
+                            highlightedTimestamp !== null && tsClean === highlightedTimestamp;
+
+                          return (
+                            <div
+                              key={idx}
+                              data-ts={tsClean}
+                              onClick={() => {
+                                setHighlightedTimestamp(tsClean);
+                                setActiveAudioTime(tsClean);
+                              }}
+                              className={`cursor-pointer p-3 rounded-xl transition-colors flex items-start gap-3 ${
+                                isHighlighted
+                                  ? 'bg-[#D71921]/10 border border-[#D71921]'
+                                  : 'bg-[var(--bg-elevated)]/60 hover:bg-[var(--bg-elevated)] border border-transparent'
+                              }`}
+                            >
+                              <span
+                                className={`font-mono text-xs shrink-0 ${
+                                  isHighlighted
+                                    ? 'text-[#D71921] font-semibold'
+                                    : 'text-[var(--text-muted)]'
+                                }`}
+                              >
+                                {tsClean}
+                              </span>
+
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="text-xs font-semibold text-[var(--text-primary)]">
+                                  {speaker}
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  {text}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (!line.trim()) return null;
+                        return (
+                          <div key={idx} className="px-3 py-1 text-xs text-[var(--text-muted)]">
+                            {line}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-12 border-r border-[var(--border-solid)] bg-[var(--bg-card)] flex flex-col items-center py-4 shrink-0">
+                <button
+                  onClick={() => setShowTranscript(true)}
+                  title="Показать стенограмму"
+                  className="w-8 h-8 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
+                >
+                  <PanelLeftOpen className="w-4 h-4" />
+                </button>
+                <span className="text-[11px] font-medium text-[var(--text-muted)] [writing-mode:vertical-rl] rotate-180 mt-4 select-none">
+                  Стенограмма
+                </span>
+              </div>
+            )}
+
+            {/* Right Pane: Clean Protocol Header + Variant A Tabs */}
+            <div className="flex-1 flex flex-col overflow-y-auto p-6 lg:p-8">
+              <div className="max-w-4xl mx-auto w-full space-y-5">
+                {audioJob?.status === 'transcribing' && (
+                  <div className="nothing-card p-4 flex items-center gap-3 text-xs">
+                    <Mic className="w-4 h-4 text-[#D71921] shrink-0" />
+                    <span>
+                      <strong>Whisper расшифровывает «{audioJob.filename}».</strong> Вы можете
+                      перейти в «Базу знаний» — результат сохранится автоматически.
+                    </span>
+                  </div>
+                )}
+
+                {analysisJob?.status === 'analyzing' && (
+                  <div className="nothing-card p-4 flex items-center gap-3 text-xs">
+                    <Cpu className="w-4 h-4 text-[#D71921] animate-spin shrink-0" />
+                    <span>
+                      <strong>
+                        Qwen 2.5 анализирует стенограмму («{analysisJob.meetingTitle}»).
+                      </strong>{' '}
+                      Решения и поручения появятся здесь автоматически.
+                    </span>
+                  </div>
+                )}
+
+                {/* Protocol Header */}
+                <div className="nothing-card p-5 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1 min-w-[240px]">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[var(--text-muted)]">
+                        <span>Протокол № {workspaceData.savedProtocolId || workspaceData.id}</span>
+                        <span>·</span>
+                        <span>{workspaceData.date}</span>
+                        {workspaceData.savedProtocolId ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[11px] font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Сохранено в БД
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Черновик
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedTranscriptId === 'ad-hoc-new' ? (
+                        <input
+                          type="text"
+                          value={workspaceData.title}
+                          onChange={(e) =>
+                            setWorkspaceData((prev) => ({ ...prev, title: e.target.value }))
+                          }
+                          className="w-full max-w-lg mt-1.5 bg-transparent text-base font-semibold text-[var(--text-primary)] border-b border-[var(--border-solid)] focus:border-[var(--text-primary)] focus:outline-none pb-0.5"
+                        />
+                      ) : (
+                        <h2 className="text-base font-semibold text-[var(--text-primary)] mt-1">
+                          {workspaceData.title}
+                        </h2>
+                      )}
+                    </div>
+
+                    {selectedMeetingItem && (
+                      <button
+                        onClick={() => setShowScheduledProtocolWorkspace(false)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Карточка встречи</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Clear 3-Button Action Bar */}
+                  <div className="pt-3 border-t border-[var(--border-solid)] flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => audioInputRef.current?.click()}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-solid)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] transition-colors disabled:opacity-50"
+                      >
+                        <Mic className="w-3.5 h-3.5 text-[#D71921]" />
+                        <span>Расшифровать аудио (Whisper)</span>
+                      </button>
+
+                      <button
+                        onClick={handleRunAiAnalysis}
+                        disabled={busyAnalyzing}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        <Cpu className={`w-3.5 h-3.5 ${busyAnalyzing ? 'animate-spin' : ''}`} />
+                        <span>{busyAnalyzing ? busyLabel : 'Сформировать протокол (ИИ)'}</span>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleSaveProtocol}
+                      disabled={isSavingProtocol || busyAnalyzing}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#D71921] text-white hover:brightness-110 transition-opacity disabled:opacity-50"
+                    >
+                      <Bookmark className="w-3.5 h-3.5" />
+                      <span>{isSavingProtocol ? 'Сохранение...' : 'Сохранить протокол в БД'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* VARIANT A: Segmented Tab Switcher between "Итоги и решения" and "Поручения" */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border-solid)]">
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('summary')}
+                      className={`px-3.5 py-1.5 rounded-md text-xs transition-colors ${
+                        protocolTab === 'summary'
+                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      Итоги и решения ({workspaceData.decisions.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('tasks')}
+                      className={`px-3.5 py-1.5 rounded-md text-xs transition-colors flex items-center gap-1.5 ${
+                        protocolTab === 'tasks'
+                          ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <span>Поручения к утверждению</span>
+                      {tasksToReview.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#D71921] text-white leading-none">
+                          {tasksToReview.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {protocolTab === 'summary' && tasksToReview.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setProtocolTab('tasks')}
+                      className="text-xs font-medium text-[var(--text-primary)] hover:text-[#D71921] transition-colors flex items-center gap-1"
+                    >
+                      <span>Перейти к утверждению поручений ({tasksToReview.length})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {protocolTab === 'summary' ? (
+                  /* TAB 1: SUMMARY, DECISIONS, RISKS & OPEN QUESTIONS */
+                  <div className="space-y-4">
+                    {/* Summary */}
+                    <div className="nothing-card p-5 space-y-2">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        Краткое резюме встречи
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        {workspaceData.summary}
+                      </p>
+                    </div>
+
+                    {/* Decisions */}
+                    <div className="nothing-card p-5 space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[var(--border-solid)]">
+                        <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                          Итоги и статусы решений
+                        </h3>
+
+                        <div className="inline-flex flex-wrap items-center p-0.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-0.5">
+                          <button
+                            onClick={() => setDecisionFilter('all')}
+                            className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${
+                              decisionFilter === 'all'
+                                ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
+                                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                            }`}
+                          >
+                            Все ({workspaceData.decisions.length})
+                          </button>
+                          {(
+                            [
+                              'resolved',
+                              'proposed',
+                              'discussed',
+                              'needs_clarification',
+                            ] as DecisionCategory[]
+                          ).map((cat) => {
+                            const count = workspaceData.decisions.filter(
+                              (d) => d.category === cat
+                            ).length;
+                            const meta = DECISION_CATEGORY_META[cat];
+                            const isActive = decisionFilter === cat;
+                            return (
+                              <button
+                                key={cat}
+                                onClick={() => setDecisionFilter(cat)}
+                                className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${
+                                  isActive
+                                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
+                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                }`}
+                              >
+                                {meta.label} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {(() => {
+                          const filtered =
+                            decisionFilter === 'all'
+                              ? workspaceData.decisions
+                              : workspaceData.decisions.filter(
+                                  (d) => d.category === decisionFilter
+                                );
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="text-xs text-[var(--text-muted)] py-4 text-center">
+                                В выбранной категории записей нет
+                              </div>
+                            );
+                          }
+                          return filtered.map((d) => {
+                            const meta =
+                              DECISION_CATEGORY_META[d.category] ||
+                              DECISION_CATEGORY_META.discussed;
+                            const tsClean = normalizeTs(d.timestamp);
+                            return (
+                              <div
+                                key={d.id}
+                                className="p-3.5 rounded-xl bg-[var(--bg-elevated)]/70 space-y-2 text-xs"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium ${meta.pillClass}`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dotColor}`} />
+                                    <span>{meta.label}</span>
+                                  </span>
+
+                                  <div className="flex items-center gap-2 text-xs">
+                                    {d.speaker && (
+                                      <span className="font-medium text-[var(--text-secondary)]">
+                                        {d.speaker}
+                                      </span>
+                                    )}
+                                    {tsClean && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleJumpToTimestamp(tsClean)}
+                                        title="Перейти к реплике в стенограмме"
+                                        className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                      >
+                                        <Play className="w-3 h-3 text-[#D71921]" />
+                                        <span>{tsClean}</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="leading-relaxed text-[var(--text-primary)]">
+                                  {d.text}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Risks & Open Questions */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="nothing-card p-5 space-y-3">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-[var(--border-solid)]">
+                          <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                            Выявленные риски
+                          </h3>
+                          <span className="text-xs font-mono text-[var(--text-muted)]">
+                            {workspaceData.risks?.length || 0}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          {workspaceData.risks && workspaceData.risks.length > 0 ? (
+                            workspaceData.risks.map((r) => {
+                              const isHigh = r.impact.toLowerCase() === 'high';
+                              return (
+                                <div
+                                  key={r.id}
+                                  className="p-3.5 rounded-xl bg-[var(--bg-elevated)]/70 text-xs space-y-1.5"
+                                >
+                                  <div className="font-semibold text-[var(--text-primary)] flex items-start justify-between gap-2">
+                                    <span>{r.riskDescription}</span>
+                                    <span
+                                      className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded font-medium shrink-0 ${
+                                        isHigh
+                                          ? 'bg-[#D71921]/15 text-[#D71921]'
+                                          : 'bg-amber-500/15 text-amber-500'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                          isHigh ? 'bg-[#D71921]' : 'bg-amber-500'
+                                        }`}
+                                      />
+                                      {r.impact}
+                                    </span>
+                                  </div>
+                                  {r.suggestedMitigation && (
+                                    <div className="text-xs text-[var(--text-secondary)]">
+                                      Меры: {r.suggestedMitigation}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-xs text-[var(--text-muted)]">
+                              Критических рисков не зафиксировано
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="nothing-card p-5 space-y-3">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-[var(--border-solid)]">
+                          <h3 className="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                            <HelpCircle className="w-4 h-4 text-amber-500" />
+                            <span>Открытые вопросы</span>
+                          </h3>
+                          <span className="text-xs font-mono text-[var(--text-muted)]">
+                            {workspaceData.openQuestions?.length || 0}
+                          </span>
+                        </div>
+
+                        {workspaceData.openQuestions && workspaceData.openQuestions.length > 0 ? (
+                          <ul className="space-y-2 text-xs">
+                            {workspaceData.openQuestions.map((q, idx) => (
+                              <li
+                                key={idx}
+                                className="p-3 rounded-xl bg-[var(--bg-elevated)]/70 space-y-2"
+                              >
+                                <div className="leading-relaxed text-[var(--text-primary)]">
+                                  {q}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSearchQuestionInKB(q)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                  >
+                                    <span>Найти в базе знаний</span>
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddQuestionToTasks(q)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[var(--bg-card)] border border-[var(--border-solid)] hover:border-[var(--text-primary)] text-[var(--text-primary)] transition-colors"
+                                  >
+                                    <Plus className="w-3 h-3 text-[#D71921]" />
+                                    <span>В поручения</span>
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs text-[var(--text-muted)]">
+                            Нерешённых вопросов не осталось
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* TAB 2: COMPACT TASKS LIST WITH EXPAND-ON-CLICK EDITING */
+                  <div className="nothing-card p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-solid)]">
+                      <div>
+                        <h3 className="text-xs font-semibold text-[var(--text-primary)]">
+                          Поручения к утверждению в реестр
+                        </h3>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                          Нажмите на задачу, чтобы изменить ответственного или срок исполнения
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleAddTask}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors border border-[var(--border-solid)]"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Добавить задачу</span>
+                      </button>
+                    </div>
+
+                    {tasksToReview.length === 0 ? (
+                      <div className="py-10 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-xl">
+                        Все поручения согласованы и записаны в реестр
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {tasksToReview.map((task, idx) => {
+                          const isUnassigned =
+                            task.assigneeName.includes('уточнения') ||
+                            task.assigneeName.includes('Назначить');
+                          const isNoDeadline =
+                            task.deadline.includes('уточнения') ||
+                            task.deadline.includes('Указать');
+                          const isExpanded = expandedTaskIdx === idx;
+
+                          return (
+                            <div
+                              key={idx}
+                              className="rounded-xl border border-[var(--border-solid)] bg-[var(--bg-elevated)]/50 overflow-hidden"
+                            >
+                              {/* Compact Row Header */}
+                              <div
+                                onClick={() => setExpandedTaskIdx(isExpanded ? null : idx)}
+                                className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[var(--bg-elevated)] transition-colors"
+                              >
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                                    {task.title}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                    <span
+                                      className={
+                                        isUnassigned
+                                          ? 'text-[#D71921] font-medium'
+                                          : 'text-[var(--text-secondary)]'
+                                      }
+                                    >
+                                      {task.assigneeName}
+                                    </span>
+                                    <span className="text-[var(--text-muted)]">·</span>
+                                    <span
+                                      className={`font-mono ${
+                                        isNoDeadline
+                                          ? 'text-[#D71921] font-medium'
+                                          : 'text-[var(--text-muted)]'
+                                      }`}
+                                    >
+                                      {task.deadline}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {task.timestamp && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleJumpToTimestamp(task.timestamp);
+                                      }}
+                                      className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border-solid)] text-[var(--text-primary)]"
+                                    >
+                                      <Play className="w-3 h-3 text-[#D71921]" />
+                                      <span>{normalizeTs(task.timestamp)}</span>
+                                    </button>
+                                  )}
+
+                                  <span className="text-[11px] text-[var(--text-secondary)] px-2 py-1 rounded bg-[var(--bg-card)] border border-[var(--border-solid)]">
+                                    {isExpanded ? 'Свернуть' : 'Изменить'}
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteTask(idx);
+                                    }}
+                                    title="Удалить поручение"
+                                    className="w-7 h-7 rounded-md hover:bg-[#D71921]/15 text-[var(--text-muted)] hover:text-[#D71921] flex items-center justify-center transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Expanded Inline Editor */}
+                              {isExpanded && (
+                                <div className="p-4 pt-3 border-t border-[var(--border-solid)] bg-[var(--bg-card)] space-y-3">
+                                  <div>
+                                    <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                      Формулировка поручения
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={task.title}
+                                      onChange={(e) =>
+                                        handleUpdateTask(idx, 'title', e.target.value)
+                                      }
+                                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                        Ответственный
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={task.assigneeName}
+                                        onChange={(e) =>
+                                          handleUpdateTask(idx, 'assigneeName', e.target.value)
+                                        }
+                                        className={`w-full bg-[var(--bg-elevated)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] border focus:outline-none ${
+                                          isUnassigned
+                                            ? 'border-[#D71921]'
+                                            : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
+                                        }`}
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-[11px] font-medium text-[var(--text-secondary)] block mb-1">
+                                        Срок исполнения
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={task.deadline}
+                                        onChange={(e) =>
+                                          handleUpdateTask(idx, 'deadline', e.target.value)
+                                        }
+                                        className={`w-full bg-[var(--bg-elevated)] px-3 py-1.5 rounded-lg text-xs text-[var(--text-primary)] border focus:outline-none ${
+                                          isNoDeadline
+                                            ? 'border-[#D71921]'
+                                            : 'border-[var(--border-solid)] focus:border-[var(--text-primary)]'
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {task.sourceQuote && (
+                                    <div className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] p-2.5 rounded-lg">
+                                      Основание в стенограмме: «{task.sourceQuote}»
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        <div className="pt-3 flex items-center justify-end gap-2.5">
+                          <button
+                            onClick={handleReject}
+                            className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-elevated)] rounded-lg transition-colors"
+                          >
+                            Отклонить черновик
+                          </button>
+
+                          <button
+                            onClick={handleApprove}
+                            className="px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-lg transition-opacity flex items-center gap-2"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            <span>Утвердить в реестр ({tasksToReview.length})</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
           </>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* SCENARIO 1 & 2: MODAL ДЛЯ ПОДГОТОВКИ ВСТРЕЧИ И КАЛЕНДАРЯ                  */}
+      {/* MODAL: ПОДГОТОВКА ВСТРЕЧИ И ПОДБОР СЛОТА КАЛЕНДАРЯ                        */}
       {/* ========================================================================= */}
       {isPrepModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] max-w-3xl w-full p-6 rounded-lg shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-neutral-200 dark:border-[#212530]">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="nothing-card max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between pb-3.5 border-b border-[var(--border-solid)]">
               <div>
-                <div className="text-[11px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 mb-1">
+                <div className="text-xs font-mono text-[var(--text-muted)] mb-1">
                   {prepStep === 'setup'
-                    ? 'Шаг 1 из 2 · Подготовка повестки, документов, задач и слотов'
-                    : 'Шаг 2 из 2 · Предпросмотр письма-приглашения и явное подтверждение (AI-03)'}
+                    ? 'Шаг 1 из 2 · Повестка, документы и слоты'
+                    : 'Шаг 2 из 2 · Предпросмотр приглашения'}
                 </div>
-                <h2 className="text-base font-bold text-neutral-950 dark:text-white">
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
                   {prepStep === 'setup'
                     ? 'Подготовка совещания и подбор слота календаря'
-                    : 'Подтверждение создания встречи и рассылки приглашений'}
+                    : 'Подтверждение создания встречи'}
                 </h2>
               </div>
 
               <button
                 onClick={() => setIsPrepModalOpen(false)}
-                className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25] transition-colors"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1773,25 +2223,22 @@ export const MeetingsView: React.FC = () => {
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1">
-                      Тема встречи:
+                    <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                      Тема встречи
                     </label>
                     <input
                       type="text"
                       value={prepTopic}
                       onChange={(e) => setPrepTopic(e.target.value)}
-                      className="w-full bg-neutral-50 dark:bg-[#181a22] border border-neutral-200 dark:border-[#282d3b] px-3.5 py-2 rounded-md text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500"
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] px-3.5 py-2 rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)]"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Interactive Participant Checkboxes */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                          Участники ({prepParticipants.length}):
-                        </label>
-                      </div>
+                      <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                        Участники ({prepParticipants.length})
+                      </label>
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {participantsCatalog.map((p) => {
                           const checked = prepParticipants.includes(p.shortName);
@@ -1799,28 +2246,28 @@ export const MeetingsView: React.FC = () => {
                           return (
                             <label
                               key={p.id}
-                              className={`flex items-start gap-2.5 p-2 rounded border cursor-pointer transition-colors text-xs ${
+                              className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors text-xs ${
                                 checked
-                                  ? 'bg-sky-500/[0.06] border-sky-500/40 text-neutral-950 dark:text-white'
-                                  : 'bg-neutral-50 dark:bg-[#181a22] border-neutral-200/80 dark:border-[#222631] text-neutral-600 dark:text-neutral-300'
+                                  ? 'bg-[var(--bg-elevated)] border-[var(--text-primary)] text-[var(--text-primary)]'
+                                  : 'bg-[var(--bg-elevated)]/40 border-[var(--border-solid)] text-[var(--text-secondary)]'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleParticipant(p.shortName)}
-                                className="mt-0.5 rounded border-neutral-300"
+                                className="mt-0.5 rounded"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="font-medium flex items-center gap-1.5">
+                                <div className="font-semibold flex items-center gap-1.5">
                                   <span>{p.shortName}</span>
                                   {isSelf && (
-                                    <span className="text-[10px] font-mono px-1 rounded bg-neutral-200 dark:bg-neutral-700">
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--text-primary)] text-[var(--bg-canvas)]">
                                       Вы
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                                <div className="text-[11px] text-[var(--text-muted)] truncate">
                                   {p.roleTitle}
                                 </div>
                               </div>
@@ -1830,34 +2277,33 @@ export const MeetingsView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Interactive RBAC-filtered Document Checkboxes */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                          Разрешенные документы базы ({selectedDocIds.length}/{documents.length}):
-                        </label>
-                      </div>
+                      <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                        Документы базы ({selectedDocIds.length}/{documents.length})
+                      </label>
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {documents.map((doc) => {
                           const checked = selectedDocIds.includes(doc.id);
                           return (
                             <label
                               key={doc.id}
-                              className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition-colors text-xs ${
+                              className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors text-xs ${
                                 checked
-                                  ? 'bg-sky-500/[0.06] border-sky-500/40 text-neutral-950 dark:text-white'
-                                  : 'bg-neutral-50 dark:bg-[#181a22] border-neutral-200/80 dark:border-[#222631] text-neutral-600 dark:text-neutral-300'
+                                  ? 'bg-[var(--bg-elevated)] border-[var(--text-primary)] text-[var(--text-primary)]'
+                                  : 'bg-[var(--bg-elevated)]/40 border-[var(--border-solid)] text-[var(--text-secondary)]'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleDocSelection(doc.id)}
-                                className="mt-0.5 rounded border-neutral-300"
+                                className="mt-0.5 rounded"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-medium leading-snug line-clamp-2">{doc.title}</div>
-                                <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                                <div className="text-xs font-medium leading-snug line-clamp-2">
+                                  {doc.title}
+                                </div>
+                                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
                                   {doc.category} · {doc.date}
                                 </div>
                               </div>
@@ -1872,42 +2318,35 @@ export const MeetingsView: React.FC = () => {
                     type="button"
                     onClick={handleGenerateAgenda}
                     disabled={isAiGeneratingAgenda}
-                    className="w-full py-2 px-4 rounded-md bg-neutral-100 hover:bg-neutral-200 dark:bg-[#1b1f28] dark:hover:bg-[#232834] border border-neutral-300 dark:border-[#2b3040] flex items-center justify-center gap-2 text-xs font-semibold text-neutral-900 dark:text-neutral-100 transition-colors disabled:opacity-50"
+                    className="w-full py-2 px-4 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] border border-[var(--border-solid)] flex items-center justify-center gap-2 text-xs font-semibold text-[var(--text-primary)] transition-colors disabled:opacity-50"
                   >
-                    <Cpu className={`w-3.5 h-3.5 ${isAiGeneratingAgenda ? 'animate-spin' : ''}`} />
+                    <Cpu className={`w-4 h-4 ${isAiGeneratingAgenda ? 'animate-spin' : ''}`} />
                     <span>
                       {isAiGeneratingAgenda
-                        ? 'AI анализирует документы и открытые задачи из PostgreSQL...'
-                        : 'Сформировать проект повестки, открытые задачи и вопросы (AI)'}
+                        ? 'Формирование повестки и проверка задач...'
+                        : 'Сформировать проект повестки и вопросы'}
                     </span>
                   </button>
 
                   {prepError && (
-                    <div className="p-3 rounded-md bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2">
+                    <div className="p-3 rounded-xl bg-[#D71921]/10 border border-[#D71921]/30 text-xs text-[#D71921] flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>{prepError}</span>
                     </div>
                   )}
 
-                  {/* AI + PostgreSQL Generated Results */}
-                  <div className="p-3.5 rounded-md bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#222631] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
-                        Проект повестки:
-                      </div>
-                      {generatedAgenda.modelUsed && (
-                        <span className="text-[10px] font-mono text-neutral-400">
-                          Модель: {generatedAgenda.modelUsed}
-                        </span>
-                      )}
+                  <div className="p-4 rounded-xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-3">
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      Проект повестки
                     </div>
 
                     {generatedAgenda.agenda.length === 0 ? (
-                      <div className="text-xs text-neutral-400 italic">
-                        Нажмите кнопку выше, чтобы Qwen 2.5 сформировал повестку по выбранным документам и открытым задачам из БД.
+                      <div className="text-xs text-[var(--text-muted)]">
+                        Нажмите кнопку выше, чтобы сформировать повестку по выбранным документам и
+                        открытым задачам из реестра
                       </div>
                     ) : (
-                      <ul className="text-xs text-neutral-700 dark:text-neutral-300 space-y-1 pl-1">
+                      <ul className="text-xs text-[var(--text-primary)] space-y-1">
                         {generatedAgenda.agenda.map((item, i) => (
                           <li key={i}>{item}</li>
                         ))}
@@ -1915,31 +2354,25 @@ export const MeetingsView: React.FC = () => {
                     )}
 
                     {generatedAgenda.openTasks.length > 0 && (
-                      <div className="pt-2 border-t border-neutral-200 dark:border-[#222631]">
-                        <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 mb-1.5">
-                          Открытые задачи выбранных участников (из БД):
+                      <div className="pt-2 border-t border-[var(--border-solid)]">
+                        <div className="text-xs font-semibold text-[var(--text-primary)] mb-1.5">
+                          Открытые задачи участников
                         </div>
                         <div className="space-y-1.5">
                           {generatedAgenda.openTasks.map((task) => (
                             <div
                               key={task.id}
-                              className="p-2 rounded bg-white dark:bg-[#151821] border border-neutral-200 dark:border-[#222631] flex items-center justify-between gap-2 text-[11px]"
+                              className="p-2.5 rounded-lg bg-[var(--bg-card)] flex items-center justify-between gap-2 text-xs"
                             >
                               <div className="min-w-0">
-                                <div className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                <div className="font-medium text-[var(--text-primary)] truncate">
                                   {task.title}
                                 </div>
-                                <div className="text-neutral-500 font-mono">
+                                <div className="text-[var(--text-muted)] font-mono text-[11px]">
                                   {task.assigneeName} · до {task.deadline}
                                 </div>
                               </div>
-                              <span
-                                className={`px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0 ${
-                                  task.status === 'overdue'
-                                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                    : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                                }`}
-                              >
+                              <span className="px-2 py-0.5 rounded font-mono text-[11px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shrink-0">
                                 {task.status}
                               </span>
                             </div>
@@ -1949,11 +2382,11 @@ export const MeetingsView: React.FC = () => {
                     )}
 
                     {generatedAgenda.openQuestions.length > 0 && (
-                      <div className="pt-2 border-t border-neutral-200 dark:border-[#222631]">
-                        <div className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                          Открытые вопросы к обсуждению:
+                      <div className="pt-2 border-t border-[var(--border-solid)]">
+                        <div className="text-xs font-semibold text-[var(--text-primary)] mb-1">
+                          Открытые вопросы к обсуждению
                         </div>
-                        <ul className="text-xs text-amber-800 dark:text-amber-300 space-y-1 pl-1 font-medium">
+                        <ul className="text-xs text-amber-500 space-y-1 font-medium">
                           {generatedAgenda.openQuestions.map((q, i) => (
                             <li key={i}>{q}</li>
                           ))}
@@ -1963,14 +2396,15 @@ export const MeetingsView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Step 2 inline: Calendar Slots */}
-                <div className="space-y-3 pt-3 border-t border-neutral-200 dark:border-[#212530]">
+                {/* Calendar Slots */}
+                <div className="space-y-3 pt-3 border-t border-[var(--border-solid)]">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 font-mono uppercase tracking-wider">
+                    <h3 className="text-xs font-semibold text-[var(--text-primary)]">
                       Свободные слоты в календаре
                     </h3>
-                    <span className="text-[11px] font-mono text-neutral-500">
-                      Доступно {calendarSlots.filter((s) => s.isAvailable).length} из {calendarSlots.length} слотов
+                    <span className="text-xs font-mono text-[var(--text-muted)]">
+                      Доступно {calendarSlots.filter((s) => s.isAvailable).length} из{' '}
+                      {calendarSlots.length}
                     </span>
                   </div>
 
@@ -1978,7 +2412,9 @@ export const MeetingsView: React.FC = () => {
                     {calendarSlots.map((slot) => {
                       const isSelected = selectedSlotId === slot.id && slot.isAvailable;
                       const freeSet = new Set(slot.participantsFree.map(surnameKey));
-                      const busySelected = prepParticipants.filter((p) => !freeSet.has(surnameKey(p)));
+                      const busySelected = prepParticipants.filter(
+                        (p) => !freeSet.has(surnameKey(p))
+                      );
 
                       return (
                         <button
@@ -1986,37 +2422,41 @@ export const MeetingsView: React.FC = () => {
                           type="button"
                           disabled={!slot.isAvailable}
                           onClick={() => slot.isAvailable && setSelectedSlotId(slot.id)}
-                          className={`p-3 rounded-md text-left transition-colors text-xs flex flex-col justify-between gap-1.5 border ${
+                          className={`p-3 rounded-xl text-left transition-colors text-xs flex flex-col justify-between gap-1.5 border ${
                             !slot.isAvailable
-                              ? 'opacity-55 cursor-not-allowed border-neutral-200 dark:border-[#1e222c] bg-neutral-100 dark:bg-[#101217]'
+                              ? 'opacity-45 cursor-not-allowed border-[var(--border-solid)] bg-[var(--bg-elevated)]/40'
                               : isSelected
-                              ? 'border-neutral-950 dark:border-white bg-neutral-100 dark:bg-[#1e222d] ring-1 ring-neutral-950 dark:ring-white cursor-pointer'
-                              : 'border-neutral-200 dark:border-[#222631] bg-white dark:bg-[#14161c] hover:border-neutral-300 dark:hover:border-[#2d3240] cursor-pointer'
+                              ? 'border-[var(--text-primary)] bg-[var(--bg-elevated)] ring-1 ring-[var(--text-primary)] cursor-pointer'
+                              : 'border-[var(--border-solid)] bg-[var(--bg-card)] hover:border-[var(--text-secondary)] cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="font-semibold text-neutral-900 dark:text-neutral-100">{slot.date}</span>
+                            <span className="font-medium text-[var(--text-primary)]">
+                              {slot.date}
+                            </span>
                             {!slot.isAvailable ? (
-                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300">
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#D71921]/15 text-[#D71921]">
                                 Занято
                               </span>
                             ) : (
-                              isSelected && <Check className="w-3.5 h-3.5 text-neutral-900 dark:text-white" />
+                              isSelected && <Check className="w-3.5 h-3.5 text-[#D71921]" />
                             )}
                           </div>
 
-                          <div className="text-sm font-bold font-mono text-neutral-900 dark:text-neutral-100">
+                          <div className="font-mono text-sm font-semibold text-[var(--text-primary)]">
                             {slot.startTime} – {slot.endTime}
                           </div>
 
                           {!slot.isAvailable ? (
-                            <div className="text-[10px] text-neutral-500">Слот забронирован</div>
+                            <div className="text-[11px] text-[var(--text-muted)]">
+                              Слот забронирован
+                            </div>
                           ) : busySelected.length === 0 ? (
-                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                              ✓ Все выбранные свободны
+                            <div className="text-[11px] text-emerald-500 font-medium">
+                              Все участники свободны
                             </div>
                           ) : (
-                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                            <div className="text-[11px] text-amber-500 font-medium">
                               Занят(ы): {busySelected.join(', ')}
                             </div>
                           )}
@@ -2026,11 +2466,11 @@ export const MeetingsView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-neutral-200 dark:border-[#212530]">
+                <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[var(--border-solid)]">
                   <button
                     type="button"
                     onClick={() => setIsPrepModalOpen(false)}
-                    className="px-3.5 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-[#1a1d25] rounded-md transition-colors"
+                    className="px-4 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-lg transition-colors"
                   >
                     Отмена
                   </button>
@@ -2039,7 +2479,7 @@ export const MeetingsView: React.FC = () => {
                     type="button"
                     onClick={handleProceedToPreview}
                     disabled={!selectedSlot || !selectedSlot.isAvailable}
-                    className="px-4 py-1.5 text-xs font-semibold bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 text-white rounded-md flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50"
+                    className="px-4 py-2 text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-canvas)] hover:opacity-90 rounded-lg flex items-center gap-1.5 transition-opacity disabled:opacity-50"
                   >
                     <span>Далее: предпросмотр приглашения</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -2047,32 +2487,37 @@ export const MeetingsView: React.FC = () => {
                 </div>
               </>
             ) : (
-              /* Step 2: Explicit Preview & Confirmation (AI-03) */
               <div className="space-y-4">
-                <div className="p-3 rounded bg-emerald-500/[0.06] border border-emerald-500/25 text-xs text-neutral-800 dark:text-neutral-200 flex items-start gap-2.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="leading-relaxed text-[11px]">
-                    <strong>Подтверждение действия (AI-03):</strong> Проверьте детали события и текст приглашения. Запись в календарь и отправка уведомлений выполнятся только после нажатия «Подтвердить и отправить».
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-[var(--text-primary)] flex items-start gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed text-xs">
+                    <strong>Подтверждение действия:</strong> проверьте детали события и текст
+                    приглашения. Запись в календарь и рассылка выполнятся после подтверждения.
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#222631]">
-                    <div className="text-[11px] font-mono text-neutral-500 mb-1">Событие и время</div>
-                    <div className="font-semibold text-neutral-950 dark:text-white">{prepTopic}</div>
-                    <div className="text-neutral-600 dark:text-neutral-300 mt-1 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                  <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)]">
+                    <div className="text-[11px] text-[var(--text-muted)] mb-1">
+                      Событие и время
+                    </div>
+                    <div className="font-semibold text-[var(--text-primary)]">{prepTopic}</div>
+                    <div className="text-[var(--text-secondary)] mt-1 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
                       <span>
                         {selectedSlot?.date} · {selectedSlot?.startTime}–{selectedSlot?.endTime}
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-3 rounded bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#222631]">
-                    <div className="text-[11px] font-mono text-neutral-500 mb-1">Получатели приглашений</div>
-                    {prepParticipants.filter((p) => surnameKey(p) !== currentUserSurname).length === 0 ? (
-                      <div className="text-amber-700 dark:text-amber-300 text-[11px]">
-                        Другие участники не выбраны — приглашения отправлены не будут (встреча только в вашем календаре).
+                  <div className="p-3.5 rounded-xl bg-[var(--bg-elevated)]">
+                    <div className="text-[11px] text-[var(--text-muted)] mb-1">
+                      Получатели приглашений
+                    </div>
+                    {prepParticipants.filter((p) => surnameKey(p) !== currentUserSurname).length ===
+                    0 ? (
+                      <div className="text-amber-500 text-xs">
+                        Другие участники не выбраны — встреча создастся только в вашем календаре
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-1.5 mt-1">
@@ -2081,7 +2526,7 @@ export const MeetingsView: React.FC = () => {
                           .map((recipient) => (
                             <span
                               key={recipient}
-                              className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 text-[11px] font-medium"
+                              className="px-2.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-primary)] text-xs font-medium"
                             >
                               {recipient}
                             </span>
@@ -2092,22 +2537,22 @@ export const MeetingsView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 block mb-1.5">
-                    Текст письма-приглашения (можно отредактировать перед отправкой):
+                  <label className="text-xs font-medium text-[var(--text-secondary)] block mb-1.5">
+                    Текст письма-приглашения
                   </label>
                   <textarea
                     rows={7}
                     value={invitationText}
                     onChange={(e) => setInvitationText(e.target.value)}
-                    className="w-full bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#282d3b] p-3 rounded-md text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:border-sky-500 leading-relaxed"
+                    className="w-full bg-[var(--bg-elevated)] border border-[var(--border-solid)] p-3.5 rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--text-primary)] leading-relaxed"
                   />
                 </div>
 
-                <div className="pt-3 flex items-center justify-between gap-2.5 border-t border-neutral-200 dark:border-[#212530]">
+                <div className="pt-3 flex items-center justify-between gap-2.5 border-t border-[var(--border-solid)]">
                   <button
                     type="button"
                     onClick={() => setPrepStep('setup')}
-                    className="px-3.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-[#1a1d25] hover:bg-neutral-200 dark:hover:bg-[#232834] rounded-md flex items-center gap-1.5 transition-colors"
+                    className="px-3.5 py-2 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] rounded-lg flex items-center gap-1.5 transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Назад</span>
@@ -2117,7 +2562,7 @@ export const MeetingsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsPrepModalOpen(false)}
-                      className="px-3.5 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-[#1a1d25] rounded-md transition-colors"
+                      className="px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] rounded-lg transition-colors"
                     >
                       Отмена
                     </button>
@@ -2126,10 +2571,14 @@ export const MeetingsView: React.FC = () => {
                       type="button"
                       disabled={isCreatingMeeting}
                       onClick={handleConfirmMeetingCreation}
-                      className="px-4 py-1.5 text-xs font-semibold bg-neutral-950 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 text-white rounded-md flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50"
+                      className="px-4 py-2 text-xs font-semibold bg-[#D71921] hover:brightness-110 text-white rounded-lg flex items-center gap-1.5 transition-opacity disabled:opacity-50"
                     >
                       <Mail className="w-3.5 h-3.5" />
-                      <span>{isCreatingMeeting ? 'Сохранение...' : 'Подтвердить и отправить приглашения'}</span>
+                      <span>
+                        {isCreatingMeeting
+                          ? 'Сохранение...'
+                          : 'Подтвердить и отправить приглашения'}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -2140,37 +2589,37 @@ export const MeetingsView: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* IN-APP INVITATIONS INBOX MODAL (AI-03 / RBAC DEMO)                        */}
+      {/* MODAL: ПРИГЛАШЕНИЯ НА СОВЕЩАНИЯ                                           */}
       {/* ========================================================================= */}
       {isInvitationsOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#14161c] border border-neutral-200 dark:border-[#222631] max-w-2xl w-full p-6 rounded-lg shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-start justify-between pb-3 border-b border-neutral-200 dark:border-[#212530]">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="nothing-card max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start justify-between pb-3 border-b border-[var(--border-solid)]">
               <div>
-                <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
-                  Текущий пользователь: {currentUser.name}
+                <div className="text-xs text-[var(--text-muted)]">
+                  Профиль: {currentUser.name}
                 </div>
-                <h2 className="text-base font-bold text-neutral-950 dark:text-white">
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">
                   Приглашения на совещания
                 </h2>
               </div>
 
               <button
                 onClick={() => setIsInvitationsOpen(false)}
-                className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-[#212530] pb-2">
+            <div className="inline-flex items-center p-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-solid)] gap-1">
               <button
                 type="button"
                 onClick={() => setInvTab('incoming')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                className={`px-3 py-1 rounded-md text-xs transition-colors ${
                   invTab === 'incoming'
-                    ? 'bg-neutral-950 text-white dark:bg-white dark:text-neutral-950'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]'
+                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 Входящие мне ({incomingInvitations.length})
@@ -2178,10 +2627,10 @@ export const MeetingsView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setInvTab('all')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                className={`px-3 py-1 rounded-md text-xs transition-colors ${
                   invTab === 'all'
-                    ? 'bg-neutral-950 text-white dark:bg-white dark:text-neutral-950'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-[#1a1d25]'
+                    ? 'bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 Все отправленные ({invitations.length})
@@ -2192,10 +2641,10 @@ export const MeetingsView: React.FC = () => {
               const list = invTab === 'incoming' ? incomingInvitations : invitations;
               if (list.length === 0) {
                 return (
-                  <div className="py-10 text-center text-xs text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-200 dark:border-[#222631] rounded-lg">
+                  <div className="py-10 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border-dashed)] rounded-xl">
                     {invTab === 'incoming'
-                      ? 'У текущей роли пока нет входящих приглашений. Создайте встречу и переключитесь на приглашенного руководителя (например, Иванов И.С. или Ковалева Е.Д.).'
-                      : 'Отправленных приглашений пока нет.'}
+                      ? 'У текущей роли пока нет входящих приглашений'
+                      : 'Отправленных приглашений пока нет'}
                   </div>
                 );
               }
@@ -2205,33 +2654,48 @@ export const MeetingsView: React.FC = () => {
                   {list.map((inv) => (
                     <div
                       key={inv.id}
-                      className="p-4 rounded-lg bg-neutral-50 dark:bg-[#101217] border border-neutral-200 dark:border-[#222631] space-y-2.5 text-xs"
+                      className="p-4 rounded-xl bg-[var(--bg-elevated)]/60 border border-[var(--border-solid)] space-y-2.5 text-xs"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-bold text-neutral-950 dark:text-white">{inv.meetingTitle}</div>
-                          <div className="text-[11px] font-mono text-neutral-500 mt-0.5">
+                          <div className="font-semibold text-[var(--text-primary)]">
+                            {inv.meetingTitle}
+                          </div>
+                          <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
                             {inv.date} · {inv.time} · Организатор: {inv.organizerName}
                           </div>
-                          <div className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5">
+                          <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
                             Получатель: <span className="font-medium">{inv.recipientName}</span>
                           </div>
                         </div>
 
                         <span
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded shrink-0 ${
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded shrink-0 ${
                             inv.status === 'accepted'
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              ? 'bg-emerald-500/15 text-emerald-500'
                               : inv.status === 'declined'
-                              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              ? 'bg-[#D71921]/15 text-[#D71921]'
+                              : 'bg-amber-500/15 text-amber-500'
                           }`}
                         >
-                          {inv.status === 'accepted' ? 'Принято' : inv.status === 'declined' ? 'Отклонено' : 'Ожидает'}
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              inv.status === 'accepted'
+                                ? 'bg-emerald-500'
+                                : inv.status === 'declined'
+                                ? 'bg-[#D71921]'
+                                : 'bg-amber-500'
+                            }`}
+                          />
+                          {inv.status === 'accepted'
+                            ? 'Принято'
+                            : inv.status === 'declined'
+                            ? 'Отклонено'
+                            : 'Ожидает'}
                         </span>
                       </div>
 
-                      <div className="p-2.5 rounded bg-white dark:bg-[#14161c] border border-neutral-200/80 dark:border-[#1f232e] whitespace-pre-wrap text-[11px] text-neutral-700 dark:text-neutral-300">
+                      <div className="p-3 rounded-lg bg-[var(--bg-card)] whitespace-pre-wrap text-xs text-[var(--text-secondary)]">
                         {inv.messageText}
                       </div>
 
@@ -2240,14 +2704,14 @@ export const MeetingsView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => respondToInvitation(inv.id, 'declined')}
-                            className="px-3 py-1.5 rounded text-xs font-medium bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 transition-colors"
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D71921]/15 hover:bg-[#D71921] text-[#D71921] hover:text-white transition-colors"
                           >
                             Отклонить
                           </button>
                           <button
                             type="button"
                             onClick={() => respondToInvitation(inv.id, 'accepted')}
-                            className="px-3.5 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
                           >
                             Принять приглашение
                           </button>
