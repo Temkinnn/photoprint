@@ -1,10 +1,11 @@
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.seed import seed_database
 from app.routers import auth, documents, meetings, tasks, rag, overview, system
+from app.services.audit import reset_request_role, set_request_role
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +19,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.middleware("http")
+async def attach_user_role_middleware(request: Request, call_next):
+    token = set_request_role(request.headers.get("X-User-Role"))
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_role(token)
 
 # CORS Middleware для связи с фронтендом Tauri и Web UI
 app.add_middleware(

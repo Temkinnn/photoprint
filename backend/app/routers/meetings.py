@@ -27,7 +27,7 @@ from app.schemas import (
     SaveProtocolRequest,
     TaskItem,
 )
-from app.services.audit import add_audit_log, get_active_user, resolve_authorized_user, surname_key
+from app.services.audit import add_audit_log, get_active_user, get_iso_now, resolve_authorized_user, surname_key
 from app.services.meeting_analyzer import (
     analyze_meeting_transcript,
     extract_transcript_text,
@@ -167,7 +167,7 @@ async def create_meeting(req: CreateMeetingRequest, db: Session = Depends(get_db
         f"Повестка:\n{agenda_preview}"
     )
     message_text = (req.invitationText or "").strip() or default_msg
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_iso_now()
 
     created_invitations = []
     for raw_participant in req.participants:
@@ -282,7 +282,7 @@ async def get_protocol_by_id(protocol_id: str, db: Session = Depends(get_db)):
 async def save_protocol(req: SaveProtocolRequest, db: Session = Depends(get_db)):
     """Сохраняет протокол в PostgreSQL и привязывает его ко встрече (если указана)."""
     current_user = get_active_user(db)
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_str = get_iso_now()
 
     existing = None
     if req.meetingId:

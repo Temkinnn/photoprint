@@ -25,6 +25,16 @@ export type { ProtocolAnalysisResult };
 
 export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
+let currentClientRole: UserRole = 'ROLE_DIRECTOR';
+
+export function setClientUserRole(role: UserRole): void {
+  currentClientRole = role;
+}
+
+export function getClientUserRole(): UserRole {
+  return currentClientRole;
+}
+
 interface BackendAuditEntry {
   id: string;
   timestamp: string;
@@ -49,9 +59,14 @@ export interface BackendHealth {
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('X-User-Role')) {
+    headers.set('X-User-Role', currentClientRole);
+  }
   try {
     const response = await fetch(url, {
       ...options,
+      headers,
       signal: controller.signal,
     });
     clearTimeout(id);
@@ -251,6 +266,7 @@ export const apiClient = {
     transcriptRef: string;
     transcriptText: string;
     summary: string;
+    audioUrl?: string | null;
     decisions: DecisionItem[];
     risks: RiskItem[];
     openQuestions?: string[];

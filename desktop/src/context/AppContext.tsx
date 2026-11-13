@@ -27,7 +27,7 @@ import {
   INITIAL_AUDIT_LOG,
   MOCK_CALENDAR_SLOTS,
 } from '../mock/mockData';
-import { apiClient, ProtocolAnalysisResult } from '../api/apiClient';
+import { apiClient, ProtocolAnalysisResult, setClientUserRole } from '../api/apiClient';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -367,6 +367,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginAs = async (role: UserRole) => {
     setCurrentRole(role);
+    setClientUserRole(role);
     setIsAuthenticated(true);
     const targetUser = MOCK_USERS[role];
     setRagMessages([buildWelcomeRagMessage(targetUser.name)]);
@@ -399,6 +400,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setRole = async (newRole: UserRole) => {
     setCurrentRole(newRole);
+    setClientUserRole(newRole);
     const targetUser = MOCK_USERS[newRole];
     setRagMessages([buildWelcomeRagMessage(targetUser.name)]);
 
@@ -642,12 +644,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const controller = new AbortController();
     const timerId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`${apiBase}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
+          const res = await fetch(`${apiBase}${path}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-Role': currentRole,
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;
         try {
@@ -827,6 +832,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       fetch(`${apiBase}/api/v1/meetings/transcribe-audio`, {
         method: 'POST',
+        headers: {
+          'X-User-Role': currentRole,
+        },
         body: formData,
         signal: controller.signal,
       })
@@ -1120,6 +1128,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
         await apiClient.resetDemo();
         setCurrentRole('ROLE_DIRECTOR');
+        setClientUserRole('ROLE_DIRECTOR');
         setRagMessages([buildWelcomeRagMessage(MOCK_USERS['ROLE_DIRECTOR'].name)]);
         await syncWithBackend();
         showToast('Демо сброшено', 'База данных, календарь, приглашения и аудит сброшены к эталону', 'info');
