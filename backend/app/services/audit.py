@@ -1,4 +1,5 @@
 import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
@@ -6,6 +7,25 @@ from sqlalchemy.orm import Session
 from app.db.models import DBAppState, DBAuditLog, DBUser
 from app.db.storage import INITIAL_USERS
 from app.schemas import UserProfile, UserRole
+
+VALID_ROLES = {"ROLE_DIRECTOR", "ROLE_PRODUCTION_HEAD", "ROLE_SUPPORT_HEAD"}
+_request_role_ctx: ContextVar[Optional[UserRole]] = ContextVar("request_role_ctx", default=None)
+
+
+def set_request_role(raw_role: Optional[str]):
+    role = (raw_role or "").strip()
+    if role in VALID_ROLES:
+        return _request_role_ctx.set(role)  # type: ignore[arg-type]
+    return _request_role_ctx.set(None)
+
+
+def reset_request_role(token) -> None:
+    _request_role_ctx.reset(token)
+
+
+def get_iso_now() -> str:
+    """Возвращает текущее время в формате ISO 8601 с часовым поясом (ОТ-07)."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def get_role_clearance(role: UserRole) -> int:
@@ -40,7 +60,7 @@ def _user_from_db(db_user: DBUser) -> UserProfile:
 
 
 def get_active_user(db: Session, override_role: Optional[UserRole] = None) -> UserProfile:
-    role: UserRole = override_role  # type: ignore[assignment]
+    role: Optional[UserRole] = override_role or _request_role_ctx.get()
     if not role:
         state = db.query(DBAppState).filter(DBAppState.key == "current_role").first()
         role = (state.value if state else "ROLE_DIRECTOR")  # type: ignore[assignment]
@@ -72,7 +92,7 @@ def add_audit_log(
     active_user = user or get_active_user(db)
     entry = DBAuditLog(
         id=f"aud-{uuid.uuid4().hex[:8]}",
-        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        timestamp=get_iso_now(),
         user_id=active_user.id,
         user_name=active_user.name,
         user_role=active_user.role,
@@ -92,7 +112,7 @@ def resolve_authorized_user(
     requested_role: Optional[UserRole] = None,
     action_context: str = "API_REQUEST",
 ) -> UserProfile:
-    """Возвращает активного пользователя сессии и блокирует попытки повышения привилегий (AI-02)."""
+    """Возвращает активного пользователя сессии и блокирует попытки повышения привилегий (AI-02 / ОТ-02)."""
     session_user = get_active_user(db)
     if requested_role and get_role_clearance(requested_role) < get_role_clearance(session_user.role):
         add_audit_log(
